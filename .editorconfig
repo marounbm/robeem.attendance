@@ -1,0 +1,181 @@
+# robeem.attendance — root EditorConfig
+#
+# See CLAUDE.md §7 for the rationale behind every severity choice below. In short:
+#   - naming/readability rules  -> error    (must hold; they protect §2's entity conventions)
+#   - layout/ordering/spacing   -> warning  (auto-fixed by `dotnet format`, not worth a build break)
+#   - documentation + headers   -> none     (matches the existing robeem.DataModel style, which has neither)
+#
+# This file assumes robeem.attendance is its own repository root. If it is later nested inside
+# a larger repo that already has a root .editorconfig, merge the two rather than letting them
+# both apply independently, and remove this `root = true` line.
+root = true
+
+[*]
+indent_style = space
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+indent_size = 4
+end_of_line = crlf
+
+# ---------------------------------------------------------------------------
+# StyleCop.Analyzers — naming & readability (error: must hold)
+# ---------------------------------------------------------------------------
+dotnet_diagnostic.SA1300.severity = error  # Element must begin with upper-case letter
+dotnet_diagnostic.SA1302.severity = error  # Interface names must begin with I
+dotnet_diagnostic.SA1303.severity = error  # Const field names must begin with upper-case letter
+dotnet_diagnostic.SA1304.severity = error  # Non-private readonly fields must begin with upper-case letter
+dotnet_diagnostic.SA1306.severity = error  # Field names must begin with lower-case letter
+dotnet_diagnostic.SA1307.severity = error  # Accessible fields must begin with upper-case letter
+dotnet_diagnostic.SA1308.severity = error  # Variable names must not be prefixed
+dotnet_diagnostic.SA1309.severity = warning # Field names must not begin with underscore — UNCONFIRMED, see CLAUDE.md §7.2; promote to error once Prompt 0 confirms the real private-field convention
+dotnet_diagnostic.SA1310.severity = error  # Field names must not contain underscore
+dotnet_diagnostic.SA1311.severity = error  # Static readonly fields must begin with upper-case letter
+dotnet_diagnostic.SA1312.severity = error  # Variable names must begin with lower-case letter
+dotnet_diagnostic.SA1313.severity = error  # Parameter names must begin with lower-case letter
+dotnet_diagnostic.SA1314.severity = error  # Type parameter names must begin with T
+
+# ---------------------------------------------------------------------------
+# StyleCop.Analyzers — maintainability / readability (error)
+# ---------------------------------------------------------------------------
+dotnet_diagnostic.SA1119.severity = warning # Statement must not use unnecessary parenthesis
+dotnet_diagnostic.SA1124.severity = error  # Do not use regions (robeem.DataModel uses #region deliberately — see override below)
+dotnet_diagnostic.SA1201.severity = warning # Elements must appear in the correct order
+dotnet_diagnostic.SA1202.severity = warning # Elements must be ordered by access
+dotnet_diagnostic.SA1203.severity = warning # Constants must appear before fields
+dotnet_diagnostic.SA1204.severity = warning # Static elements must appear before instance elements
+dotnet_diagnostic.SA1206.severity = error  # Declaration keywords must follow order
+dotnet_diagnostic.SA1210.severity = warning # Using directives must be ordered alphabetically
+dotnet_diagnostic.SA1216.severity = warning # Using static directives must be placed at the correct location
+dotnet_diagnostic.SA1402.severity = warning # File may only contain a single type
+dotnet_diagnostic.SA1649.severity = warning # File name must match first type name
+
+# ---------------------------------------------------------------------------
+# StyleCop.Analyzers — layout / spacing / ordering (warning: auto-fixed by `dotnet format`)
+# ---------------------------------------------------------------------------
+dotnet_diagnostic.SA1000.severity = warning
+dotnet_diagnostic.SA1001.severity = warning
+dotnet_diagnostic.SA1002.severity = warning
+dotnet_diagnostic.SA1003.severity = warning
+dotnet_diagnostic.SA1004.severity = warning
+dotnet_diagnostic.SA1005.severity = warning
+dotnet_diagnostic.SA1008.severity = warning
+dotnet_diagnostic.SA1009.severity = warning
+dotnet_diagnostic.SA1010.severity = warning
+dotnet_diagnostic.SA1011.severity = warning
+dotnet_diagnostic.SA1012.severity = warning
+dotnet_diagnostic.SA1013.severity = warning
+dotnet_diagnostic.SA1014.severity = warning
+dotnet_diagnostic.SA1015.severity = warning
+dotnet_diagnostic.SA1016.severity = warning
+dotnet_diagnostic.SA1017.severity = warning
+dotnet_diagnostic.SA1018.severity = warning
+dotnet_diagnostic.SA1019.severity = warning
+dotnet_diagnostic.SA1020.severity = warning
+dotnet_diagnostic.SA1021.severity = warning
+dotnet_diagnostic.SA1022.severity = warning
+dotnet_diagnostic.SA1023.severity = warning
+dotnet_diagnostic.SA1024.severity = warning
+dotnet_diagnostic.SA1025.severity = warning
+dotnet_diagnostic.SA1026.severity = warning
+dotnet_diagnostic.SA1027.severity = warning
+dotnet_diagnostic.SA1028.severity = warning
+dotnet_diagnostic.SA1100.severity = error  # Do not prefix calls with base unless local implementation exists
+dotnet_diagnostic.SA1101.severity = warning # Prefix local calls with this (robeem.DataModel doesn't follow this — see override below)
+dotnet_diagnostic.SA1106.severity = error  # Code must not contain empty statements
+dotnet_diagnostic.SA1108.severity = error  # Block statements must not contain embedded comments
+dotnet_diagnostic.SA1116.severity = warning # Split parameters must start on line after declaration
+dotnet_diagnostic.SA1117.severity = warning # Parameters must be on same line or separate lines
+dotnet_diagnostic.SA1118.severity = warning # Parameter must not span multiple lines
+dotnet_diagnostic.SA1137.severity = warning # Elements should have the same indentation
+dotnet_diagnostic.SA1200.severity = warning # Using directives must be placed correctly
+dotnet_diagnostic.SA1208.severity = warning # System using directives must be placed before others
+dotnet_diagnostic.SA1209.severity = warning # Using alias directives must be placed after other using directives
+dotnet_diagnostic.SA1211.severity = warning # Using alias directives must be ordered
+dotnet_diagnostic.SA1214.severity = warning # Readonly fields must appear before non-readonly fields
+dotnet_diagnostic.SA1500.severity = warning # Braces for multi-line statements must not share line
+dotnet_diagnostic.SA1501.severity = warning # Statement must not be on single line
+dotnet_diagnostic.SA1502.severity = warning # Element must not be on single line
+dotnet_diagnostic.SA1503.severity = warning # Braces must not be omitted
+dotnet_diagnostic.SA1504.severity = warning # All accessors must be single-line or multi-line
+dotnet_diagnostic.SA1505.severity = warning # Opening braces must not be followed by blank line
+dotnet_diagnostic.SA1506.severity = warning # Element documentation headers must not be followed by blank line
+dotnet_diagnostic.SA1507.severity = warning # Code must not contain multiple blank lines in a row
+dotnet_diagnostic.SA1508.severity = warning # Closing braces must not be preceded by blank line
+dotnet_diagnostic.SA1509.severity = warning # Opening braces must not be preceded by blank line
+dotnet_diagnostic.SA1510.severity = warning # Chained statement blocks must not be preceded by blank line
+dotnet_diagnostic.SA1511.severity = warning # While-do footer must not be preceded by blank line
+dotnet_diagnostic.SA1512.severity = warning # Single-line comments must not be followed by blank line
+dotnet_diagnostic.SA1513.severity = warning # Closing brace must be followed by blank line
+dotnet_diagnostic.SA1514.severity = warning # Element documentation header must be preceded by blank line
+dotnet_diagnostic.SA1515.severity = warning # Single-line comment must be preceded by blank line
+dotnet_diagnostic.SA1516.severity = warning # Elements must be separated by blank line (robeem.DataModel's #region blocks don't follow this — see override below)
+dotnet_diagnostic.SA1517.severity = warning # Code must not contain blank lines at start of file
+dotnet_diagnostic.SA1518.severity = warning # Code must not contain trailing whitespace at end of file
+
+# ---------------------------------------------------------------------------
+# StyleCop.Analyzers — documentation & file headers (none: matches existing robeem.DataModel style)
+# ---------------------------------------------------------------------------
+dotnet_diagnostic.SA1600.severity = none   # Elements must be documented
+dotnet_diagnostic.SA1601.severity = none   # Partial elements must be documented
+dotnet_diagnostic.SA1602.severity = none   # Enumeration items must be documented
+dotnet_diagnostic.SA1603.severity = none   # Documentation must contain valid XML
+dotnet_diagnostic.SA1604.severity = none   # Element documentation must have summary
+dotnet_diagnostic.SA1605.severity = none   # Partial element documentation must have summary
+dotnet_diagnostic.SA1606.severity = none   # Element documentation must have summary text
+dotnet_diagnostic.SA1607.severity = none   # Partial element documentation must have summary text
+dotnet_diagnostic.SA1608.severity = none   # Element documentation must not have default summary
+dotnet_diagnostic.SA1609.severity = none   # Property documentation must have value
+dotnet_diagnostic.SA1610.severity = none   # Property documentation must have value text
+dotnet_diagnostic.SA1611.severity = none   # Element parameters must be documented
+dotnet_diagnostic.SA1612.severity = none   # Element parameter documentation must match element parameters
+dotnet_diagnostic.SA1613.severity = none   # Element parameter documentation must declare parameter name
+dotnet_diagnostic.SA1614.severity = none   # Element parameter documentation must have text
+dotnet_diagnostic.SA1615.severity = none   # Element return value must be documented
+dotnet_diagnostic.SA1616.severity = none   # Element return value documentation must have text
+dotnet_diagnostic.SA1617.severity = none   # Void return value must not be documented
+dotnet_diagnostic.SA1618.severity = none   # Generic type parameters must be documented
+dotnet_diagnostic.SA1619.severity = none   # Generic type parameters must be documented partial class
+dotnet_diagnostic.SA1620.severity = none   # Generic type parameter documentation must match type parameters
+dotnet_diagnostic.SA1621.severity = none   # Generic type parameter documentation must declare parameter name
+dotnet_diagnostic.SA1622.severity = none   # Generic type parameter documentation must have text
+dotnet_diagnostic.SA1623.severity = none   # Property summary documentation must match accessors
+dotnet_diagnostic.SA1624.severity = none   # Property summary documentation must omit accessor with restricted access
+dotnet_diagnostic.SA1625.severity = none   # Element documentation must not be copied and pasted
+dotnet_diagnostic.SA1626.severity = none   # Single-line comments must not use documentation style
+dotnet_diagnostic.SA1627.severity = none   # Documentation text must not be empty
+dotnet_diagnostic.SA1628.severity = none   # Documentation text must begin with a capital letter
+dotnet_diagnostic.SA1629.severity = none   # Documentation text must end with a period
+dotnet_diagnostic.SA1630.severity = none   # Documentation text must contain whitespace
+dotnet_diagnostic.SA1631.severity = none   # Documentation text must meet minimum character length
+dotnet_diagnostic.SA1632.severity = none   # Documentation text must meet maximum character length
+dotnet_diagnostic.SA1633.severity = none   # File must have header
+dotnet_diagnostic.SA1634.severity = none   # File header must show copyright
+dotnet_diagnostic.SA1635.severity = none   # File header must have copyright text
+dotnet_diagnostic.SA1636.severity = none   # File header copyright text must match
+dotnet_diagnostic.SA1637.severity = none   # File header must contain file name
+dotnet_diagnostic.SA1638.severity = none   # File header file name documentation must match file name
+dotnet_diagnostic.SA1639.severity = none   # File header must have summary
+dotnet_diagnostic.SA1640.severity = none   # File header must have valid company text
+dotnet_diagnostic.SA1641.severity = none   # File header company name text must match
+dotnet_diagnostic.SA1642.severity = none   # Constructor summary documentation must begin with standard text
+dotnet_diagnostic.SA1643.severity = none   # Destructor summary documentation must begin with standard text
+dotnet_diagnostic.SA1644.severity = none   # Documentation headers must not contain blank lines
+dotnet_diagnostic.SA1645.severity = none   # Included documentation file does not exist
+dotnet_diagnostic.SA1646.severity = none   # Included documentation XPath does not exist
+dotnet_diagnostic.SA1647.severity = none   # Include node does not contain valid file and path
+dotnet_diagnostic.SA1648.severity = none   # Inheritdoc must be used with inheriting class
+dotnet_diagnostic.SA1651.severity = none   # Do not use placeholder elements
+
+# ---------------------------------------------------------------------------
+# Pre-existing robeem.DataModel files — path-scoped relaxation (see CLAUDE.md §7.4).
+# Adjust the glob once Prompt 0 confirms the real relative path; delete this section
+# entirely if robeem.DataModel turns out to live in a separate repo/solution.
+# ---------------------------------------------------------------------------
+[**/DataModel/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
+dotnet_diagnostic.SA1101.severity = none
+dotnet_diagnostic.SA1124.severity = none
+dotnet_diagnostic.SA1201.severity = none
+dotnet_diagnostic.SA1516.severity = none
