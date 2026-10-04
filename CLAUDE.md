@@ -342,7 +342,10 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
   - A shift with an exception that is not `Closed` is never `Approved`. `PendingCorrection` counts as not closed, so P9 closes an exception (`ResolutionMethod.Correction`) only when its correction is applied.
   - The engine closes an `Open` exception whose problem is gone as `AutoResolved`; it never touches a `PendingCorrection` one.
   - `IWorkflowEntity` goes on `AttendanceCorrection` (P9), not on `AttendanceException`.
-- [ ] **P9** — `AttendanceCorrection` + approval workflow + ESS/manager endpoints.
+- [x] **P9** — `AttendanceCorrection` (`IWorkflowEntity`) + `IAttendanceCorrectionService` + `api/attendance/corrections`. Migration `AddAttendanceCorrections`. Deviations are in `ATTENDANCE_P9_NOTES.md`. Rules later prompts must keep:
+  - Only a `MissingPunch` exception can be corrected; a correction supplies that punch. The engine reads `Applied` corrections as punches with source `Corrected` (`AttendancePunch.NormalizedTransactionId` is null for them); no punch row is changed.
+  - Approving, applying, closing the exception and recalculating the day is one transaction.
+  - The endpoints take the requester and the decider (and the decider's role) from the request. **P12 must replace that with the authenticated user and RBAC**; `TODO(P12)` marks each place.
 - [ ] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job.
 - [ ] **P11** — HR/Payroll extraction contract (Approved-only).
 - [ ] **P12** — Security hardening (secrets reference, audit logging, RBAC).

@@ -104,7 +104,8 @@ internal static class ShiftAttendanceCalculator
             EarlyDepartureMinutes = early,
             OvertimeMinutes = overtime,
             IsComplete = complete,
-            SourceIds = ordered.Select(p => p.NormalizedTransactionId).Order().ToList(),
+            SourceIds = ordered.Where(p => p.NormalizedTransactionId.HasValue).Select(p => p.NormalizedTransactionId!.Value).Order().ToList(),
+            CorrectionIds = ordered.Where(p => p.CorrectionId.HasValue).Select(p => p.CorrectionId!.Value).Order().ToList(),
             Punches = typed,
         };
     }

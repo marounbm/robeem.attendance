@@ -36,7 +36,7 @@ internal static class AttendanceExceptionDetector
 
         // A scheduled shift without a single punch is a no-show. Nothing is expected on a day off,
         // or when no schedule is configured, and then there is no shift to get here.
-        if (calculation.SourceIds.Count == 0)
+        if (calculation.SourceIds.Count == 0 && punches.Count == 0)
         {
             if (shift is not null && graceOver)
             {

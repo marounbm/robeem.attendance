@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using robeem.DataModel;
 
 namespace robeem.Application.Persistence;
@@ -45,7 +46,12 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceException> AttendanceExceptions { get; }
 
+    DbSet<AttendanceCorrection> AttendanceCorrections { get; }
+
     ChangeTracker ChangeTracker { get; }
+
+    /// <summary>Gets the database facade, for a transaction around several saves.</summary>
+    DatabaseFacade Database { get; }
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     string CurrentTenantId { get; }

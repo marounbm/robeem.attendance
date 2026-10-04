@@ -1,0 +1,88 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using SmartEnum = robeem.System.Contract.SmartEnum;
+
+namespace robeem.DataModel
+{
+    /// <summary>
+    /// A proposed fix to an <see cref="AttendanceException"/> (study §11.2): the missing punch, at
+    /// the time the employee says it happened. Additive (CLAUDE.md §1.7): it is a new row that
+    /// references the exception, with who asked, why, and who approved. Once <c>Applied</c>, the
+    /// processing engine reads it as a punch whose source is <c>Corrected</c>. The raw and
+    /// normalized punches are never touched.
+    /// </summary>
+    [Serializable]
+    [Table(nameof(AttendanceCorrection), Schema = nameof(SmartEnum.Module.Attendance))]
+    public class AttendanceCorrection : Entity, ITenantScoped, IWorkflowEntity
+    {
+        [Required]
+        [MaxLength(ITenantScoped.TenantIdMaxLength)]
+        public string TenantId { get; set; } = string.Empty;
+
+        [Required]
+        public int AttendanceExceptionId { get; set; }
+
+        public AttendanceException? AttendanceException { get; set; }
+
+        /// <summary>Gets or sets the employee whose day is corrected; the exception's employee.</summary>
+        [Required]
+        public int EmployeeId { get; set; }
+
+        public Profile? Employee { get; set; }
+
+        /// <summary>Gets or sets the date of the exception's shift.</summary>
+        public DateTime AttendanceDate { get; set; }
+
+        /// <summary>Gets or sets the punch the correction supplies: the exception's missing punch.</summary>
+        public NormalizedEventType CorrectedEventType { get; set; }
+
+        /// <summary>Gets or sets when the punch happened, as local wall-clock time.</summary>
+        public DateTime ProposedValue { get; set; }
+
+        /// <summary>Gets or sets the IANA zone <see cref="ProposedValue"/> is in, fixed when the correction is proposed so the instant never shifts.</summary>
+        [Required]
+        [MaxLength(64)]
+        public string TimeZoneId { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(1000)]
+        public string Justification { get; set; } = string.Empty;
+
+        [Required]
+        public int RequestedByEmployeeId { get; set; }
+
+        public Profile? RequestedByEmployee { get; set; }
+
+        public DateTime RequestedAt { get; set; } = DateTime.Now;
+
+        /// <summary>Gets or sets who must approve. Copied from the policy when the correction is proposed, so a later policy change does not alter a correction already under review.</summary>
+        public CorrectionApprovalWorkflow ApprovalWorkflow { get; set; } = CorrectionApprovalWorkflow.Manager;
+
+        public AttendanceCorrectionStatus Status { get; set; } = AttendanceCorrectionStatus.Pending;
+
+        public AttendanceCorrectionDecision? ManagerDecision { get; set; }
+
+        public int? ManagerDecidedById { get; set; }
+
+        public Profile? ManagerDecidedBy { get; set; }
+
+        public DateTime? ManagerDecidedAt { get; set; }
+
+        public AttendanceCorrectionDecision? HrDecision { get; set; }
+
+        public int? HrDecidedById { get; set; }
+
+        public Profile? HrDecidedBy { get; set; }
+
+        public DateTime? HrDecidedAt { get; set; }
+
+        /// <summary>Gets or sets when the correction was folded into the calculation.</summary>
+        public DateTime? AppliedAt { get; set; }
+
+        #region not mapped
+        [NotMapped]
+        public override string Title => $"Correction {CorrectedEventType} — {AttendanceDate:d}";
+        #endregion
+    }
+}

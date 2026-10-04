@@ -69,6 +69,8 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceException> AttendanceExceptions => Set<AttendanceException>();
 
+    public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
+
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
 

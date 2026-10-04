@@ -24,6 +24,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IScheduleResolutionService, ScheduleResolutionService>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
+        services.AddScoped<IAttendanceCorrectionService, AttendanceCorrectionService>();
         services.AddScoped<INormalizationService, NormalizationService>();
 
         return services;

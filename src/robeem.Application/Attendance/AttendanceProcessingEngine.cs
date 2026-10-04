@@ -36,6 +36,10 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         // b. The employee's punches around the day: Unique only (CLAUDE.md §1.4).
         var punches = await LoadPunchesAsync(employeeId, day.AddDays(-1), day.AddDays(3), cancellationToken);
 
+        // Applied corrections supply the punches that were missing (CLAUDE.md §1.7): additive, the
+        // normalized rows stay as they are.
+        punches.AddRange(await LoadCorrectedPunchesAsync(employeeId, day.AddDays(-1), day.AddDays(3), cancellationToken));
+
         // c. The policy: the employee's schedule's, else the tenant default (CLAUDE.md §3).
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
 
@@ -136,6 +140,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             OvertimeMinutes = calculation.OvertimeMinutes,
             Status = needsReview ? AttendanceRecordStatus.PendingReview : AttendanceRecordStatus.Approved,
             SourceNormalizedTransactionIds = calculation.SourceIds.Count == 0 ? null : string.Join(",", calculation.SourceIds),
+            SourceCorrectionIds = calculation.CorrectionIds.Count == 0 ? null : string.Join(",", calculation.CorrectionIds),
         };
     }
 
@@ -157,7 +162,8 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         && a.LateMinutes == b.LateMinutes
         && a.EarlyDepartureMinutes == b.EarlyDepartureMinutes
         && a.OvertimeMinutes == b.OvertimeMinutes
-        && a.SourceNormalizedTransactionIds == b.SourceNormalizedTransactionIds;
+        && a.SourceNormalizedTransactionIds == b.SourceNormalizedTransactionIds
+        && a.SourceCorrectionIds == b.SourceCorrectionIds;
 
     private static AttendanceRecordStatus RollUp(IReadOnlyList<AttendanceRecord> records) =>
         records.Count == 0 ? AttendanceRecordStatus.Calculated
@@ -182,6 +188,29 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
 
         return rows
             .Select(n => new AttendancePunch(n.Id, n.NormalizedEventType, n.EventTimestampUtc, n.EventTimestampLocal, AttendancePunchSource.Normalized))
+            .ToList();
+    }
+
+    private async Task<List<AttendancePunch>> LoadCorrectedPunchesAsync(int employeeId, DateTime from, DateTime to, CancellationToken cancellationToken)
+    {
+        var rows = await _db.AttendanceCorrections
+            .AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId
+                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.ProposedValue >= from
+                && c.ProposedValue < to)
+            .Select(c => new { c.Id, c.CorrectedEventType, c.ProposedValue, c.TimeZoneId })
+            .ToListAsync(cancellationToken);
+
+        // The instant comes from the zone fixed when the correction was proposed, so it can't drift.
+        return rows
+            .Select(c => new AttendancePunch(
+                null,
+                c.CorrectedEventType,
+                new VendorTimestamp(c.ProposedValue, null).ToUtc(c.TimeZoneId) ?? new DateTimeOffset(c.ProposedValue, TimeSpan.Zero),
+                c.ProposedValue,
+                AttendancePunchSource.Corrected,
+                c.Id))
             .ToList();
     }
 

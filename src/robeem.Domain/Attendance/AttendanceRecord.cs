@@ -70,6 +70,9 @@ namespace robeem.DataModel
         /// <summary>Gets or sets the ids of the normalized transactions the calculation used: comma-separated, ascending.</summary>
         public string? SourceNormalizedTransactionIds { get; set; }
 
+        /// <summary>Gets or sets the ids of the applied corrections the calculation used: comma-separated, ascending.</summary>
+        public string? SourceCorrectionIds { get; set; }
+
         public int Version { get; set; } = 1;
 
         /// <summary>Gets or sets a value indicating whether this is the current version for its employee, date and shift.</summary>
