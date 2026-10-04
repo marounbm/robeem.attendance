@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using robeem.Application.Seeding;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
 

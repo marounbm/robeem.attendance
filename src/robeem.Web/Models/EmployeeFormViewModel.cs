@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using robeem.HR.Employees;
+using robeem.Contracts.HR.Employees;
 
 namespace robeem.Web.Models;
 

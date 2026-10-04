@@ -1,10 +1,11 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/robeem.Analyzers/robeem.Analyzers.csproj" />
-    <Project Path="src/robeem.DataModel/robeem.DataModel.csproj" />
-    <Project Path="src/robeem.HR/robeem.HR.csproj" />
+    <Project Path="src/robeem.Api/robeem.Api.csproj" />
+    <Project Path="src/robeem.Application/robeem.Application.csproj" />
+    <Project Path="src/robeem.Contracts/robeem.Contracts.csproj" />
+    <Project Path="src/robeem.Domain/robeem.Domain.csproj" />
     <Project Path="src/robeem.Infrastructure/robeem.Infrastructure.csproj" />
-    <Project Path="src/robeem.System.Contract/robeem.System.Contract.csproj" />
     <Project Path="src/robeem.Web/robeem.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

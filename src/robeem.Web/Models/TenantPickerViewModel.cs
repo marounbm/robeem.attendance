@@ -1,10 +1,10 @@
-using robeem.Infrastructure.Tenancy;
+using robeem.Contracts.Tenancy;
 
 namespace robeem.Web.Models;
 
 public sealed class TenantPickerViewModel
 {
-    public IReadOnlyList<TenantDefinition> Tenants { get; init; } = Array.Empty<TenantDefinition>();
+    public IReadOnlyList<TenantSummary> Tenants { get; init; } = Array.Empty<TenantSummary>();
 
     public string? CurrentTenantId { get; init; }
 

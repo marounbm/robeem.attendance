@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Domain model: entities and the types they depend on. No project references. The namespaces
+    (robeem.DataModel, robeem.System.Contract) are the host's and must not change (CLAUDE.md §7.4).
+  -->
+
+</Project>

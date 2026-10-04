@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\robeem.DataModel\robeem.DataModel.csproj" />
+    <ProjectReference Include="..\robeem.Application\robeem.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

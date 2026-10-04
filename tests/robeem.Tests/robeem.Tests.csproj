@@ -17,8 +17,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\robeem.HR\robeem.HR.csproj" />
+    <ProjectReference Include="..\..\src\robeem.Application\robeem.Application.csproj" />
     <ProjectReference Include="..\..\src\robeem.Infrastructure\robeem.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\robeem.Web\robeem.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- robeem.Web's API clients and tenant handler use ASP.NET Core types. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

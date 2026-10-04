@@ -1,5 +1,3 @@
-@inject TenantContext CurrentTenant
-@inject Microsoft.Extensions.Options.IOptions<TenancyOptions> TenancySettings
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,17 +22,7 @@
                             <a class="nav-link text-dark" asp-controller="Employees" asp-action="Index">Employees</a>
                         </li>
                     </ul>
-                    @if (CurrentTenant.Tenant is { } tenant)
-                    {
-                        <span class="navbar-text small">
-                            Tenant: <strong>@tenant.Name</strong>
-                            @if (TenancySettings.Value.AllowUnauthenticatedTenantSelection)
-                            {
-                                <a class="ms-2" asp-controller="Tenants" asp-action="Index"
-                                   asp-route-returnUrl="@(Context.Request.Path + Context.Request.QueryString)">Switch</a>
-                            }
-                        </span>
-                    }
+                    @await Component.InvokeAsync("CurrentTenant")
                 </div>
             </div>
         </nav>

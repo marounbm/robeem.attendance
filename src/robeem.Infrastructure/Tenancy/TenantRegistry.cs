@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using robeem.Application.Tenancy;
 using robeem.DataModel;
 
 namespace robeem.Infrastructure.Tenancy;

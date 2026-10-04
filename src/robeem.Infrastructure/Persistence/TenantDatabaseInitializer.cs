@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using robeem.Application.Tenancy;
 using robeem.Infrastructure.Seeding;
-using robeem.Infrastructure.Tenancy;
 
 namespace robeem.Infrastructure.Persistence;
 
@@ -10,10 +10,10 @@ namespace robeem.Infrastructure.Persistence;
 public sealed class TenantDatabaseInitializer
 {
     private readonly ITenantRegistry _registry;
-    private readonly TenantScopeFactory _tenantScopes;
+    private readonly ITenantScopeFactory _tenantScopes;
     private readonly ILogger<TenantDatabaseInitializer> _logger;
 
-    public TenantDatabaseInitializer(ITenantRegistry registry, TenantScopeFactory tenantScopes, ILogger<TenantDatabaseInitializer> logger)
+    public TenantDatabaseInitializer(ITenantRegistry registry, ITenantScopeFactory tenantScopes, ILogger<TenantDatabaseInitializer> logger)
     {
         _registry = registry;
         _tenantScopes = tenantScopes;

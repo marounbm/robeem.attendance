@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Transport DTOs shared by robeem.Api (server) and robeem.Web (client). No project references. -->
+
+</Project>

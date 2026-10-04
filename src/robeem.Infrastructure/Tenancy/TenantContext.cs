@@ -1,3 +1,5 @@
+using robeem.Application.Tenancy;
+
 namespace robeem.Infrastructure.Tenancy;
 
 /// <summary>

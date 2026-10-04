@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using robeem.Application.Persistence;
+using robeem.Application.Tenancy;
 using robeem.DataModel;
 using robeem.Infrastructure.Tenancy;
 
@@ -17,7 +19,7 @@ namespace robeem.Infrastructure.Persistence;
 /// <item>a global query filter returns only the current tenant's rows.</item>
 /// </list>
 /// </summary>
-public class RobeemDbContext : DbContext
+public class RobeemDbContext : DbContext, IRobeemDbContext
 {
     public const string TenantIdProperty = "TenantId";
 

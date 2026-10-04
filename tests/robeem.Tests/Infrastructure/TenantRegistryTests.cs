@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using robeem.Application.Tenancy;
 using robeem.Infrastructure.Tenancy;
 
 namespace robeem.Tests.Infrastructure;

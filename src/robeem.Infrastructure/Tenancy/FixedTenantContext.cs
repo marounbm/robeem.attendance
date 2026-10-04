@@ -1,3 +1,5 @@
+using robeem.Application.Tenancy;
+
 namespace robeem.Infrastructure.Tenancy;
 
 /// <summary>Tenant context with a fixed tenant, for design-time tooling and tests.</summary>

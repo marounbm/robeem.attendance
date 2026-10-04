@@ -6,7 +6,9 @@ It is a **condensed, code-facing contract** distilled from the full 43-page desi
 
 **Read this entire file before writing or modifying any Attendance-related code.**
 
-> **Standalone solution (decided 2026-10-04).** The host robeem codebase is not available to this project: the developer is external and received only the 8 shared entity files. This repository is therefore a **complete, standalone solution**. It contains the shared entities (moved to `src/robeem.DataModel`, namespaces unchanged) and every type they depend on (`SmartEnum`, `ISeedData`, `Set`, `Profile`, ...). It also has its own persistence, tenancy, HR screens and tests. The Attendance feature is built on top of it. See §9 for the solution layout.
+> **Standalone solution (decided 2026-10-04).** The host robeem codebase is not available to this project: the developer is external and received only the 8 shared entity files. This repository is therefore a **complete, standalone solution**. It contains the shared entities (moved to `src/robeem.Domain`, namespaces unchanged) and every type they depend on (`SmartEnum`, `ISeedData`, `Set`, `Profile`, ...). It also has its own persistence, tenancy, HR screens and tests. The Attendance feature is built on top of it. See §9 for the solution layout.
+
+> **Layered structure (decided 2026-10-04).** The solution is split into **Domain, Contracts, Application, Infrastructure, Api and Web** projects (§9). `robeem.Api` is the only process that touches a database. `robeem.Web` is an MVC front end that reaches data only through `robeem.Api` over HTTP.
 
 ---
 
@@ -61,16 +63,16 @@ public class ClassName : Entity, ISeedData
 
 - Table name is always `nameof(TheClassItself)` — never a hand-typed string.
 - Schema is always `nameof(SmartEnum.Module.X)`, where `SmartEnum` is `robeem.System.Contract.SmartEnum` (imported via `using SmartEnum = robeem.System.Contract.SmartEnum;`) and `Module` is an enum of bounded-context names.
-- **Decided:** `SmartEnum` is defined in this solution (`src/robeem.System.Contract/SmartEnum.cs`) as a static class with a plain nested `enum Module { HR, Attendance }`. Adding a module means adding a member; the schema follows from the name. **HR entities (`Profile`, `TimeSchedule*`) use `Module.HR`. All new Attendance entities use `Module.Attendance`**, so the high-volume raw/normalized tables sit in their own schema.
+- **Decided:** `SmartEnum` is defined in this solution (`src/robeem.Domain/Core/SmartEnum.cs`, namespace `robeem.System.Contract`) as a static class with a plain nested `enum Module { HR, Attendance }`. Adding a module means adding a member; the schema follows from the name. **HR entities (`Profile`, `TimeSchedule*`) use `Module.HR`. All new Attendance entities use `Module.Attendance`**, so the high-volume raw/normalized tables sit in their own schema.
 - In new files, write the two attributes separately (`[Serializable]` then `[Table(...)]`) and put the `using SmartEnum = ...;` alias after the `System` usings. This keeps StyleCop's SA1133/SA1208/SA1209 quiet; only the supplied files are exempt from those rules (§7.4).
 
 ### 2.3 `ISeedData`
 
 Implemented by `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeScheduleLine`, `TimeScheduleEmployee`. Apply it to new **catalog/reference** entities (`AttendanceProvider`, `AttendancePolicy`). Do **not** apply it to transactional entities (`RawAttendanceTransaction`, `NormalizedAttendanceTransaction`, `AttendanceProcessingBatch`) or to `Profile`.
 
-**How it is consumed (this solution):** `ISeedData` is an empty marker interface (`src/robeem.DataModel/Core/ISeedData.cs`).
+**How it is consumed (this solution):** `ISeedData` is an empty marker interface (`src/robeem.Domain/Core/ISeedData.cs`).
 
-- Seed data comes from `ISeedContributor` implementations registered in DI. An example is `HrSeedContributor`, which seeds a "Standard Week" schedule (Mon–Fri 09:00–17:00) with its all-inclusive team.
+- Seed data comes from `ISeedContributor` implementations (`src/robeem.Application/Seeding`) registered in DI. A contributor receives an `IRobeemDbContext`. An example is `HrSeedContributor` (`src/robeem.Application/HR/Seeding`), which seeds a "Standard Week" schedule (Mon–Fri 09:00–17:00) with its all-inclusive team.
 - `SeedDataRunner` runs them for each tenant database every time `TenantDatabaseInitializer` runs: at startup when `Database:InitializeOnStartup` is true, which is the Development setting.
 - **Contributors must be idempotent**: only add what is missing.
 - The runner **rejects** any contributor that stages a change to an entity type not marked `ISeedData`, and saves nothing from it.
@@ -115,7 +117,7 @@ Use `#region not mapped` for `[NotMapped]` computed properties and `#region meth
 
 ### 2.7 Static helpers
 
-`Set` lives in `src/robeem.DataModel/Core/Set.cs`, namespace `robeem.DataModel`. It was written here because the host's version wasn't supplied, and its member names are dictated by the shared files.
+`Set` lives in `src/robeem.Domain/Core/Set.cs`, namespace `robeem.DataModel`. It was written here because the host's version wasn't supplied, and its member names are dictated by the shared files.
 
 - `Set.asTime(string)` → a `DateTime` carrying that time of day.
 - `Set.TimeSpan(start, end)` → hours. **An end earlier than the start counts into the next day**, so `22:00`→`06:00` is 8 hours (overnight shifts).
@@ -136,12 +138,13 @@ The indexer helpers `getPropertyValue`/`setPropertyValue` are in `EntityProperty
 
 ### 2.8 Multi-tenancy — **decided: database per tenant, plus `TenantId` on every entity**
 
-Decided by the product owner (2026-10-04): **every tenant has its own database**, and **tenancy is also carried at entity level through a `TenantId`**. How it is implemented (`src/robeem.Infrastructure`):
+Decided by the product owner (2026-10-04): **every tenant has its own database**, and **tenancy is also carried at entity level through a `TenantId`**. How it is implemented (paths relative to `src/robeem.Infrastructure` unless stated otherwise):
 
 | Piece | Where | What it does |
 |---|---|---|
-| Tenant registry | `Tenancy/TenantRegistry.cs`, config section `Tenancy:Tenants` | `Id` (lower-case, max 64), `Name`, `ConnectionString` per tenant. Validated at startup; bad config fails fast. |
-| Tenant context | `Tenancy/TenantContext.cs` (scoped) | Set **once** per scope and can't be switched within it. HTTP requests set it in `TenantResolutionMiddleware`; anything else uses `TenantScopeFactory.CreateScope(tenantId)`. |
+| Abstractions | `src/robeem.Application/Tenancy`, `src/robeem.Application/Persistence` | `ITenantContext`, `ITenantRegistry`, `ITenantScopeFactory`, `TenantDefinition`, the tenancy exceptions, and `IRobeemDbContext`. **Application services depend only on these**, never on Infrastructure types. |
+| Tenant registry | `Tenancy/TenantRegistry.cs`, config section `Tenancy:Tenants` (in `robeem.Api`'s settings) | `Id` (lower-case, max 64), `Name`, `ConnectionString` per tenant. Validated at startup; bad config fails fast. |
+| Tenant context | `Tenancy/TenantContext.cs` (scoped) | Set **once** per scope and can't be switched within it. HTTP requests set it in the Api's `TenantResolutionMiddleware`; anything else uses `ITenantScopeFactory.CreateScope(tenantId)`. |
 | Database selection | `InfrastructureServiceCollectionExtensions.AddRobeemInfrastructure` | `RobeemDbContext` connects to the scope's tenant database. Resolving it with no tenant throws `TenantNotResolvedException` (fails closed). |
 | `TenantId` column | `Persistence/RobeemDbContext.OnModelCreating` | **Every table gets a required `TenantId varchar(64)`.** Entities implementing `ITenantScoped` expose it as a CLR property. All others, including the supplied `TimeSchedule*` files, get it as an EF shadow property, so the supplied files stay unmodified. |
 | Write guard | `RobeemDbContext.SaveChanges*` | Stamps `TenantId` on insert. Inserting for another tenant, or modifying/deleting another tenant's row, throws `TenantIsolationException`. |
@@ -151,7 +154,7 @@ Decided by the product owner (2026-10-04): **every tenant has its own database**
 
 - **Every new entity implements `ITenantScoped`** (a `string TenantId` property with `[Required][MaxLength(ITenantScoped.TenantIdMaxLength)]`), as `Profile` does. Don't set it by hand; the DbContext stamps it.
 - Composite unique indexes start with `TenantId`. For example, the normalization duplicate key (§1.4) is `(TenantId, EmployeeId, DeviceId, EventType, TimeBucket)`.
-- Background jobs (P5, P10) iterate `ITenantRegistry.Tenants` and run each tenant's work inside `TenantScopeFactory.CreateScope(tenant.Id)`. Never share one DbContext across tenants.
+- Background jobs (P5, P10) iterate `ITenantRegistry.Tenants` and run each tenant's work inside `ITenantScopeFactory.CreateScope(tenant.Id)`. Never share one DbContext across tenants.
 - Never call `IgnoreQueryFilters()` outside tests.
 - Updating a detached `SystemEntity` row (shadow `TenantId`) via `Update`/`Attach` throws, because the original `TenantId` is unknown. Load the row first, then change it.
 
@@ -162,14 +165,22 @@ Decided by the product owner (2026-10-04): **every tenant has its own database**
 - Provider-specific model configuration goes behind `if (Database.IsNpgsql())` in `OnModelCreating`, so the SQLite test model still builds. robeem.storage follows the same pattern.
 - Raw/JSON payload columns (P2) use `jsonb` or `text`, not SQL Server's `NVARCHAR(MAX)` that `PROMPT_PLAN.md` mentions.
 
-**Request tenant resolution** (`src/robeem.Web/Tenancy/TenantResolutionMiddleware.cs`):
+**Request tenant resolution** happens in the Api (`src/robeem.Api/Tenancy/TenantResolutionMiddleware.cs`):
 
 - The authenticated user's `tenant_id` claim comes first.
 - Only when `Tenancy:AllowUnauthenticatedTenantSelection` is true (**Development only**) is the tenant taken from, in order:
-  1. the `X-Tenant-Id` header;
-  2. the `robeem.tenant` cookie set by the `/Tenants` picker;
-  3. `Tenancy:DefaultTenantId`.
+  1. the `X-Tenant-Id` header (`TenancyProtocol.TenantHeader` in `robeem.Contracts`);
+  2. `Tenancy:DefaultTenantId`.
+- A rejection is a ProblemDetails response with a `code` extension: `tenant_required` (403), `unknown_tenant` (400) or `tenant_unavailable` (403). The constants are in `TenancyProtocol`.
+- Controllers or actions that must work without a tenant carry `[AllowWithoutTenant]`, as `GET api/tenants` does.
 - **There is no authentication in this solution yet.** In production, `AllowUnauthenticatedTenantSelection` stays false, so no request reaches tenant data until authentication issues a `tenant_id` claim (P12).
+
+**On the Web side** (`src/robeem.Web/Tenancy`):
+
+- The `/Tenants` picker stores the chosen tenant in the `robeem.tenant` cookie.
+- `TenantHeaderHandler` forwards that cookie to the Api as `X-Tenant-Id`, but only when it is shaped like a tenant id.
+- When the Api rejects the tenant, `TenantSelectionRequiredFilter` redirects GET requests to the picker. If the tenant was unknown, it deletes the cookie first.
+- The Web has no tenant configuration of its own. The tenant list and the current tenant come from `GET api/tenants` and `GET api/tenants/current`.
 
 ---
 
@@ -181,7 +192,7 @@ The study (§13) proposed `WorkShift`, `EmployeeSchedule`, and `AttendancePolicy
 |---|---|---|
 | `WorkShift` (start/end, break rules, overtime flag) | **`TimeScheduleShift`** (via `TimeShiftEntity`) | Already has `StartTime`, `EndTime`, `BreakTime`, `BreakStartTime`, `BreakEndTime`, `Overtime`. Scoped to a `TimeScheduleId`. |
 | `EmployeeSchedule` (which shift an employee works, and when) | **`TimeScheduleEmployee` + `TimeScheduleTeam` + `TimeSchedule.GetCycleDay(date)` + `TimeScheduleLine`** | See resolution algorithm below. There is no single table to query — it's a 3-table join plus one computed method call. |
-| Overnight shift flag | *(derive, don't store)* | `TimeShiftEntity` has no `IsOvernight` column. The supplied `TimeScheduleShift` is not `partial` and must not be edited (§7.4), so add an **extension method** `IsOvernight(this TimeShiftEntity shift)` in the Attendance services project. It returns `Set.ParseTime(shift.EndTime) < Set.ParseTime(shift.StartTime)`. `Set.TimeSpan` already counts such shifts into the next day. Do not add a stored column. |
+| Overnight shift flag | *(derive, don't store)* | `TimeShiftEntity` has no `IsOvernight` column. The supplied `TimeScheduleShift` is not `partial` and must not be edited (§7.4), so add an **extension method** `IsOvernight(this TimeShiftEntity shift)` in `src/robeem.Application/Attendance`. It returns `Set.ParseTime(shift.EndTime) < Set.ParseTime(shift.StartTime)`. `Set.TimeSpan` already counts such shifts into the next day. Do not add a stored column. |
 | `AttendancePolicy` (rounding, grace periods, OT threshold, correction workflow, interpretation mode) | **Genuinely new — does not exist today.** | Scope it per `TimeScheduleId`: one policy per schedule, plus one tenant-wide default with `TimeScheduleId = null`, rather than per employee. This mirrors the default-team pattern of `TimeScheduleTeam.AllInclusive` (§3.2). |
 
 ### 3.1 Resolving "what shift should employee E work on date D" (new domain service, not a new table)
@@ -201,7 +212,7 @@ This logic doesn't exist yet as a single queryable thing — it must be implemen
 
 What this means in code:
 
-- **Assignment** (implemented in `src/robeem.HR/Employees/EmployeeService.cs`):
+- **Assignment** (implemented in `src/robeem.Application/HR/Employees/EmployeeService.cs`):
   - Assigning an employee to a schedule creates or updates their single `TimeScheduleEmployee` row with `TeamId` = that schedule's all-inclusive team. If there are several, it takes the lowest `Id`.
   - A schedule with no all-inclusive team can't be assigned; the user gets a validation error.
   - An employee has **at most one** schedule assignment, enforced by a unique index on `(TenantId, EmployeeId)`.
@@ -217,7 +228,19 @@ What this means in code:
 
 All in **namespace** `robeem.DataModel`, following §2 conventions exactly, with schema `Module.Attendance` (§2.2), and every one implementing `ITenantScoped` (§2.8).
 
-They live in their **own project, `src/robeem.Attendance.DataModel`**, which P1 creates. That project references `robeem.DataModel` and must never be referenced back. This keeps Attendance separate from the HR classes (`Profile`, `TimeSchedule*`), which stay in `src/robeem.DataModel`. `robeem.Infrastructure` references the new project so `RobeemDbContext` can map its entities: add their `DbSet`s and `IEntityTypeConfiguration` classes under `Persistence/Configurations/Attendance`. Services go in a separate `src/robeem.Attendance` project, mirroring `src/robeem.HR`.
+Each layer gets an `Attendance` folder next to its `HR` folder. There are no separate Attendance projects: the layered structure (§9) replaced the earlier `robeem.Attendance.DataModel` / `robeem.Attendance` plan.
+
+| Layer | Where Attendance code goes |
+|---|---|
+| Entities | `src/robeem.Domain/Attendance/`. The namespace stays `robeem.DataModel`, like the HR entities. |
+| DTOs (requests, responses, list items) | `src/robeem.Contracts/Attendance/`, namespace `robeem.Contracts.Attendance`. |
+| Services, processing engine, schedule resolution | `src/robeem.Application/Attendance/`. Add each `DbSet` to `IRobeemDbContext`, and register services in `AddRobeemApplication`. |
+| EF mapping | `RobeemDbContext` `DbSet`s, plus `IEntityTypeConfiguration` classes under `src/robeem.Infrastructure/Persistence/Configurations/Attendance`. |
+| Background jobs (P5, P10) | Hosted services in `robeem.Api`, which call Application services through `ITenantScopeFactory`. |
+| REST endpoints | `src/robeem.Api/Controllers`, under `api/attendance/...`. |
+| Screens | `src/robeem.Web`, calling the Api through a typed client in `ApiClients/`. |
+
+**HR must not depend on Attendance.** No file in an `HR` folder (Domain, Application, Contracts) may use an Attendance type. Attendance may use HR types (`Profile`, `TimeSchedule*`).
 
 | Entity | Base class | `ISeedData`? | Purpose (study ref) |
 |---|---|---|---|
@@ -241,19 +264,20 @@ Full field lists for every entity are in the study, §6.2, §7.3, §9.3, §11.2,
 
 Run from the repository root. Requirements: .NET SDK 10, `dotnet-ef` 10 (`dotnet tool install -g dotnet-ef`), and a local PostgreSQL server (development uses `localhost:5432`, user `postgres`).
 
-**Connection strings with passwords are never committed.** `appsettings.Development.json` lists the tenants with password-less connection strings. The full strings live in the web project's user-secrets (`UserSecretsId` `robeem-attendance-web`), which override them by array index:
+**Connection strings with passwords are never committed.** The Api's `appsettings.Development.json` lists the tenants with password-less connection strings. The full strings live in the Api project's user-secrets (`UserSecretsId` `robeem-attendance-api`), which override them by array index:
 
 ```bash
-dotnet user-secrets set "Tenancy:Tenants:0:ConnectionString" "Host=localhost;Database=robeem_demo;Username=postgres;Password=<pwd>" --project src/robeem.Web
-dotnet user-secrets set "Tenancy:Tenants:1:ConnectionString" "Host=localhost;Database=robeem_acme;Username=postgres;Password=<pwd>" --project src/robeem.Web
+dotnet user-secrets set "Tenancy:Tenants:0:ConnectionString" "Host=localhost;Database=robeem_demo;Username=postgres;Password=<pwd>" --project src/robeem.Api
+dotnet user-secrets set "Tenancy:Tenants:1:ConnectionString" "Host=localhost;Database=robeem_acme;Username=postgres;Password=<pwd>" --project src/robeem.Api
 ```
 
-In other environments, supply them through environment variables (`Tenancy__Tenants__0__ConnectionString`) or a secret store.
+In other environments, supply them through environment variables (`Tenancy__Tenants__0__ConnectionString`) or a secret store. The Web needs only `RobeemApi:BaseUrl`, the Api's absolute URL. It is validated at startup.
 
 | Item | Value |
 |---|---|
 | Solution | `robeem.attendance.slnx` |
-| Web host (startup project) | `src/robeem.Web` (http://localhost:5180) |
+| Api host (also the `dotnet ef` startup project) | `src/robeem.Api` (http://localhost:5181) |
+| Web front end | `src/robeem.Web` (http://localhost:5180), calls the Api at `RobeemApi:BaseUrl` |
 | Migrations project | `src/robeem.Infrastructure` (folder `Persistence/Migrations`) |
 | DbContext | `robeem.Infrastructure.Persistence.RobeemDbContext` |
 | Test project | `tests/robeem.Tests` (xUnit, in-memory SQLite) |
@@ -262,12 +286,15 @@ In other environments, supply them through environment variables (`Tenancy__Tena
 # Build (must finish with zero StyleCop errors, see §7)
 dotnet build robeem.attendance.slnx
 
-# Run the app. In Development this migrates and seeds every configured tenant database
+# Run the Api. In Development this migrates and seeds every configured tenant database
 # (PostgreSQL databases robeem_demo and robeem_acme, created if missing) before it starts listening.
+dotnet run --project src/robeem.Api --launch-profile http
+
+# Run the Web front end (second terminal; it needs the Api running)
 dotnet run --project src/robeem.Web --launch-profile http
 
 # Add a migration (one schema for all tenants; each tenant database is migrated at startup)
-dotnet ef migrations add <MigrationName> --project src/robeem.Infrastructure --startup-project src/robeem.Web --output-dir Persistence/Migrations
+dotnet ef migrations add <MigrationName> --project src/robeem.Infrastructure --startup-project src/robeem.Api --output-dir Persistence/Migrations
 
 # Tests
 dotnet test robeem.attendance.slnx
@@ -276,7 +303,7 @@ dotnet test robeem.attendance.slnx
 dotnet format robeem.attendance.slnx --verify-no-changes
 ```
 
-There is no `dotnet ef database update` step. Tenant databases are migrated by `TenantDatabaseInitializer` when `Database:InitializeOnStartup` is true. `dotnet ef` builds the model through `RobeemDbContextDesignTimeFactory`, which uses a placeholder tenant; set `ROBEEM_DESIGN_CONNECTION` to change its connection string.
+There is no `dotnet ef database update` step. Tenant databases are migrated by `TenantDatabaseInitializer`, at Api startup, when `Database:InitializeOnStartup` is true. `dotnet ef` builds the model through `RobeemDbContextDesignTimeFactory`, which uses a placeholder tenant; set `ROBEEM_DESIGN_CONNECTION` to change its connection string.
 
 ---
 
@@ -285,7 +312,8 @@ There is no `dotnet ef database update` step. Tenant databases are migrated by `
 Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual prompts to run, in order):
 
 - [x] **P0** — Investigate. Done; the host was unavailable, so the decisions in §2.2, §2.3, §2.8 and §3.2 were made by the product owner (`DISCOVERY_NOTES.md`).
-- [x] **Foundation** — Standalone solution: shared entities moved into `src/robeem.DataModel`, missing host types written, tenancy, `RobeemDbContext` + `InitialHr` migration, HR employee screens, tests (§9).
+- [x] **Foundation** — Standalone solution: shared entities moved into the solution, missing host types written, tenancy, `RobeemDbContext` + `InitialHr` migration, HR employee screens, tests (§9).
+- [x] **Layering** — Split into Domain / Contracts / Application / Infrastructure / Api / Web. Web is now an HTTP client of the Api (§9).
 - [ ] **P1** — Catalog/config entities: `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `AttendancePolicy` + EF configuration + migration.
 - [ ] **P2** — `RawAttendanceTransaction` + `AttendanceProcessingBatch` + immutability enforcement.
 - [ ] **P3** — `NormalizedAttendanceTransaction` + composite-key unique index.
@@ -342,7 +370,7 @@ At the repository root. `Directory.Build.props` links it into every project; not
 
 ### 7.4 Supplied files — path-scoped relaxation, never a rewrite
 
-The 8 supplied files under `src/robeem.DataModel` (`Core/Entity.cs`, `Core/SystemEntity.cs`, `Core/TimeShiftEntity.cs`, `HR/TimeSchedule*.cs`) must not be reformatted. `.editorconfig` relaxes only the rules they break, scoped to exactly those paths:
+The 8 supplied files under `src/robeem.Domain` (`Core/Entity.cs`, `Core/SystemEntity.cs`, `Core/TimeShiftEntity.cs`, `HR/TimeSchedule*.cs`) must not be reformatted. `.editorconfig` relaxes only the rules they break, scoped to exactly those paths:
 
 - SA1122, SA1133, SA1201, SA1208, SA1209, SA1312, SA1503, SA1507, SA1516;
 - SA1300, for `isSystemEntity`/`isWorkflowEntity`;
@@ -366,10 +394,14 @@ Do not suppress a StyleCop finding with `#pragma warning disable`. Fix the code,
 
 - Do not create `WorkShift` or `EmployeeSchedule` entities — see §3.
 - Do not create an entity without `ITenantScoped`. Do not set `TenantId` by hand, and do not call `IgnoreQueryFilters()` outside tests — see §2.8.
-- Do not share a `RobeemDbContext` or a DI scope between tenants. Background work runs per tenant through `TenantScopeFactory`.
+- Do not share a `RobeemDbContext` or a DI scope between tenants. Background work runs per tenant through `ITenantScopeFactory`.
 - Do not enable `Tenancy:AllowUnauthenticatedTenantSelection` outside Development.
 - Do not modify the 8 supplied files (§7.4), or move them out of namespace `robeem.DataModel`.
-- Do not reference `robeem.Attendance.DataModel` from `robeem.DataModel` or `robeem.HR`. HR does not depend on Attendance.
+- Do not break the project dependency rules in §9. In particular:
+  - `robeem.Web` must never reference Application, Infrastructure or Domain, or open a database connection;
+  - Application must never reference Infrastructure.
+- Do not use an Attendance type from an `HR` folder. HR does not depend on Attendance (§4).
+- Do not return entities from the Api. Endpoints take and return `robeem.Contracts` DTOs.
 - Do not let any code path `UPDATE` or `DELETE` a `RawAttendanceTransaction` row.
 - Do not let the Payroll extraction query touch `RawAttendanceTransaction` or `NormalizedAttendanceTransaction`.
 - Do not store a biometric template, under any field name, in `RawAttendanceTransaction.RawPayload` or anywhere else — allowlist fields at the adapter boundary.
@@ -386,18 +418,41 @@ Directory.Build.props            net10.0, nullable, StyleCop + stylecop.json + b
 .editorconfig / stylecop.json    analyzer configuration (§7)
 src/
   robeem.Analyzers/              BrandNameSuppressor: SA1300 exemption for "robeem" only
-  robeem.System.Contract/        SmartEnum (Module.HR, Module.Attendance)
-  robeem.DataModel/              namespace robeem.DataModel
-    Core/                        Entity, SystemEntity, TimeShiftEntity (supplied); ISeedData, IWorkflowEntity,
+  robeem.Domain/                 entities; namespace robeem.DataModel (SmartEnum: robeem.System.Contract)
+    Core/                        Entity, SystemEntity, TimeShiftEntity (supplied); SmartEnum, ISeedData, IWorkflowEntity,
                                  ITenantScoped, Set, EntityPropertyExtensions (written here)
     HR/                          TimeSchedule* (supplied); Profile (the employee entity, written here)
-  robeem.Infrastructure/         RobeemDbContext, entity configurations, migrations, tenancy, seeding
-  robeem.HR/                     HR services: EmployeeService (+ schedule assignment), HrSeedContributor
-  robeem.Web/                    ASP.NET Core MVC host: Employees (list/add/edit), tenant picker, tenant middleware
+  robeem.Contracts/              transport DTOs shared by Api and Web
+    Common/                      CreatedResponse
+    HR/Employees/                EmployeeInput, EmployeeListItem, ScheduleOption, EmployeeSaveResult
+    Tenancy/                     TenantSummary, CurrentTenantResponse, TenancyProtocol (header + error codes)
+  robeem.Application/            use cases; depends on Domain + Contracts (+ EF Core abstractions only)
+    Persistence/                 IRobeemDbContext
+    Tenancy/                     ITenantContext, ITenantRegistry, ITenantScopeFactory, TenantDefinition, exceptions
+    Seeding/                     ISeedContributor
+    HR/                          EmployeeService (+ schedule assignment), HrSeedContributor
+  robeem.Infrastructure/         RobeemDbContext, entity configurations, migrations, tenancy implementation,
+                                 SeedDataRunner, TenantDatabaseInitializer (Npgsql)
+  robeem.Api/                    ASP.NET Core Web API host: api/employees, api/schedules, api/tenants;
+                                 tenant middleware; migrates + seeds tenant databases at startup
+  robeem.Web/                    ASP.NET Core MVC front end: Employees (list/add/edit), tenant picker;
+                                 typed HttpClients for the Api (ApiClients/)
 tests/
-  robeem.Tests/                  xUnit: Set/indexer/cycle-day, tenant isolation, registry, seeding, employee service
+  robeem.Tests/                  xUnit: Set/indexer/cycle-day, tenant isolation, registry, seeding, employee service,
+                                 Web API clients and tenant header forwarding
 ```
 
-Attendance (P1 onward) adds `src/robeem.Attendance.DataModel` (entities) and `src/robeem.Attendance` (services) as a mirror of the HR pair. Its screens and endpoints go in `src/robeem.Web` (§4).
+**Project dependencies** (an arrow means "references"; nothing else is allowed):
+
+```
+Domain        → (nothing)
+Contracts     → (nothing)
+Application   → Domain, Contracts
+Infrastructure → Application
+Api           → Application, Infrastructure, Contracts
+Web           → Contracts
+```
+
+Attendance (P1 onward) adds an `Attendance` folder to each layer (§4).
 
 **The employee entity is `Profile`.** The supplied `TimeScheduleEmployee` references it as `Profile? Employee`, so the class must be named `Profile` and live in `robeem.DataModel`. Fields: `EmployeeNumber` (unique per tenant), `FirstName`, `LastName`, `Email`, `Phone`, `Department`, `JobTitle`, `HireDate`, `TerminationDate`, `IsActive`. `Title` is kept equal to the full name.

@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using robeem.Application.HR.Seeding;
+using robeem.Application.Persistence;
+using robeem.Application.Seeding;
 using robeem.DataModel;
-using robeem.HR.Seeding;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Seeding;
 
@@ -43,7 +45,7 @@ public sealed class SeedDataRunnerTests : IDisposable
     {
         public int Order => 0;
 
-        public Task SeedAsync(RobeemDbContext db, CancellationToken cancellationToken)
+        public Task SeedAsync(IRobeemDbContext db, CancellationToken cancellationToken)
         {
             db.Profiles.Add(new Profile { EmployeeNumber = "X", FirstName = "Not", LastName = "Seedable", Title = "Not Seedable" });
             return Task.CompletedTask;

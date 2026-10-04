@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\robeem.System.Contract\robeem.System.Contract.csproj" />
-  </ItemGroup>
-
-</Project>

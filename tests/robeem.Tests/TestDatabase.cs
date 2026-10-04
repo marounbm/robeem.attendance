@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Tenancy;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Tenancy;
 

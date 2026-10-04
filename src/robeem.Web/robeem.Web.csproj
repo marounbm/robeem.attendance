@@ -1,21 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <!-- Tenant connection strings with passwords live in user-secrets, never in appsettings. -->
-    <UserSecretsId>robeem-attendance-web</UserSecretsId>
-  </PropertyGroup>
-
+  <!--
+    MVC front end. It has no database and no tenant configuration: every read and write goes
+    through robeem.Api over HTTP, so it references only the shared contracts.
+  -->
   <ItemGroup>
-    <ProjectReference Include="..\robeem.HR\robeem.HR.csproj" />
-    <ProjectReference Include="..\robeem.Infrastructure\robeem.Infrastructure.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Startup project for `dotnet ef`. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <ProjectReference Include="..\robeem.Contracts\robeem.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

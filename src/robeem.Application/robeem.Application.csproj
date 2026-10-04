@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\robeem.Domain\robeem.Domain.csproj" />
+    <ProjectReference Include="..\robeem.Contracts\robeem.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Services query through IRobeemDbContext's DbSets; the provider (Npgsql) stays in Infrastructure. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
+  </ItemGroup>
+
+</Project>

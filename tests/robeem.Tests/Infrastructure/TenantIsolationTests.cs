@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Tenancy;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Tenancy;

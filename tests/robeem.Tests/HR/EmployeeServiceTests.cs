@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.HR.Employees;
+using robeem.Contracts.HR.Employees;
 using robeem.DataModel;
-using robeem.HR.Employees;
 
 namespace robeem.Tests.HR;
 

@@ -193,10 +193,10 @@ dotnet_diagnostic.SA1300.severity = none
 generated_code = true
 
 # ---------------------------------------------------------------------------
-# Pre-existing robeem.DataModel files — path-scoped relaxation (see CLAUDE.md §7.4).
-# These files were supplied as-is and must not be reformatted.
+# Pre-existing robeem.Domain files — path-scoped relaxation (see CLAUDE.md §7.4).
+# These files were supplied as-is (namespace robeem.DataModel) and must not be reformatted.
 # ---------------------------------------------------------------------------
-[src/robeem.DataModel/**/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
+[src/robeem.Domain/**/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
 charset = unset                            # Entity/SystemEntity/TimeShiftEntity were supplied with a UTF-8 BOM, the others without
 dotnet_diagnostic.SA1122.severity = none
 dotnet_diagnostic.SA1133.severity = none   # [Serializable, Table(...)] combined attributes
@@ -211,5 +211,5 @@ dotnet_diagnostic.SA1516.severity = none
 
 # New files whose public member names are dictated by the shared sources above
 # (Set.asTime, Set.isSystemEntity, EntityPropertyExtensions.getPropertyValue, ...).
-[src/robeem.DataModel/Core/{Set,EntityPropertyExtensions}.cs]
+[src/robeem.Domain/Core/{Set,EntityPropertyExtensions}.cs]
 dotnet_diagnostic.SA1300.severity = none

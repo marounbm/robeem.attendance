@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using robeem.HR.Employees;
+using robeem.Contracts.HR.Employees;
+using robeem.Web.ApiClients;
 using robeem.Web.Models;
 
 namespace robeem.Web.Controllers;
@@ -8,9 +9,9 @@ public sealed class EmployeesController : Controller
 {
     private const string StatusMessageKey = "StatusMessage";
 
-    private readonly IEmployeeService _employees;
+    private readonly IEmployeesApiClient _employees;
 
-    public EmployeesController(IEmployeeService employees)
+    public EmployeesController(IEmployeesApiClient employees)
     {
         _employees = employees;
     }
@@ -100,7 +101,9 @@ public sealed class EmployeesController : Controller
     {
         foreach (var (field, message) in result.Errors)
         {
-            ModelState.AddModelError($"{nameof(EmployeeFormViewModel.Input)}.{field}", message);
+            // An empty field is a model-level error (shown in the validation summary).
+            var key = field.Length == 0 ? string.Empty : $"{nameof(EmployeeFormViewModel.Input)}.{field}";
+            ModelState.AddModelError(key, message);
         }
     }
 }

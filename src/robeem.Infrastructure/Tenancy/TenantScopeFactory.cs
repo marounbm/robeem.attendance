@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using robeem.Application.Tenancy;
 
 namespace robeem.Infrastructure.Tenancy;
 
@@ -7,7 +8,7 @@ namespace robeem.Infrastructure.Tenancy;
 /// (startup migration, seeding, background jobs). Services resolved from the returned scope,
 /// including the DbContext, use that tenant's database.
 /// </summary>
-public sealed class TenantScopeFactory
+public sealed class TenantScopeFactory : ITenantScopeFactory
 {
     private readonly IServiceScopeFactory _scopeFactory;
 

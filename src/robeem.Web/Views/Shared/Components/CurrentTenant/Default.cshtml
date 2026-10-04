@@ -1,0 +1,12 @@
+@model CurrentTenantResponse?
+@if (Model is not null)
+{
+    <span class="navbar-text small">
+        Tenant: <strong>@Model.Name</strong>
+        @if (Model.CanSelectTenant)
+        {
+            <a class="ms-2" asp-controller="Tenants" asp-action="Index"
+               asp-route-returnUrl="@(Context.Request.Path + Context.Request.QueryString)">Switch</a>
+        }
+    </span>
+}

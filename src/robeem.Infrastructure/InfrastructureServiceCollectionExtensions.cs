@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using robeem.Application.Persistence;
+using robeem.Application.Tenancy;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Seeding;
 using robeem.Infrastructure.Tenancy;
@@ -21,12 +23,15 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddSingleton<TenantScopeFactory>();
+        services.AddSingleton<ITenantScopeFactory>(sp => sp.GetRequiredService<TenantScopeFactory>());
 
         services.AddDbContext<RobeemDbContext>((sp, options) =>
         {
             var tenant = sp.GetRequiredService<TenantContext>().Tenant ?? throw new TenantNotResolvedException();
             options.UseNpgsql(tenant.ConnectionString);
         });
+
+        services.AddScoped<IRobeemDbContext>(sp => sp.GetRequiredService<RobeemDbContext>());
 
         services.AddScoped<SeedDataRunner>();
         services.AddSingleton<TenantDatabaseInitializer>();
