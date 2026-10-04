@@ -1,0 +1,40 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using SmartEnum = robeem.System.Contract.SmartEnum;
+
+namespace robeem.DataModel
+{
+    /// <summary>
+    /// Which employee a vendor's employee id stands for, per integration. Normalization resolves
+    /// <see cref="RawAttendanceTransaction.ExternalEmployeeId"/> through it.
+    /// </summary>
+    [Serializable]
+    [Table(nameof(ExternalEmployeeIdMapping), Schema = nameof(SmartEnum.Module.Attendance))]
+    public class ExternalEmployeeIdMapping : Entity, ITenantScoped
+    {
+        [Required]
+        [MaxLength(ITenantScoped.TenantIdMaxLength)]
+        public string TenantId { get; set; } = string.Empty;
+
+        [Required]
+        public int IntegrationId { get; set; }
+
+        public AttendanceIntegration? Integration { get; set; }
+
+        /// <summary>Gets or sets the employee id exactly as the vendor sends it (compared case-sensitively).</summary>
+        [Required]
+        [MaxLength(255)]
+        public string ExternalEmployeeId { get; set; } = string.Empty;
+
+        [Required]
+        public int EmployeeId { get; set; }
+
+        public Profile? Employee { get; set; }
+
+        #region not mapped
+        [NotMapped]
+        public override string Title => ExternalEmployeeId;
+        #endregion
+    }
+}

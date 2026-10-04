@@ -1,5 +1,7 @@
+using robeem.Api.Attendance;
 using robeem.Api.Tenancy;
 using robeem.Application;
+using robeem.Application.Attendance;
 using robeem.Infrastructure;
 using robeem.Infrastructure.Persistence;
 
@@ -9,6 +11,9 @@ builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddRobeemInfrastructure(builder.Configuration);
 builder.Services.AddRobeemApplication();
+builder.Services.Configure<RawPayloadSanitizerOptions>(builder.Configuration.GetSection(RawPayloadSanitizerOptions.SectionName));
+builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration.GetSection(AttendanceNormalizationOptions.SectionName));
+builder.Services.AddHostedService<AttendanceNormalizationHostedService>();
 builder.Services.AddScoped<TenantResolutionMiddleware>();
 
 var app = builder.Build();

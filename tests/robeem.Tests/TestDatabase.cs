@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using robeem.Application.Tenancy;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Tenancy;
@@ -27,9 +28,11 @@ public sealed class TestDatabase : IDisposable
         db.Database.EnsureCreated();
     }
 
-    public RobeemDbContext CreateContext(string? tenantId)
+    public RobeemDbContext CreateContext(string? tenantId, params IInterceptor[] interceptors)
     {
-        var options = new DbContextOptionsBuilder<RobeemDbContext>().UseSqlite(_connection).Options;
+        var options = new DbContextOptionsBuilder<RobeemDbContext>().UseSqlite(_connection)
+            .AddInterceptors([UtcDateTimeGuardInterceptor.Instance, .. interceptors])
+            .Options;
         return new RobeemDbContext(options, new FixedTenantContext(tenantId));
     }
 

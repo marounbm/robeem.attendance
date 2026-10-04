@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using robeem.Application.Persistence;
 using robeem.Application.Tenancy;
 using robeem.DataModel;
@@ -23,6 +24,9 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 {
     public const string TenantIdProperty = "TenantId";
 
+    private static readonly ValueConverter<DateTimeOffset, DateTimeOffset> UtcDateTimeOffsetConverter =
+        new(v => v.ToUniversalTime(), v => v);
+
     private readonly ITenantContext _tenantContext;
 
     public RobeemDbContext(DbContextOptions<RobeemDbContext> options, ITenantContext tenantContext)
@@ -42,6 +46,22 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
     public DbSet<TimeScheduleLine> TimeScheduleLines => Set<TimeScheduleLine>();
 
     public DbSet<TimeScheduleEmployee> TimeScheduleEmployees => Set<TimeScheduleEmployee>();
+
+    public DbSet<AttendanceProvider> AttendanceProviders => Set<AttendanceProvider>();
+
+    public DbSet<AttendanceIntegration> AttendanceIntegrations => Set<AttendanceIntegration>();
+
+    public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
+
+    public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
+
+    public DbSet<AttendanceProcessingBatch> AttendanceProcessingBatches => Set<AttendanceProcessingBatch>();
+
+    public DbSet<RawAttendanceTransaction> RawAttendanceTransactions => Set<RawAttendanceTransaction>();
+
+    public DbSet<NormalizedAttendanceTransaction> NormalizedAttendanceTransactions => Set<NormalizedAttendanceTransaction>();
+
+    public DbSet<ExternalEmployeeIdMapping> ExternalEmployeeIdMappings => Set<ExternalEmployeeIdMapping>();
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
@@ -91,6 +111,42 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
             {
                 property.SetColumnType("timestamp without time zone");
             }
+        }
+
+        // DateTimeOffset is for instants (punch times, receipt times) and is stored in UTC.
+        // Npgsql maps it to `timestamp with time zone` and refuses a non-zero offset, so convert on
+        // write. Applied on every provider so the SQLite tests store the same values.
+        var dateTimeOffsetProperties = modelBuilder.Model.GetEntityTypes()
+            .SelectMany(t => t.GetProperties())
+            .Where(p => p.ClrType == typeof(DateTimeOffset) || p.ClrType == typeof(DateTimeOffset?));
+
+        foreach (var property in dateTimeOffsetProperties)
+        {
+            property.SetValueConverter(UtcDateTimeOffsetConverter);
+        }
+    }
+
+    private static void EnsureRawTransactionImmutable(EntityEntry entry)
+    {
+        if (entry.Entity is not RawAttendanceTransaction)
+        {
+            return;
+        }
+
+        if (entry.State == EntityState.Deleted)
+        {
+            throw new InvalidOperationException("RawAttendanceTransaction is immutable.");
+        }
+
+        // Normalization and retention may move the bookkeeping columns; nothing else may change.
+        var changed = entry.Properties
+            .Where(p => p.IsModified && !RawAttendanceTransaction.MutableProperties.Contains(p.Metadata.Name))
+            .Select(p => p.Metadata.Name)
+            .ToList();
+        if (changed.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"RawAttendanceTransaction is immutable. Only {string.Join(", ", RawAttendanceTransaction.MutableProperties)} may change; attempted: {string.Join(", ", changed)}.");
         }
     }
 
@@ -151,6 +207,7 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
                             $"Cannot change {entry.Metadata.ClrType.Name} of tenant '{tenantProperty.OriginalValue}' from tenant '{tenantId}'.");
                     }
 
+                    EnsureRawTransactionImmutable(entry);
                     break;
             }
 

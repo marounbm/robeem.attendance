@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using robeem.Application.Attendance;
 using robeem.Application.Persistence;
 using robeem.Application.Tenancy;
+using robeem.Infrastructure.Attendance.Providers;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Seeding;
 using robeem.Infrastructure.Tenancy;
@@ -35,6 +37,11 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<SeedDataRunner>();
         services.AddSingleton<TenantDatabaseInitializer>();
+
+        // Attendance adapters: one keyed service per AttendanceProvider.ProviderKey (CLAUDE.md §1.9).
+        // A new vendor is an adapter plus an event interpreter, registered under the same key.
+        services.AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey);
 
         return services;
     }

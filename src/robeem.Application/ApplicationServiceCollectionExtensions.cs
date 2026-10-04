@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using robeem.Application.Attendance;
 using robeem.Application.HR.Employees;
 using robeem.Application.HR.Seeding;
 using robeem.Application.Seeding;
@@ -11,7 +12,15 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddRobeemApplication(this IServiceCollection services)
     {
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddScoped<IIngestionService, IngestionService>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
+
+        // Pure and stateless. Options are bound by the host (section RawPayloadSanitizerOptions.SectionName).
+        services.AddOptions<RawPayloadSanitizerOptions>();
+        services.AddSingleton<IRawPayloadSanitizer, RawPayloadSanitizer>();
+        services.AddScoped<INormalizedTransactionRecorder, NormalizedTransactionRecorder>();
+        services.AddScoped<IAttendancePolicyResolver, AttendancePolicyResolver>();
+        services.AddScoped<INormalizationService, NormalizationService>();
 
         return services;
     }

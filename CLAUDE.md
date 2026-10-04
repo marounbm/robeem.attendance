@@ -160,7 +160,8 @@ Decided by the product owner (2026-10-04): **every tenant has its own database**
 
 **Database engine: PostgreSQL** (decided 2026-10-04), through `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3. Each tenant is a separate PostgreSQL database; `MigrateAsync` creates it on first start. Rules that follow from the engine:
 
-- **`DateTime` columns are `timestamp without time zone`.** `RobeemDbContext` maps every `DateTime`/`DateTime?` this way, because robeem stores local wall-clock times (the shared entities default to `DateTime.Now`). Npgsql's default column type, `timestamp with time zone`, only accepts UTC values. New entities get this mapping automatically. Don't override it per property, and don't write `DateTimeKind.Utc` values to these columns: Npgsql rejects them.
+- **`DateTime` columns are `timestamp without time zone`.** `RobeemDbContext` maps every `DateTime`/`DateTime?` this way, because robeem stores local wall-clock times (the shared entities default to `DateTime.Now`). Npgsql's default column type, `timestamp with time zone`, only accepts UTC values. New entities get this mapping automatically. Don't override it per property, and don't write `DateTimeKind.Utc` values to these columns: Npgsql rejects them. (`utc.UtcDateTime` and its `.Date` are UTC-kind; wrap them in `DateTime.SpecifyKind(..., DateTimeKind.Unspecified)`.) SQLite accepts such values, so `TestDatabase` adds `UtcDateTimeGuardInterceptor`, which makes every test save fail the way PostgreSQL would.
+- **`DateTimeOffset` columns are `timestamp with time zone`, stored in UTC.** Use `DateTimeOffset` for instants such as punch and receipt times. Npgsql rejects a non-zero offset, so `RobeemDbContext` converts every `DateTimeOffset` to UTC on write, on every provider. Values read back always have offset zero; keep the vendor's original text, such as `RawAttendanceTransaction.TransactionTimestampRaw`, when the offset matters. A *local* time belongs in a `DateTime` plus an IANA `TimeZoneId`, never in a `DateTimeOffset` (see `NormalizedAttendanceTransaction.EventTimestampLocal`).
 - **Text comparison is case-sensitive.** Unique indexes are case-sensitive, so `E-1` and `e-1` are different employee numbers. User-facing search must lower-case both sides (`x.ToLower().Contains(term)`, as `EmployeeService.ListAsync` does). Don't use `EF.Functions.ILike`: it is PostgreSQL-only, and the tests run on SQLite.
 - Provider-specific model configuration goes behind `if (Database.IsNpgsql())` in `OnModelCreating`, so the SQLite test model still builds. robeem.storage follows the same pattern.
 - Raw/JSON payload columns (P2) use `jsonb` or `text`, not SQL Server's `NVARCHAR(MAX)` that `PROMPT_PLAN.md` mentions.
@@ -236,6 +237,7 @@ Each layer gets an `Attendance` folder next to its `HR` folder. There are no sep
 | DTOs (requests, responses, list items) | `src/robeem.Contracts/Attendance/`, namespace `robeem.Contracts.Attendance`. |
 | Services, processing engine, schedule resolution | `src/robeem.Application/Attendance/`. Add each `DbSet` to `IRobeemDbContext`, and register services in `AddRobeemApplication`. |
 | EF mapping | `RobeemDbContext` `DbSet`s, plus `IEntityTypeConfiguration` classes under `src/robeem.Infrastructure/Persistence/Configurations/Attendance`. |
+| Vendor adapters (`IAttendanceProvider` and `IAttendanceEventInterpreter`, both defined in Application) | `src/robeem.Infrastructure/Attendance/Providers`. Register both as **keyed services under the vendor's `ProviderKey`** in `AddRobeemInfrastructure`. Ingestion resolves the adapter, and normalization resolves the interpreter, by the integration's provider key. A vendor's timestamp formats and event-type codes live only in its interpreter. A new vendor is these two classes plus their registrations (invariant 9). |
 | Background jobs (P5, P10) | Hosted services in `robeem.Api`, which call Application services through `ITenantScopeFactory`. |
 | REST endpoints | `src/robeem.Api/Controllers`, under `api/attendance/...`. |
 | Screens | `src/robeem.Web`, calling the Api through a typed client in `ApiClients/`. |
@@ -314,11 +316,16 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
 - [x] **P0** — Investigate. Done; the host was unavailable, so the decisions in §2.2, §2.3, §2.8 and §3.2 were made by the product owner (`DISCOVERY_NOTES.md`).
 - [x] **Foundation** — Standalone solution: shared entities moved into the solution, missing host types written, tenancy, `RobeemDbContext` + `InitialHr` migration, HR employee screens, tests (§9).
 - [x] **Layering** — Split into Domain / Contracts / Application / Infrastructure / Api / Web. Web is now an HTTP client of the Api (§9).
-- [ ] **P1** — Catalog/config entities: `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `AttendancePolicy` + EF configuration + migration.
-- [ ] **P2** — `RawAttendanceTransaction` + `AttendanceProcessingBatch` + immutability enforcement.
-- [ ] **P3** — `NormalizedAttendanceTransaction` + composite-key unique index.
-- [ ] **P4** — `IAttendanceProvider` abstraction + `GenericCsvProvider` + ingestion service (manual upload path first).
-- [ ] **P5** — Normalization engine (raw → normalized, employee/device resolution, duplicate detection).
+- [x] **P1** — Catalog/config entities: `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `AttendancePolicy` + EF configuration + migration (`AddAttendanceCatalog`; deviations in `ATTENDANCE_P1_NOTES.md`).
+- [x] **P2** — `RawAttendanceTransaction` + `AttendanceProcessingBatch` + immutability enforcement (`AddAttendanceRawStorage`; deviations in `ATTENDANCE_P2_NOTES.md`).
+- [x] **P3** — `NormalizedAttendanceTransaction` + composite-key unique index (filtered to `Unique` rows), plus `INormalizedTransactionRecorder`, through which every normalized row must be added (`AddNormalizedAttendanceTransactions`; deviations in `ATTENDANCE_P3_NOTES.md`).
+- [x] **P4** — `IAttendanceProvider` abstraction + `GenericCsvProvider` + ingestion service (manual upload path first). Endpoint: `POST api/attendance/ingestion/{integrationId}/uploads`. Deviations in `ATTENDANCE_P4_NOTES.md`.
+- [x] **P5** — Normalization engine (raw → normalized, employee/device resolution, duplicate detection). Includes:
+  - `ExternalEmployeeIdMapping` (migration `AddExternalEmployeeIdMapping`);
+  - `IAttendancePolicyResolver`, which P7 must reuse;
+  - `AttendanceNormalizationHostedService`, a polling stand-in until P10.
+
+  Deviations are in `ATTENDANCE_P5_NOTES.md`.
 - [ ] **P6** — `IScheduleResolutionService` (wraps `TimeSchedule`/`TimeScheduleLine`/`TimeScheduleTeam`/`TimeScheduleEmployee`).
 - [ ] **P7** — Attendance Processing Engine (`AttendanceRecord`, `AttendanceDaySummary`) using P6 + `AttendancePolicy`.
 - [ ] **P8** — Exception detection (`AttendanceException`): missing punches, invalid sequences.

@@ -23,6 +23,22 @@ public interface IRobeemDbContext
 
     DbSet<TimeScheduleEmployee> TimeScheduleEmployees { get; }
 
+    DbSet<AttendanceProvider> AttendanceProviders { get; }
+
+    DbSet<AttendanceIntegration> AttendanceIntegrations { get; }
+
+    DbSet<AttendanceDevice> AttendanceDevices { get; }
+
+    DbSet<AttendancePolicy> AttendancePolicies { get; }
+
+    DbSet<AttendanceProcessingBatch> AttendanceProcessingBatches { get; }
+
+    DbSet<RawAttendanceTransaction> RawAttendanceTransactions { get; }
+
+    DbSet<NormalizedAttendanceTransaction> NormalizedAttendanceTransactions { get; }
+
+    DbSet<ExternalEmployeeIdMapping> ExternalEmployeeIdMappings { get; }
+
     ChangeTracker ChangeTracker { get; }
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
