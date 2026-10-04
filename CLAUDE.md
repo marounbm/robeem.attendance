@@ -205,6 +205,13 @@ This logic doesn't exist yet as a single queryable thing — it must be implemen
 3. Look up `TimeScheduleLine` where `TimeScheduleId` + `TeamId` + `CycleDay` match → get `ShiftId`. No line for a team/cycle-day combination means a scheduled day off; see §3.2 for which teams' lines apply.
 4. Load the `TimeScheduleShift` for that `ShiftId` → this is the expected shift (start/end/break/overtime) the Attendance Processing Engine compares actual punches against.
 
+**Implemented (P6)** as `IScheduleResolutionService` in `src/robeem.Application/Attendance`:
+
+- `ResolveShiftAsync(employeeId, date)` and `ResolveShiftsInRangeAsync(employeeId, from, to)`. The range method loads the roster once; use it for multi-day work.
+- Both return a `ShiftResolution` per date: `Scheduled`, `DayOff` or `NoScheduleConfigured`.
+- A `Scheduled` day carries a **list** of `ResolvedShift`, ordered by start time. A team can have several lines on one cycle day (a split shift), so never assume exactly one.
+- Each `ResolvedShift` has `StartsAt`/`EndsAt` as local wall-clock times. `EndsAt` falls on the next day for an overnight shift.
+
 **This resolution result is exactly the input the study calls `EmployeeSchedule`/`WorkShift` throughout §8, §9, and §14.** Every place the study says "compare against the employee's expected schedule," read it as "call `IScheduleResolutionService.ResolveShift`."
 
 ### 3.2 `TimeScheduleTeam.AllInclusive` — decided
@@ -326,8 +333,10 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
   - `AttendanceNormalizationHostedService`, a polling stand-in until P10.
 
   Deviations are in `ATTENDANCE_P5_NOTES.md`.
-- [ ] **P6** — `IScheduleResolutionService` (wraps `TimeSchedule`/`TimeScheduleLine`/`TimeScheduleTeam`/`TimeScheduleEmployee`).
-- [ ] **P7** — Attendance Processing Engine (`AttendanceRecord`, `AttendanceDaySummary`) using P6 + `AttendancePolicy`.
+- [x] **P6** — `IScheduleResolutionService` (wraps `TimeSchedule`/`TimeScheduleLine`/`TimeScheduleTeam`/`TimeScheduleEmployee`). Deviations in `ATTENDANCE_P6_NOTES.md`.
+- [x] **P7** — Attendance Processing Engine (`AttendanceRecord`, `AttendanceDaySummary`) using P6 + `AttendancePolicy`. Migration `AddAttendanceRecords`. Deviations are in `ATTENDANCE_P7_NOTES.md`. Rules later prompts must keep:
+  - Read records with `IsCurrent`. A changed recalculation writes a new `Version` and retires the old one; nothing is updated in place.
+  - The calculation is in `ShiftAttendanceCalculator`; the engine does the I/O.
 - [ ] **P8** — Exception detection (`AttendanceException`): missing punches, invalid sequences.
 - [ ] **P9** — `AttendanceCorrection` + approval workflow + ESS/manager endpoints.
 - [ ] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job.

@@ -22,6 +22,71 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("robeem.DataModel.AttendanceDaySummary", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AttendanceDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExceptionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("ShiftCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<TimeSpan>("TotalBreakHours")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("TotalOvertimeHours")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("TotalWorkingHours")
+                        .HasColumnType("interval");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AttendanceDate")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceDaySummary", "Attendance");
+                });
+
             modelBuilder.Entity("robeem.DataModel.AttendanceDevice", b =>
                 {
                     b.Property<int>("Id")
@@ -345,6 +410,126 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("AttendanceProvider", "Attendance");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.AttendanceRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ActualBreakIn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ActualBreakInSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ActualBreakOut")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ActualBreakOutSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ActualCheckIn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ActualCheckInSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ActualCheckOut")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ActualCheckOutSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("AttendanceDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<TimeSpan>("BreakDuration")
+                        .HasColumnType("interval");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("EarlyDepartureMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LateMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("OvertimeMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ScheduledEnd")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("ScheduledStart")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("SourceNormalizedTransactionIds")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int?>("SupersededByRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int?>("TimeScheduleShiftId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.Property<TimeSpan>("WorkingHours")
+                        .HasColumnType("interval");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("SupersededByRecordId");
+
+                    b.HasIndex("TimeScheduleShiftId");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AttendanceDate", "IsCurrent");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AttendanceDate", "TimeScheduleShiftId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceRecord", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>
@@ -938,6 +1123,17 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.ToTable("TimeScheduleTeam", "HR");
                 });
 
+            modelBuilder.Entity("robeem.DataModel.AttendanceDaySummary", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+                });
+
             modelBuilder.Entity("robeem.DataModel.AttendanceDevice", b =>
                 {
                     b.HasOne("robeem.DataModel.AttendanceIntegration", "Integration")
@@ -978,6 +1174,31 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Integration");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.AttendanceRecord", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("robeem.DataModel.AttendanceRecord", "SupersededByRecord")
+                        .WithMany()
+                        .HasForeignKey("SupersededByRecordId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("robeem.DataModel.TimeScheduleShift", "TimeScheduleShift")
+                        .WithMany()
+                        .HasForeignKey("TimeScheduleShiftId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("SupersededByRecord");
+
+                    b.Navigation("TimeScheduleShift");
                 });
 
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>

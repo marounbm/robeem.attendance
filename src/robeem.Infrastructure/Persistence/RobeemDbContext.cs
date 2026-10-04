@@ -63,6 +63,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<ExternalEmployeeIdMapping> ExternalEmployeeIdMappings => Set<ExternalEmployeeIdMapping>();
 
+    public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+
+    public DbSet<AttendanceDaySummary> AttendanceDaySummaries => Set<AttendanceDaySummary>();
+
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
 

@@ -20,6 +20,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<IRawPayloadSanitizer, RawPayloadSanitizer>();
         services.AddScoped<INormalizedTransactionRecorder, NormalizedTransactionRecorder>();
         services.AddScoped<IAttendancePolicyResolver, AttendancePolicyResolver>();
+        services.AddScoped<IScheduleResolutionService, ScheduleResolutionService>();
+        services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
         services.AddScoped<INormalizationService, NormalizationService>();
 
         return services;

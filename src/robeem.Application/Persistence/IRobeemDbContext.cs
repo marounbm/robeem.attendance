@@ -39,6 +39,10 @@ public interface IRobeemDbContext
 
     DbSet<ExternalEmployeeIdMapping> ExternalEmployeeIdMappings { get; }
 
+    DbSet<AttendanceRecord> AttendanceRecords { get; }
+
+    DbSet<AttendanceDaySummary> AttendanceDaySummaries { get; }
+
     ChangeTracker ChangeTracker { get; }
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
