@@ -33,7 +33,7 @@ namespace robeem.DataModel
         /// <summary>Gets or sets the number of current records that day, unscheduled work included.</summary>
         public int ShiftCount { get; set; }
 
-        /// <summary>Gets or sets the number of open attendance exceptions that day. Always 0 until exceptions exist (P8).</summary>
+        /// <summary>Gets or sets the number of attendance exceptions that day that are not closed yet.</summary>
         public int ExceptionCount { get; set; }
 
         public AttendanceRecordStatus Status { get; set; } = AttendanceRecordStatus.Calculated;

@@ -25,4 +25,7 @@ internal sealed record ShiftCalculation
     public bool IsComplete { get; init; }
 
     public IReadOnlyList<int> SourceIds { get; init; } = [];
+
+    /// <summary>Gets the punches the calculation worked from, in time order: typed (inferred ones included), without repeats inside the duplicate window. Exception detection reads the same list.</summary>
+    public IReadOnlyList<AttendancePunch> Punches { get; init; } = [];
 }

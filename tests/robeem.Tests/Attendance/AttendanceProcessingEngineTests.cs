@@ -1,6 +1,5 @@
 using robeem.Application.Attendance;
 using robeem.DataModel;
-using robeem.Infrastructure.Persistence;
 
 namespace robeem.Tests.Attendance;
 
@@ -9,50 +8,8 @@ namespace robeem.Tests.Attendance;
 /// itself is not in the repository: the scenario inputs below are reconstructed so that they give
 /// exactly the outcomes the prompt quotes (see ATTENDANCE_P7_NOTES.md).
 /// </summary>
-public sealed class AttendanceProcessingEngineTests : IDisposable
+public sealed class AttendanceProcessingEngineTests : AttendanceEngineTestBase
 {
-    // 2026-10-05 is a Monday; the schedules below start their cycle on Monday.
-    private static readonly DateTime Monday = new(2026, 10, 5);
-
-    private readonly TestDatabase _database = new();
-    private readonly int _employeeId;
-    private readonly int _integrationId;
-    private readonly int _deviceId;
-    private readonly int _rawId;
-
-    public AttendanceProcessingEngineTests()
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var employee = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
-        var integration = new AttendanceIntegration
-        {
-            Provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV" },
-            DisplayName = "HQ",
-        };
-        var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "UTC" };
-        var raw = new RawAttendanceTransaction
-        {
-            Integration = integration,
-            ImportBatch = new AttendanceProcessingBatch { Integration = integration, BatchType = AttendanceBatchType.ManualUpload },
-            TransactionTimestampRaw = "-",
-            RawPayload = "{}",
-            SourceSystem = "generic-csv",
-            RecordHash = "hash",
-        };
-        db.AddRange(employee, device, raw);
-        db.SaveChanges();
-
-        _employeeId = employee.Id;
-        _integrationId = integration.Id;
-        _deviceId = device.Id;
-        _rawId = raw.Id;
-    }
-
-    // The study's standard day, as implied by Scenarios 1-3: 08:00-17:00 with a 12:00-13:00 break (8 hours).
-    private static ShiftSpec StandardDay => new("08:00", "17:00", "12:00", "13:00");
-
-    public void Dispose() => _database.Dispose();
-
     [Fact]
     public async Task Scenario1_StandardDay()
     {
@@ -65,7 +22,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         var result = await ProcessAsync(Monday);
 
         Assert.Equal(new DayProcessingResult(1, 0, 0), result);
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal(Monday, record.AttendanceDate);
         Assert.Equal((Monday.At(8, 0), Monday.At(17, 0)), (record.ScheduledStart, record.ScheduledEnd));
@@ -95,7 +52,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal(12, record.LateMinutes);
         Assert.Equal(0, record.EarlyDepartureMinutes);
@@ -119,7 +76,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal((83, AttendanceRecordStatus.Approved), (record.OvertimeMinutes, record.Status));
     }
@@ -137,7 +94,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         // Processing Tuesday must not claim the 06:00 check-out: Monday's shift owns it.
         Assert.Equal(new DayProcessingResult(0, 0, 0), await ProcessAsync(tuesday));
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal(Monday, record.AttendanceDate);
         Assert.Equal((Monday.At(22, 0), tuesday.At(6, 0)), (record.ScheduledStart, record.ScheduledEnd));
@@ -158,7 +115,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         var again = await ProcessAsync(Monday);
 
         Assert.Equal(new DayProcessingResult(0, 1, 0), again);
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(1, Assert.Single(db.AttendanceRecords).Version);
     }
 
@@ -174,7 +131,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         AddPunch(NormalizedEventType.CheckOut, Monday.At(17, 0));
         Assert.Equal(new DayProcessingResult(1, 0, 0), await ProcessAsync(Monday));
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var versions = db.AttendanceRecords.OrderBy(r => r.Version).ToList();
         Assert.Equal(2, versions.Count);
 
@@ -202,7 +159,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         Assert.Equal(new DayProcessingResult(2, 0, 0), await ProcessAsync(Monday));
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var records = db.AttendanceRecords.OrderBy(r => r.ScheduledStart).ToList();
         Assert.Equal([TimeSpan.FromHours(4), new TimeSpan(4, 30, 0)], records.Select(r => r.WorkingHours));
         Assert.Equal([0, 30], records.Select(r => r.OvertimeMinutes));
@@ -225,7 +182,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(7, db.AttendanceRecords.Single().LateMinutes);
     }
 
@@ -241,7 +198,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal((Monday.At(8, 7), Monday.At(16, 53)), (record.ActualCheckIn, record.ActualCheckOut));
         Assert.Equal(TimeSpan.FromHours(8), record.WorkingHours);
@@ -257,7 +214,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal(TimeSpan.FromHours(9), record.WorkingHours);
         Assert.Null(record.ActualBreakOut);
@@ -275,7 +232,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(sunday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Null(record.TimeScheduleShiftId);
         Assert.Equal(TimeSpan.FromHours(2), record.WorkingHours);
@@ -294,7 +251,7 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
 
         await ProcessAsync(Monday);
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = db.AttendanceRecords.Single();
         Assert.Equal(TimeSpan.FromHours(8), record.WorkingHours);
         Assert.Equal(TimeSpan.FromHours(1), record.BreakDuration);
@@ -306,51 +263,6 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         Assert.All(db.NormalizedAttendanceTransactions, n => Assert.Equal(NormalizedEventType.Unknown, n.NormalizedEventType));
     }
 
-    private async Task<DayProcessingResult> ProcessAsync(DateTime date)
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await CreateEngine(db).ProcessEmployeeDayAsync(_employeeId, date, CancellationToken.None);
-    }
-
-    private AttendanceProcessingEngine CreateEngine(RobeemDbContext db) =>
-        new(db, new ScheduleResolutionService(db), new AttendancePolicyResolver(db));
-
-    /// <summary>A Monday-only schedule with the given shifts, its employee assigned to its all-inclusive team.</summary>
-    private void AssignSchedule(params ShiftSpec[] specs)
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var schedule = new TimeSchedule { Title = "Test", CyclePeriod = 7, FirstCycleDay = DayOfWeek.Monday };
-        var team = new TimeScheduleTeam { Title = "All", TimeSchedule = schedule, AllInclusive = true };
-        db.Add(team);
-        foreach (var spec in specs)
-        {
-            var shift = new TimeScheduleShift
-            {
-                Title = $"{spec.Start}-{spec.End}",
-                TimeSchedule = schedule,
-                StartTime = spec.Start,
-                EndTime = spec.End,
-                BreakTime = spec.BreakStart is not null,
-                BreakStartTime = spec.BreakStart ?? "00:00",
-                BreakEndTime = spec.BreakEnd ?? "00:00",
-            };
-            db.TimeScheduleLines.Add(new TimeScheduleLine { TimeSchedule = schedule, Team = team, Shift = shift, CycleDay = 1 });
-        }
-
-        db.SaveChanges();
-        db.TimeScheduleEmployees.Add(new TimeScheduleEmployee { TimeScheduleId = schedule.Id, TeamId = team.Id, EmployeeId = _employeeId });
-        db.SaveChanges();
-    }
-
-    private void AddDefaultPolicy(Action<AttendancePolicy> configure)
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var policy = new AttendancePolicy { Title = "Default" };
-        configure(policy);
-        db.AttendancePolicies.Add(policy);
-        db.SaveChanges();
-    }
-
     private void AddFullStandardDay(DateTime day)
     {
         AddPunch(NormalizedEventType.CheckIn, day.At(8, 0));
@@ -358,28 +270,4 @@ public sealed class AttendanceProcessingEngineTests : IDisposable
         AddPunch(NormalizedEventType.BreakIn, day.At(13, 0));
         AddPunch(NormalizedEventType.CheckOut, day.At(17, 0));
     }
-
-    /// <summary>A Unique normalized punch from a device in UTC, so local and UTC times coincide.</summary>
-    private void AddPunch(NormalizedEventType type, DateTime local)
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var utc = new DateTimeOffset(local, TimeSpan.Zero);
-        db.NormalizedAttendanceTransactions.Add(new NormalizedAttendanceTransaction
-        {
-            EmployeeId = _employeeId,
-            DeviceId = _deviceId,
-            IntegrationId = _integrationId,
-            RawTransactionId = _rawId,
-            AttendanceDate = local.Date,
-            EventTimestampUtc = utc,
-            EventTimestampLocal = local,
-            TimeZoneId = "UTC",
-            NormalizedEventType = type,
-            ConfidenceStatus = type == NormalizedEventType.Unknown ? EventConfidenceStatus.Ambiguous : EventConfidenceStatus.Certain,
-            DuplicateBucketTimestampUtc = utc,
-        });
-        db.SaveChanges();
-    }
-
-    private sealed record ShiftSpec(string Start, string End, string? BreakStart = null, string? BreakEnd = null);
 }

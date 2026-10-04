@@ -337,7 +337,11 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
 - [x] **P7** — Attendance Processing Engine (`AttendanceRecord`, `AttendanceDaySummary`) using P6 + `AttendancePolicy`. Migration `AddAttendanceRecords`. Deviations are in `ATTENDANCE_P7_NOTES.md`. Rules later prompts must keep:
   - Read records with `IsCurrent`. A changed recalculation writes a new `Version` and retires the old one; nothing is updated in place.
   - The calculation is in `ShiftAttendanceCalculator`; the engine does the I/O.
-- [ ] **P8** — Exception detection (`AttendanceException`): missing punches, invalid sequences.
+- [x] **P8** — Exception detection (`AttendanceException`): missing punches, invalid sequences. Migration `AddAttendanceExceptions`. Deviations are in `ATTENDANCE_P8_NOTES.md`. Rules later prompts must keep:
+  - Detection is `AttendanceExceptionDetector`, run by the engine after the pairing. An exception belongs to employee + date + shift, not to a record version.
+  - A shift with an exception that is not `Closed` is never `Approved`. `PendingCorrection` counts as not closed, so P9 closes an exception (`ResolutionMethod.Correction`) only when its correction is applied.
+  - The engine closes an `Open` exception whose problem is gone as `AutoResolved`; it never touches a `PendingCorrection` one.
+  - `IWorkflowEntity` goes on `AttendanceCorrection` (P9), not on `AttendanceException`.
 - [ ] **P9** — `AttendanceCorrection` + approval workflow + ESS/manager endpoints.
 - [ ] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job.
 - [ ] **P11** — HR/Payroll extraction contract (Approved-only).

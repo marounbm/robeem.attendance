@@ -28,7 +28,7 @@ internal static class ShiftAttendanceCalculator
 
         // A punch still unlabeled can't be used, and is never guessed (CLAUDE.md §1.5, §1.6).
         var complete = ordered.All(p => p.Type != NormalizedEventType.Unknown);
-        var typed = ordered.Where(p => p.Type != NormalizedEventType.Unknown).ToList();
+        var typed = WithoutRepeats(ordered.Where(p => p.Type != NormalizedEventType.Unknown).ToList(), policy.DuplicateTimeWindowSeconds);
         var rounding = policy.RoundingRuleMinutes;
 
         // Pair the punches in time order. Elapsed time is measured on the UTC instants, so a shift
@@ -59,7 +59,7 @@ internal static class ShiftAttendanceCalculator
                     break;
                 default:
                     // Out of sequence (e.g. a second check-in, a check-out during a break): the
-                    // punch is skipped and the shift left for review. P8 raises the exception.
+                    // punch is skipped and the shift left for review. AttendanceExceptionDetector raises the exception.
                     complete = false;
                     break;
             }
@@ -105,7 +105,31 @@ internal static class ShiftAttendanceCalculator
             OvertimeMinutes = overtime,
             IsComplete = complete,
             SourceIds = ordered.Select(p => p.NormalizedTransactionId).Order().ToList(),
+            Punches = typed,
         };
+    }
+
+    /// <summary>
+    /// Drops a punch of the same type as the one before it, when it falls inside the policy's
+    /// duplicate window: the same event twice, not a sequence error (study §14.1). Normalization
+    /// buckets punches, so two near-identical ones can still land in different buckets and both
+    /// be Unique. The first punch of the pair is kept.
+    /// </summary>
+    private static List<AttendancePunch> WithoutRepeats(List<AttendancePunch> typed, int windowSeconds)
+    {
+        var window = TimeSpan.FromSeconds(windowSeconds);
+        var kept = new List<AttendancePunch>(typed.Count);
+        foreach (var punch in typed)
+        {
+            if (kept.Count > 0 && kept[^1].Type == punch.Type && punch.Utc - kept[^1].Utc <= window)
+            {
+                continue;
+            }
+
+            kept.Add(punch);
+        }
+
+        return kept;
     }
 
     /// <summary>The shift's scheduled working time, break excluded, through <see cref="Set.TimeSpan(string, string, string, string)"/>, which handles overnight shifts.</summary>

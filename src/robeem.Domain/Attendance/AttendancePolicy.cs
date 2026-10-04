@@ -41,6 +41,9 @@ namespace robeem.DataModel
         /// <summary>Gets or sets the width of the time bucket used by the normalization duplicate key (CLAUDE.md §1.4).</summary>
         public int DuplicateTimeWindowSeconds { get; set; } = 120;
 
+        /// <summary>Gets or sets how long after a shift ends a still-absent punch waits before it is raised as an exception (study §9.2).</summary>
+        public int MissingPunchGraceMinutes { get; set; } = 120;
+
         #region not mapped
         [NotMapped]
         public bool IsTenantDefault => TimeScheduleId is null;

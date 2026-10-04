@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using robeem.Application.Attendance;
 using robeem.Application.HR.Employees;
 using robeem.Application.HR.Seeding;
@@ -21,6 +22,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<INormalizedTransactionRecorder, NormalizedTransactionRecorder>();
         services.AddScoped<IAttendancePolicyResolver, AttendancePolicyResolver>();
         services.AddScoped<IScheduleResolutionService, ScheduleResolutionService>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
         services.AddScoped<INormalizationService, NormalizationService>();
 

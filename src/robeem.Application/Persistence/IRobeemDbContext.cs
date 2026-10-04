@@ -43,6 +43,8 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceDaySummary> AttendanceDaySummaries { get; }
 
+    DbSet<AttendanceException> AttendanceExceptions { get; }
+
     ChangeTracker ChangeTracker { get; }
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>

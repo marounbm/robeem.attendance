@@ -14,12 +14,14 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
     private readonly IRobeemDbContext _db;
     private readonly IScheduleResolutionService _schedules;
     private readonly IAttendancePolicyResolver _policies;
+    private readonly TimeProvider _clock;
 
-    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies)
+    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies, TimeProvider clock)
     {
         _db = db;
         _schedules = schedules;
         _policies = policies;
+        _clock = clock;
     }
 
     public async Task<DayProcessingResult> ProcessEmployeeDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken)
@@ -48,15 +50,24 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             calculated.Add((null, ShiftAttendanceCalculator.Calculate(null, unscheduled, policy)));
         }
 
-        // e. Records, versioned.
-        var (current, result) = await WriteRecordsAsync(employeeId, day, calculated, policy, cancellationToken);
+        // e. Exceptions, after the pairing: raised once, and closed when the problem is gone.
+        var now = _clock.GetLocalNow().DateTime;
+        var detected = calculated
+            .SelectMany(c => AttendanceExceptionDetector
+                .Detect(c.Shift, day, c.Calculation, policy, now)
+                .Select(d => (ShiftId: c.Shift?.TimeScheduleShiftId, Detected: d)))
+            .ToList();
+        var exceptions = await ReconcileExceptionsAsync(employeeId, day, detected, now, cancellationToken);
 
-        // f. The day summary.
-        await WriteSummaryAsync(employeeId, day, current, cancellationToken);
+        // f. Records, versioned. A shift with an exception that isn't closed is never auto-Approved.
+        var (current, result) = await WriteRecordsAsync(employeeId, day, calculated, policy, exceptions.ShiftsWithActive, cancellationToken);
+
+        // g. The day summary.
+        await WriteSummaryAsync(employeeId, day, current, exceptions.ActiveCount, cancellationToken);
 
         // All of the day's changes in one save: one transaction.
         await _db.SaveChangesAsync(cancellationToken);
-        return result;
+        return result with { ExceptionsRaised = exceptions.Raised, ExceptionsResolved = exceptions.Resolved };
     }
 
     private static List<ShiftWindow> BuildWindows(IReadOnlyList<ShiftResolution> resolutions)
@@ -94,10 +105,12 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
 
     private static DateTime Min(DateTime a, DateTime b) => a < b ? a : b;
 
-    private static AttendanceRecord BuildRecord(int employeeId, DateTime day, ResolvedShift? shift, ShiftCalculation calculation, AttendancePolicy policy)
+    private static AttendanceRecord BuildRecord(int employeeId, DateTime day, ResolvedShift? shift, ShiftCalculation calculation, AttendancePolicy policy, bool hasActiveException)
     {
-        // Auto-approved only when complete, scheduled, and free of overtime that needs pre-approval.
+        // Auto-approved only when complete, scheduled, free of overtime that needs pre-approval, and
+        // free of exceptions that aren't closed (CLAUDE.md §1.5, study §11.3).
         var needsReview = shift is null
+            || hasActiveException
             || !calculation.IsComplete
             || (calculation.OvertimeMinutes > 0 && policy.RequiresOvertimePreApproval);
 
@@ -177,6 +190,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         DateTime day,
         List<(ResolvedShift? Shift, ShiftCalculation Calculation)> calculated,
         AttendancePolicy policy,
+        HashSet<int?> shiftsWithActiveException,
         CancellationToken cancellationToken)
     {
         var existing = await _db.AttendanceRecords
@@ -187,12 +201,20 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         int written = 0, unchanged = 0;
         foreach (var (shift, calculation) in calculated)
         {
-            var candidate = BuildRecord(employeeId, day, shift, calculation, policy);
+            var hasActiveException = shiftsWithActiveException.Contains(shift?.TimeScheduleShiftId);
+            var candidate = BuildRecord(employeeId, day, shift, calculation, policy, hasActiveException);
             var versions = existing.Where(r => r.TimeScheduleShiftId == candidate.TimeScheduleShiftId).ToList();
             var previous = versions.Where(r => r.IsCurrent).OrderByDescending(r => r.Version).FirstOrDefault();
 
             if (previous is not null && SameCalculation(previous, candidate))
             {
+                // The status is a reviewer's to change, and is kept, except that an exception which
+                // appeared after an approval takes the approval back.
+                if (hasActiveException && previous.Status is AttendanceRecordStatus.Approved or AttendanceRecordStatus.Calculated)
+                {
+                    previous.Status = AttendanceRecordStatus.PendingReview;
+                }
+
                 current.Add(previous);
                 unchanged++;
                 continue;
@@ -220,7 +242,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         return (current, new DayProcessingResult(written, unchanged, stale.Count));
     }
 
-    private async Task WriteSummaryAsync(int employeeId, DateTime day, List<AttendanceRecord> current, CancellationToken cancellationToken)
+    private async Task WriteSummaryAsync(int employeeId, DateTime day, List<AttendanceRecord> current, int activeExceptionCount, CancellationToken cancellationToken)
     {
         var summary = await _db.AttendanceDaySummaries
             .SingleOrDefaultAsync(s => s.EmployeeId == employeeId && s.AttendanceDate == day, cancellationToken);
@@ -235,7 +257,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             _db.AttendanceDaySummaries.Add(summary);
         }
 
-        // ExceptionCount belongs to exception detection (P8) and is left as it is.
+        summary.ExceptionCount = activeExceptionCount;
         summary.TotalWorkingHours = current.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.WorkingHours);
         summary.TotalBreakHours = current.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.BreakDuration);
         summary.TotalOvertimeHours = TimeSpan.FromMinutes(current.Sum(r => r.OvertimeMinutes));
@@ -243,7 +265,79 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         summary.Status = RollUp(current);
     }
 
+    /// <summary>
+    /// Brings the day's stored exceptions in line with the detected ones. A detected exception with
+    /// no active match is opened; an active one that matches is kept as it is; an Open one that is
+    /// no longer detected is closed as auto-resolved. A <c>PendingCorrection</c> one is left to its
+    /// correction, whatever is detected.
+    /// </summary>
+    private async Task<ExceptionOutcome> ReconcileExceptionsAsync(
+        int employeeId,
+        DateTime day,
+        List<(int? ShiftId, DetectedException Detected)> detected,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var stored = await _db.AttendanceExceptions
+            .Where(e => e.EmployeeId == employeeId && e.AttendanceDate == day && e.Status != AttendanceExceptionStatus.Closed)
+            .ToListAsync(cancellationToken);
+
+        var active = new List<AttendanceException>();
+        var matched = new HashSet<AttendanceException>();
+        var raised = 0;
+        foreach (var (shiftId, found) in detected)
+        {
+            var match = stored.FirstOrDefault(e => !matched.Contains(e)
+                && e.TimeScheduleShiftId == shiftId
+                && e.ExceptionType == found.Type
+                && e.MissingEventType == found.MissingEventType
+                && e.RelatedNormalizedTransactionId == found.NormalizedTransactionId);
+            if (match is not null)
+            {
+                matched.Add(match);
+                active.Add(match);
+                continue;
+            }
+
+            var opened = new AttendanceException
+            {
+                EmployeeId = employeeId,
+                AttendanceDate = day,
+                TimeScheduleShiftId = shiftId,
+                ExceptionType = found.Type,
+                MissingEventType = found.MissingEventType,
+                RelatedNormalizedTransactionId = found.NormalizedTransactionId,
+                Status = AttendanceExceptionStatus.Open,
+                Description = found.Description,
+                DetectedAt = now,
+            };
+            _db.AttendanceExceptions.Add(opened);
+            active.Add(opened);
+            raised++;
+        }
+
+        var resolved = 0;
+        foreach (var gone in stored.Where(e => !matched.Contains(e)))
+        {
+            if (gone.Status == AttendanceExceptionStatus.Open)
+            {
+                gone.Status = AttendanceExceptionStatus.Closed;
+                gone.ResolutionMethod = AttendanceExceptionResolutionMethod.AutoResolved;
+                gone.ResolvedAt = now;
+                resolved++;
+            }
+            else
+            {
+                active.Add(gone);
+            }
+        }
+
+        return new ExceptionOutcome(active.Select(e => e.TimeScheduleShiftId).ToHashSet(), active.Count, raised, resolved);
+    }
+
     /// <summary>The punches a shift claims: local time in <c>[From, To)</c>.</summary>
+    private sealed record ExceptionOutcome(HashSet<int?> ShiftsWithActive, int ActiveCount, int Raised, int Resolved);
+
     private sealed record ShiftWindow(DateTime Date, ResolvedShift Shift, DateTime From, DateTime To)
     {
         public bool Contains(AttendancePunch punch) => punch.Local >= From && punch.Local < To;
