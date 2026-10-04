@@ -6,6 +6,8 @@ It is a **condensed, code-facing contract** distilled from the full 43-page desi
 
 **Read this entire file before writing or modifying any Attendance-related code.**
 
+> **Standalone solution (decided 2026-10-04).** The host robeem codebase is not available to this project: the developer is external and received only the 8 shared entity files. This repository is therefore a **complete, standalone solution**. It contains the shared entities (moved to `src/robeem.DataModel`, namespaces unchanged) and every type they depend on (`SmartEnum`, `ISeedData`, `Set`, `Profile`, ...). It also has its own persistence, tenancy, HR screens and tests. The Attendance feature is built on top of it. See §9 for the solution layout.
+
 ---
 
 ## 0. The one rule that matters most
@@ -59,11 +61,22 @@ public class ClassName : Entity, ISeedData
 
 - Table name is always `nameof(TheClassItself)` — never a hand-typed string.
 - Schema is always `nameof(SmartEnum.Module.X)`, where `SmartEnum` is `robeem.System.Contract.SmartEnum` (imported via `using SmartEnum = robeem.System.Contract.SmartEnum;`) and `Module` is an enum of bounded-context names.
-- **Open question — resolve in Prompt 0**: does `SmartEnum.Module` already have (or can it gain) an `Attendance` member, or should every new entity in this feature live under `Module.HR` alongside `TimeSchedule*`? Default assumption until confirmed: **add `Module.Attendance`** — the raw/normalized tables are operationally a very different volume/retention profile than HR master data and deserve schema-level separation — but this must be verified against the real enum and any schema-per-module tooling before use.
+- **Decided:** `SmartEnum` is defined in this solution (`src/robeem.System.Contract/SmartEnum.cs`) as a static class with a plain nested `enum Module { HR, Attendance }`. Adding a module means adding a member; the schema follows from the name. **HR entities (`Profile`, `TimeSchedule*`) use `Module.HR`. All new Attendance entities use `Module.Attendance`**, so the high-volume raw/normalized tables sit in their own schema.
+- In new files, write the two attributes separately (`[Serializable]` then `[Table(...)]`) and put the `using SmartEnum = ...;` alias after the `System` usings. This keeps StyleCop's SA1133/SA1208/SA1209 quiet; only the supplied files are exempt from those rules (§7.4).
 
 ### 2.3 `ISeedData`
 
-Implemented today by `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeScheduleLine`, `TimeScheduleEmployee` — i.e., it is used broadly for HR config/reference-shaped data in this codebase, not just "pure" master data. Apply it to new **catalog/reference** entities (`AttendanceProvider`, `AttendancePolicy`) so they can be demo-seeded the same way. Do **not** apply it to high-volume transactional entities (`RawAttendanceTransaction`, `NormalizedAttendanceTransaction`, `AttendanceProcessingBatch`) — confirm this split against however `ISeedData` is actually consumed (Prompt 0).
+Implemented by `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeScheduleLine`, `TimeScheduleEmployee`. Apply it to new **catalog/reference** entities (`AttendanceProvider`, `AttendancePolicy`). Do **not** apply it to transactional entities (`RawAttendanceTransaction`, `NormalizedAttendanceTransaction`, `AttendanceProcessingBatch`) or to `Profile`.
+
+**How it is consumed (this solution):** `ISeedData` is an empty marker interface (`src/robeem.DataModel/Core/ISeedData.cs`).
+
+- Seed data comes from `ISeedContributor` implementations registered in DI. An example is `HrSeedContributor`, which seeds a "Standard Week" schedule (Mon–Fri 09:00–17:00) with its all-inclusive team.
+- `SeedDataRunner` runs them for each tenant database every time `TenantDatabaseInitializer` runs: at startup when `Database:InitializeOnStartup` is true, which is the Development setting.
+- **Contributors must be idempotent**: only add what is missing.
+- The runner **rejects** any contributor that stages a change to an entity type not marked `ISeedData`, and saves nothing from it.
+- Implementing the marker on a new type is always safe: it only *permits* seeding, and does nothing on its own.
+
+To seed the provider catalog (P15), add an `ISeedContributor`.
 
 ### 2.4 Foreign keys and navigation properties
 
@@ -102,13 +115,61 @@ Use `#region not mapped` for `[NotMapped]` computed properties and `#region meth
 
 ### 2.7 Static helpers
 
-`Set` (namespace not shown, presumably `robeem.System` or similar) provides `Set.asTime(string)`, `Set.TimeSpan(string, string[, string, string])`, `Set.isSystemEntity(Type)`, `Set.isWorkflowEntity(Type)`. Reuse `Set.asTime`/`Set.TimeSpan` for any `"HH:mm"`-string time arithmetic in the processing engine — do not reimplement time-string parsing.
+`Set` lives in `src/robeem.DataModel/Core/Set.cs`, namespace `robeem.DataModel`. It was written here because the host's version wasn't supplied, and its member names are dictated by the shared files.
 
-### 2.8 Multi-tenancy — **unresolved, verify before writing any migration**
+- `Set.asTime(string)` → a `DateTime` carrying that time of day.
+- `Set.TimeSpan(start, end)` → hours. **An end earlier than the start counts into the next day**, so `22:00`→`06:00` is 8 hours (overnight shifts).
+- `Set.TimeSpan(start, end, breakStart, breakEnd)` → work hours minus break hours.
+- `Set.ParseTime` / `Set.IsValidTime` → strict `H:mm`/`HH:mm` parsing, 00:00–23:59.
+- `Set.isSystemEntity(Type)` → the type derives from `SystemEntity`.
+- `Set.isWorkflowEntity(Type)` → the type implements the `IWorkflowEntity` marker. **Put that marker on `AttendanceCorrection` (P9).**
 
-**None of the supplied entities carry a `TenantId` column or any visible tenant-scoping base class.** The design study (§15) recommended a shared database with a `TenantId` column on every table, by analogy with robeem's storage service. That analogy does **not** carry over automatically — this codebase may instead use a database-per-tenant or schema-per-tenant deployment model, a connection-string-per-tenant resolver, or a global EF Core query filter applied somewhere not visible in these five files.
+Reuse these for all `"HH:mm"` arithmetic in the processing engine. Don't reimplement time parsing.
 
-**Do not add a `TenantId` column to any new entity until Prompt 0 has confirmed the actual mechanism.** Getting this wrong is the single highest-risk mistake available in this feature — it is a cross-tenant data leak, not a cosmetic error.
+The indexer helpers `getPropertyValue`/`setPropertyValue` are in `EntityPropertyExtensions.cs`:
+
+- An unknown or read-only property throws.
+- Values are converted to the property type.
+- **Caveat:** `entity["Team"] = 5` writes `TeamId` only when the `Team` navigation is already loaded (that is how the shared `Entity` indexer is written). Otherwise, set `TeamId` directly.
+
+**Namespace gotcha:** the namespace `robeem.System` exists. Inside any `namespace robeem.*`, a qualified `System.Foo` resolves to `robeem.System.Foo` and fails. Rely on the `using` directives, or write `global::System.Foo`.
+
+### 2.8 Multi-tenancy — **decided: database per tenant, plus `TenantId` on every entity**
+
+Decided by the product owner (2026-10-04): **every tenant has its own database**, and **tenancy is also carried at entity level through a `TenantId`**. How it is implemented (`src/robeem.Infrastructure`):
+
+| Piece | Where | What it does |
+|---|---|---|
+| Tenant registry | `Tenancy/TenantRegistry.cs`, config section `Tenancy:Tenants` | `Id` (lower-case, max 64), `Name`, `ConnectionString` per tenant. Validated at startup; bad config fails fast. |
+| Tenant context | `Tenancy/TenantContext.cs` (scoped) | Set **once** per scope and can't be switched within it. HTTP requests set it in `TenantResolutionMiddleware`; anything else uses `TenantScopeFactory.CreateScope(tenantId)`. |
+| Database selection | `InfrastructureServiceCollectionExtensions.AddRobeemInfrastructure` | `RobeemDbContext` connects to the scope's tenant database. Resolving it with no tenant throws `TenantNotResolvedException` (fails closed). |
+| `TenantId` column | `Persistence/RobeemDbContext.OnModelCreating` | **Every table gets a required `TenantId varchar(64)`.** Entities implementing `ITenantScoped` expose it as a CLR property. All others, including the supplied `TimeSchedule*` files, get it as an EF shadow property, so the supplied files stay unmodified. |
+| Write guard | `RobeemDbContext.SaveChanges*` | Stamps `TenantId` on insert. Inserting for another tenant, or modifying/deleting another tenant's row, throws `TenantIsolationException`. |
+| Read guard | global query filter on every entity | Returns only rows whose `TenantId` equals the current tenant. |
+
+**Rules for new code:**
+
+- **Every new entity implements `ITenantScoped`** (a `string TenantId` property with `[Required][MaxLength(ITenantScoped.TenantIdMaxLength)]`), as `Profile` does. Don't set it by hand; the DbContext stamps it.
+- Composite unique indexes start with `TenantId`. For example, the normalization duplicate key (§1.4) is `(TenantId, EmployeeId, DeviceId, EventType, TimeBucket)`.
+- Background jobs (P5, P10) iterate `ITenantRegistry.Tenants` and run each tenant's work inside `TenantScopeFactory.CreateScope(tenant.Id)`. Never share one DbContext across tenants.
+- Never call `IgnoreQueryFilters()` outside tests.
+- Updating a detached `SystemEntity` row (shadow `TenantId`) via `Update`/`Attach` throws, because the original `TenantId` is unknown. Load the row first, then change it.
+
+**Database engine: PostgreSQL** (decided 2026-10-04), through `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3. Each tenant is a separate PostgreSQL database; `MigrateAsync` creates it on first start. Rules that follow from the engine:
+
+- **`DateTime` columns are `timestamp without time zone`.** `RobeemDbContext` maps every `DateTime`/`DateTime?` this way, because robeem stores local wall-clock times (the shared entities default to `DateTime.Now`). Npgsql's default column type, `timestamp with time zone`, only accepts UTC values. New entities get this mapping automatically. Don't override it per property, and don't write `DateTimeKind.Utc` values to these columns: Npgsql rejects them.
+- **Text comparison is case-sensitive.** Unique indexes are case-sensitive, so `E-1` and `e-1` are different employee numbers. User-facing search must lower-case both sides (`x.ToLower().Contains(term)`, as `EmployeeService.ListAsync` does). Don't use `EF.Functions.ILike`: it is PostgreSQL-only, and the tests run on SQLite.
+- Provider-specific model configuration goes behind `if (Database.IsNpgsql())` in `OnModelCreating`, so the SQLite test model still builds. robeem.storage follows the same pattern.
+- Raw/JSON payload columns (P2) use `jsonb` or `text`, not SQL Server's `NVARCHAR(MAX)` that `PROMPT_PLAN.md` mentions.
+
+**Request tenant resolution** (`src/robeem.Web/Tenancy/TenantResolutionMiddleware.cs`):
+
+- The authenticated user's `tenant_id` claim comes first.
+- Only when `Tenancy:AllowUnauthenticatedTenantSelection` is true (**Development only**) is the tenant taken from, in order:
+  1. the `X-Tenant-Id` header;
+  2. the `robeem.tenant` cookie set by the `/Tenants` picker;
+  3. `Tenancy:DefaultTenantId`.
+- **There is no authentication in this solution yet.** In production, `AllowUnauthenticatedTenantSelection` stays false, so no request reaches tenant data until authentication issues a `tenant_id` claim (P12).
 
 ---
 
@@ -120,8 +181,8 @@ The study (§13) proposed `WorkShift`, `EmployeeSchedule`, and `AttendancePolicy
 |---|---|---|
 | `WorkShift` (start/end, break rules, overtime flag) | **`TimeScheduleShift`** (via `TimeShiftEntity`) | Already has `StartTime`, `EndTime`, `BreakTime`, `BreakStartTime`, `BreakEndTime`, `Overtime`. Scoped to a `TimeScheduleId`. |
 | `EmployeeSchedule` (which shift an employee works, and when) | **`TimeScheduleEmployee` + `TimeScheduleTeam` + `TimeSchedule.GetCycleDay(date)` + `TimeScheduleLine`** | See resolution algorithm below. There is no single table to query — it's a 3-table join plus one computed method call. |
-| Overnight shift flag | *(derive, don't store)* | `TimeShiftEntity` has no `IsOvernight` column. Add a `[NotMapped]` computed property (e.g., on a partial/extension of `TimeScheduleShift`, or a small wrapper DTO) that returns `true` when `EndTime` (as time-of-day) is earlier than `StartTime`. Confirm exact placement with the team/Prompt 0 — do not add a stored column. |
-| `AttendancePolicy` (rounding, grace periods, OT threshold, correction workflow, interpretation mode) | **Genuinely new — does not exist today.** | Recommend scoping it per `TimeScheduleId` (one policy per schedule, with a tenant-wide default), rather than per-employee. Confirm this scoping decision in Prompt 0/1 — `TimeScheduleTeam.AllInclusive` hints at a "default bucket" pattern worth mirroring. |
+| Overnight shift flag | *(derive, don't store)* | `TimeShiftEntity` has no `IsOvernight` column. The supplied `TimeScheduleShift` is not `partial` and must not be edited (§7.4), so add an **extension method** `IsOvernight(this TimeShiftEntity shift)` in the Attendance services project. It returns `Set.ParseTime(shift.EndTime) < Set.ParseTime(shift.StartTime)`. `Set.TimeSpan` already counts such shifts into the next day. Do not add a stored column. |
+| `AttendancePolicy` (rounding, grace periods, OT threshold, correction workflow, interpretation mode) | **Genuinely new — does not exist today.** | Scope it per `TimeScheduleId`: one policy per schedule, plus one tenant-wide default with `TimeScheduleId = null`, rather than per employee. This mirrors the default-team pattern of `TimeScheduleTeam.AllInclusive` (§3.2). |
 
 ### 3.1 Resolving "what shift should employee E work on date D" (new domain service, not a new table)
 
@@ -129,20 +190,34 @@ This logic doesn't exist yet as a single queryable thing — it must be implemen
 
 1. Look up `TimeScheduleEmployee` for `employeeId` → get `TimeScheduleId` + `TeamId`.
 2. Load the `TimeSchedule` row for that `TimeScheduleId`; call `timeSchedule.GetCycleDay(date)` → get the cycle day number (1..`CyclePeriod`).
-3. Look up `TimeScheduleLine` where `TimeScheduleId` + `TeamId` + `CycleDay` match → get `ShiftId` (a line may not exist for a given team/cycle-day combination — that almost certainly means "scheduled day off"; confirm this interpretation in Prompt 0 rather than assuming).
+3. Look up `TimeScheduleLine` where `TimeScheduleId` + `TeamId` + `CycleDay` match → get `ShiftId`. No line for a team/cycle-day combination means a scheduled day off; see §3.2 for which teams' lines apply.
 4. Load the `TimeScheduleShift` for that `ShiftId` → this is the expected shift (start/end/break/overtime) the Attendance Processing Engine compares actual punches against.
 
 **This resolution result is exactly the input the study calls `EmployeeSchedule`/`WorkShift` throughout §8, §9, and §14.** Every place the study says "compare against the employee's expected schedule," read it as "call `IScheduleResolutionService.ResolveShift`."
 
-### 3.2 `TimeScheduleTeam.AllInclusive` — unresolved
+### 3.2 `TimeScheduleTeam.AllInclusive` — decided
 
-Its purpose isn't fully determinable from the given source (no join/filter logic shown that reads it). It's plausibly "the default team an employee falls into if not explicitly assigned elsewhere." **Do not assume this in the resolution service without confirming** — an employee with no `TimeScheduleEmployee` row should probably raise a clear "no schedule configured" condition rather than guessing which `AllInclusive` team applies, unless Prompt 0 finds existing logic that already does this.
+**Definition (product owner, 2026-10-04):** an all-inclusive team includes *all employees assigned to the time schedule*. It is the **default team of a schedule**.
+
+What this means in code:
+
+- **Assignment** (implemented in `src/robeem.HR/Employees/EmployeeService.cs`):
+  - Assigning an employee to a schedule creates or updates their single `TimeScheduleEmployee` row with `TeamId` = that schedule's all-inclusive team. If there are several, it takes the lowest `Id`.
+  - A schedule with no all-inclusive team can't be assigned; the user gets a validation error.
+  - An employee has **at most one** schedule assignment, enforced by a unique index on `(TenantId, EmployeeId)`.
+  - Moving an employee to another schedule moves them to that schedule's default team. Staying on the same schedule keeps their current team.
+- **Resolution** (P6, `IScheduleResolutionService`):
+  - An employee with **no** `TimeScheduleEmployee` row is not on any schedule. Return an explicit "no schedule configured" result. Never guess a schedule.
+  - For an assigned employee, `TimeScheduleLine` rows of the schedule's all-inclusive team apply to them, because that team contains everyone on the schedule. So do lines of the team they are explicitly in.
+  - No line for a cycle day means a scheduled day off. Example: the seeded "Standard Week" has lines only for cycle days 1–5 (Mon–Fri).
 
 ---
 
 ## 4. New entities this feature introduces
 
-All in `robeem.DataModel`, following §2 conventions exactly. Base class and `ISeedData` recommendations below — confirm the schema module name per §2.2 before the first migration.
+All in **namespace** `robeem.DataModel`, following §2 conventions exactly, with schema `Module.Attendance` (§2.2), and every one implementing `ITenantScoped` (§2.8).
+
+They live in their **own project, `src/robeem.Attendance.DataModel`**, which P1 creates. That project references `robeem.DataModel` and must never be referenced back. This keeps Attendance separate from the HR classes (`Profile`, `TimeSchedule*`), which stay in `src/robeem.DataModel`. `robeem.Infrastructure` references the new project so `RobeemDbContext` can map its entities: add their `DbSet`s and `IEntityTypeConfiguration` classes under `Persistence/Configurations/Attendance`. Services go in a separate `src/robeem.Attendance` project, mirroring `src/robeem.HR`.
 
 | Entity | Base class | `ISeedData`? | Purpose (study ref) |
 |---|---|---|---|
@@ -164,22 +239,44 @@ Full field lists for every entity are in the study, §6.2, §7.3, §9.3, §11.2,
 
 ## 5. Commands
 
-**Placeholders below — confirm the real values against the actual solution/project structure in Prompt 0 before relying on them.** Do not assume a solution file name, project name, or test runner that hasn't been confirmed against the real repo.
+Run from the repository root. Requirements: .NET SDK 10, `dotnet-ef` 10 (`dotnet tool install -g dotnet-ef`), and a local PostgreSQL server (development uses `localhost:5432`, user `postgres`).
+
+**Connection strings with passwords are never committed.** `appsettings.Development.json` lists the tenants with password-less connection strings. The full strings live in the web project's user-secrets (`UserSecretsId` `robeem-attendance-web`), which override them by array index:
 
 ```bash
-# Build
-dotnet build <Solution>.sln
+dotnet user-secrets set "Tenancy:Tenants:0:ConnectionString" "Host=localhost;Database=robeem_demo;Username=postgres;Password=<pwd>" --project src/robeem.Web
+dotnet user-secrets set "Tenancy:Tenants:1:ConnectionString" "Host=localhost;Database=robeem_acme;Username=postgres;Password=<pwd>" --project src/robeem.Web
+```
 
-# Run the API host (name TBD — confirm in Prompt 0)
-dotnet run --project src/<ApiProjectName>
+In other environments, supply them through environment variables (`Tenancy__Tenants__0__ConnectionString`) or a secret store.
 
-# EF Core migrations (confirm DbContext name and migrations project in Prompt 0)
-dotnet ef migrations add <MigrationName> --project src/<DataProject> --startup-project src/<ApiProjectName>
-dotnet ef database update --project src/<DataProject> --startup-project src/<ApiProjectName>
+| Item | Value |
+|---|---|
+| Solution | `robeem.attendance.slnx` |
+| Web host (startup project) | `src/robeem.Web` (http://localhost:5180) |
+| Migrations project | `src/robeem.Infrastructure` (folder `Persistence/Migrations`) |
+| DbContext | `robeem.Infrastructure.Persistence.RobeemDbContext` |
+| Test project | `tests/robeem.Tests` (xUnit, in-memory SQLite) |
+
+```bash
+# Build (must finish with zero StyleCop errors, see §7)
+dotnet build robeem.attendance.slnx
+
+# Run the app. In Development this migrates and seeds every configured tenant database
+# (PostgreSQL databases robeem_demo and robeem_acme, created if missing) before it starts listening.
+dotnet run --project src/robeem.Web --launch-profile http
+
+# Add a migration (one schema for all tenants; each tenant database is migrated at startup)
+dotnet ef migrations add <MigrationName> --project src/robeem.Infrastructure --startup-project src/robeem.Web --output-dir Persistence/Migrations
 
 # Tests
-dotnet test
+dotnet test robeem.attendance.slnx
+
+# Formatting check (part of every prompt's Definition of Done)
+dotnet format robeem.attendance.slnx --verify-no-changes
 ```
+
+There is no `dotnet ef database update` step. Tenant databases are migrated by `TenantDatabaseInitializer` when `Database:InitializeOnStartup` is true. `dotnet ef` builds the model through `RobeemDbContextDesignTimeFactory`, which uses a placeholder tenant; set `ROBEEM_DESIGN_CONNECTION` to change its connection string.
 
 ---
 
@@ -187,7 +284,8 @@ dotnet test
 
 Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual prompts to run, in order):
 
-- [ ] **P0** — Investigate: multi-tenancy mechanism, `SmartEnum.Module` extensibility, `ISeedData` consumption, generic UI/API conventions over `Entity`, existing background-job infrastructure (Hangfire or similar), existing DbContext/repository pattern.
+- [x] **P0** — Investigate. Done; the host was unavailable, so the decisions in §2.2, §2.3, §2.8 and §3.2 were made by the product owner (`DISCOVERY_NOTES.md`).
+- [x] **Foundation** — Standalone solution: shared entities moved into `src/robeem.DataModel`, missing host types written, tenancy, `RobeemDbContext` + `InitialHr` migration, HR employee screens, tests (§9).
 - [ ] **P1** — Catalog/config entities: `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `AttendancePolicy` + EF configuration + migration.
 - [ ] **P2** — `RawAttendanceTransaction` + `AttendanceProcessingBatch` + immutability enforcement.
 - [ ] **P3** — `NormalizedAttendanceTransaction` + composite-key unique index.
@@ -208,85 +306,98 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
 
 ## 7. Coding style and static analysis (StyleCop.Analyzers)
 
-**Every `.csproj` this feature touches or creates — whether that's the existing `robeem.DataModel` project or any new project this feature introduces (e.g. the Application/Infrastructure split hinted at in Prompt 4) — must build clean under StyleCop.Analyzers.** This is a hard requirement, not a nice-to-have: it was added explicitly because `robeem.attendance` starts with no `.csproj` at all, so StyleCop must be wired in from the very first project file this feature creates, rather than retrofitted later.
+**Every project in the solution must build clean under StyleCop.Analyzers.** A clean build means zero errors and, as of the foundation, zero warnings too; keep it that way.
 
-### 7.1 Package reference
+### 7.1 Package reference — centralized
 
-There is no stable 1.x release of StyleCop.Analyzers as of this writing — pin the current prerelease and treat upgrading it as a deliberate, separate decision, never an incidental `dotnet add package` bump:
+`Directory.Build.props` at the repository root adds `StyleCop.Analyzers` **1.2.0-beta.556** and `stylecop.json` to **every** project automatically. It also sets `net10.0`, nullable and implicit usings. **Do not add StyleCop to individual `.csproj` files**; a new project is analyzed simply by being under the repository root. Upgrading the analyzer is a deliberate, separate decision.
 
-```xml
-<ItemGroup>
-  <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
-    <PrivateAssets>all</PrivateAssets>
-    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-  </PackageReference>
-</ItemGroup>
-```
-
-Add this `ItemGroup` to **every** `.csproj` this feature creates. If this feature's code ends up living inside the existing `robeem.DataModel.csproj` (the common case for the new entities in §4), add the same reference there too — do not leave the existing project unanalyzed just because it predates this feature.
-
-**Before adding it, check in Prompt 0 whether the main robeem solution already references StyleCop.Analyzers somewhere else (a `Directory.Build.props`, a shared `.editorconfig` at the solution root, or another project).** If it does, reuse that existing configuration and version instead of introducing a second, possibly conflicting one — two `.editorconfig`/`stylecop.json` files with different severities fighting over the same files is worse than having none. Only apply everything in this section if Prompt 0 confirms no such configuration already exists.
+(The host robeem solution was never available. The sibling AssetManagementSystem has only a bare `StyleCop.Analyzers.Unstable 1.2.0.556` reference, the same analyzer build, so nothing needed reusing. See `DISCOVERY_NOTES.md` Q9.)
 
 ### 7.2 `.editorconfig` — per-rule severity, not a blanket switch
 
-Place an `.editorconfig` at the repository root of `robeem.attendance` (next to this file) — Roslyn picks it up automatically for any project built underneath it, so no per-project wiring is needed beyond the package reference itself. **Do not set `TreatWarningsAsErrors` for the whole project.** StyleCop rules are enforced individually via `dotnet_diagnostic.SAxxxx.severity`; a rule set to `error` already fails the build on its own, without turning unrelated/pre-existing warnings (nullable, obsolete API, etc.) into build breaks as a side effect.
-
-Severities are tiered deliberately:
+The root `.editorconfig` governs every project. **Do not set `TreatWarningsAsErrors`.** A rule set to `error` already fails the build.
 
 | Tier | Severity | Rationale |
 |---|---|---|
-| Naming & readability (SA1300s, SA13xx member-naming, SA1500s braces) | `error` | These catch real inconsistency with §2's conventions (e.g. the `XId`/`X` navigation pairing) and should block the build. |
-| Ordering, spacing, blank-line layout (SA1200s usings, SA1500–1518 layout, SA1000–1028 spacing) | `warning` | Worth fixing, not worth blocking a build over — `dotnet format` (see below) auto-fixes nearly all of these. |
-| Documentation (SA16xx) and file headers (SA1633) | `none` | None of the existing `robeem.DataModel` files (`Entity`, `SystemEntity`, `TimeSchedule*`) carry XML doc comments or file headers — matching that existing style rather than forcing it retroactively. Revisit if the team later adopts doc-comment requirements platform-wide. |
+| Naming & readability (SA1300s, SA13xx member naming) | `error` | Catches inconsistency with §2's conventions. |
+| Ordering, spacing, blank-line layout (SA1200s, SA1500s, SA1000s) | `warning` | `dotnet format` fixes most of these. |
+| Documentation (SA16xx), file headers (SA1633), SA0001 | `none` | The supplied robeem files carry no XML docs or headers. |
 
-The full `.editorconfig` content is provided as a separate file alongside this one (`.editorconfig`) — copy it into the `robeem.attendance` repo root as-is and adjust only with a documented reason.
+Decisions recorded in `.editorconfig` (each has a comment there):
 
-**One rule needs a human decision, don't guess it**: SA1309 (`FieldNamesMustNotBeginWithUnderscore`) depends on whether this codebase's private-field convention is `camelCase` or `_camelCase`. The supplied `.editorconfig` ships with SA1309 at `warning` rather than `error` until Prompt 0 confirms the real convention from the broader robeem codebase (it isn't visible in the five supplied entity files, which have no private fields) — then promote it to `error` once confirmed.
+- **SA1300 and the brand name `robeem`:** the company name is all lower-case by branding decision.
+  - It is exempted **only for that exact identifier** by a Roslyn suppressor, `src/robeem.Analyzers/BrandNameSuppressor.cs` (suppression id `RBM1300`). `Directory.Build.props` loads it into every project.
+  - SA1300 stays an error for everything else; for example, a method named `badName` still fails the build.
+  - The suppressor project can't load itself, so it gets a path exemption instead.
+- **SA1309 `none`:** private fields are `_camelCase`.
+- **SA1101 `none`:** robeem code never prefixes members with `this.`.
+- **SA1124 `none`:** `#region not mapped` / `#region method` are house conventions (§2.6).
+- **Line endings:** `*.cs` files use **CRLF**, and `dotnet format --verify-no-changes` fails on LF files. If a tool writes LF, run `dotnet format robeem.attendance.slnx whitespace` before finishing.
+- `**/Migrations/*.cs` is generated code, so StyleCop ignores it.
 
 ### 7.3 `stylecop.json`
 
-StyleCop.Analyzers also reads a `stylecop.json` settings file (company name for header rules — unused here since SA1633 is `none`, but still required for the analyzer to initialize cleanly; culture for documentation rules). Provided as a separate file (`stylecop.json`) — copy it into the `robeem.attendance` repo root and reference it from every `.csproj` that uses the analyzer:
+At the repository root. `Directory.Build.props` links it into every project; nothing to do per project.
 
-```xml
-<ItemGroup>
-  <AdditionalFiles Include="$(MSBuildThisFileDirectory)..\stylecop.json" Link="stylecop.json" />
-</ItemGroup>
-```
+### 7.4 Supplied files — path-scoped relaxation, never a rewrite
 
-(Adjust the relative path per the actual project's depth under the repo root once the real folder layout exists.)
+The 8 supplied files under `src/robeem.DataModel` (`Core/Entity.cs`, `Core/SystemEntity.cs`, `Core/TimeShiftEntity.cs`, `HR/TimeSchedule*.cs`) must not be reformatted. `.editorconfig` relaxes only the rules they break, scoped to exactly those paths:
 
-### 7.4 Vendored/pre-existing files — path-scoped relaxation, never a blanket exclusion
+- SA1122, SA1133, SA1201, SA1208, SA1209, SA1312, SA1503, SA1507, SA1516;
+- SA1300, for `isSystemEntity`/`isWorkflowEntity`;
+- `charset = unset`, because three of them carry a UTF-8 BOM.
 
-If this feature's new code ends up compiled into the **same project** as the existing, already-shipped `robeem.DataModel` files (`Entity.cs`, `SystemEntity.cs`, `TimeShiftEntity.cs`, `TimeSchedule.cs`, `TimeScheduleShift.cs`, `TimeScheduleTeam.cs`, `TimeScheduleLine.cs`, `TimeScheduleEmployee.cs`, and anything else already in that folder), enabling StyleCop on the project enables it for those files too. **Do not reformat or rewrite those pre-existing files just to satisfy the analyzer** — add a path-scoped `.editorconfig` override instead, so enforcement stays strict for new code without forcing a noisy, risk-free-but-unnecessary diff across files this feature didn't write:
-
-```ini
-# Pre-existing robeem.DataModel files: relax layout/ordering rules that would otherwise
-# force cosmetic-only changes to files this feature did not write. Naming-convention
-# rules (SA1300-series) are intentionally NOT relaxed here — the existing files already
-# follow §2's conventions, so they should pass those unmodified.
-[**/DataModel/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
-dotnet_diagnostic.SA1101.severity = none   # Prefix local calls with this.
-dotnet_diagnostic.SA1201.severity = none   # Elements must appear in the correct order
-dotnet_diagnostic.SA1516.severity = none   # Elements must be separated by blank line
-```
-
-Adjust the glob to the real relative path once Prompt 0 confirms where `robeem.DataModel` actually lives relative to `robeem.attendance`'s repo root (they may not be in the same repo at all, in which case this override is moot and can be deleted).
+`Set.cs` and `EntityPropertyExtensions.cs` get SA1300 relief because the supplied files dictate their camelCase member names. **Never add a new file to these exemptions.** New files follow the rules.
 
 ### 7.5 Enforcement in practice
 
-- Run `dotnet format --verify-no-changes` (or `dotnet format` to auto-fix) before considering any prompt in `PROMPT_PLAN.md` done — this fixes essentially all `warning`-tier layout/spacing findings automatically, matching the practice already established in the sibling `robeem.storage` project.
-- A clean `dotnet build` with zero StyleCop errors is part of the Definition of Done for **every** prompt from Prompt 1 onward (see the updated Prompt 1 in `PROMPT_PLAN.md`), not just a final cleanup pass.
-- Do not suppress a StyleCop error with an inline `#pragma warning disable` to make a single file pass — fix the code, or if the rule is genuinely wrong for this codebase, change its severity in `.editorconfig` with a comment explaining why, so the decision is visible and consistent project-wide.
+Definition of Done for every prompt:
+
+- `dotnet build robeem.attendance.slnx` has zero errors and zero warnings;
+- `dotnet test robeem.attendance.slnx` is green;
+- `dotnet format robeem.attendance.slnx --verify-no-changes` passes.
+
+Do not suppress a StyleCop finding with `#pragma warning disable`. Fix the code, or change the rule's severity in `.editorconfig` with a comment explaining why.
 
 ---
 
 ## 8. What *not* to do
 
 - Do not create `WorkShift` or `EmployeeSchedule` entities — see §3.
-- Do not add a `TenantId` column to anything before P0 confirms the real multi-tenancy mechanism.
+- Do not create an entity without `ITenantScoped`. Do not set `TenantId` by hand, and do not call `IgnoreQueryFilters()` outside tests — see §2.8.
+- Do not share a `RobeemDbContext` or a DI scope between tenants. Background work runs per tenant through `TenantScopeFactory`.
+- Do not enable `Tenancy:AllowUnauthenticatedTenantSelection` outside Development.
+- Do not modify the 8 supplied files (§7.4), or move them out of namespace `robeem.DataModel`.
+- Do not reference `robeem.Attendance.DataModel` from `robeem.DataModel` or `robeem.HR`. HR does not depend on Attendance.
 - Do not let any code path `UPDATE` or `DELETE` a `RawAttendanceTransaction` row.
 - Do not let the Payroll extraction query touch `RawAttendanceTransaction` or `NormalizedAttendanceTransaction`.
 - Do not store a biometric template, under any field name, in `RawAttendanceTransaction.RawPayload` or anywhere else — allowlist fields at the adapter boundary.
-- Do not invent a `dotnet`/`dotnet ef` command path that hasn't been confirmed against the real repo structure.
-- Do not set `TreatWarningsAsErrors` on any project as a substitute for the tiered `.editorconfig` severities in §7 — it turns unrelated existing warnings into build breaks and is not how enforcement here is designed to work.
-- Do not reformat a pre-existing `robeem.DataModel` file to satisfy StyleCop — use the path-scoped override in §7.4 instead.
+- Do not set `TreatWarningsAsErrors` on any project as a substitute for the tiered `.editorconfig` severities in §7.
+- Do not add cascade deletes. `RobeemDbContext` sets every foreign key to `Restrict` on purpose.
+
+---
+
+## 9. Solution layout
+
+```
+robeem.attendance.slnx
+Directory.Build.props            net10.0, nullable, StyleCop + stylecop.json + brand-name suppressor for every project
+.editorconfig / stylecop.json    analyzer configuration (§7)
+src/
+  robeem.Analyzers/              BrandNameSuppressor: SA1300 exemption for "robeem" only
+  robeem.System.Contract/        SmartEnum (Module.HR, Module.Attendance)
+  robeem.DataModel/              namespace robeem.DataModel
+    Core/                        Entity, SystemEntity, TimeShiftEntity (supplied); ISeedData, IWorkflowEntity,
+                                 ITenantScoped, Set, EntityPropertyExtensions (written here)
+    HR/                          TimeSchedule* (supplied); Profile (the employee entity, written here)
+  robeem.Infrastructure/         RobeemDbContext, entity configurations, migrations, tenancy, seeding
+  robeem.HR/                     HR services: EmployeeService (+ schedule assignment), HrSeedContributor
+  robeem.Web/                    ASP.NET Core MVC host: Employees (list/add/edit), tenant picker, tenant middleware
+tests/
+  robeem.Tests/                  xUnit: Set/indexer/cycle-day, tenant isolation, registry, seeding, employee service
+```
+
+Attendance (P1 onward) adds `src/robeem.Attendance.DataModel` (entities) and `src/robeem.Attendance` (services) as a mirror of the HR pair. Its screens and endpoints go in `src/robeem.Web` (§4).
+
+**The employee entity is `Profile`.** The supplied `TimeScheduleEmployee` references it as `Profile? Employee`, so the class must be named `Profile` and live in `robeem.DataModel`. Fields: `EmployeeNumber` (unique per tenant), `FirstName`, `LastName`, `Email`, `Phone`, `Department`, `JobTitle`, `HireDate`, `TerminationDate`, `IsActive`. `Title` is kept equal to the full name.

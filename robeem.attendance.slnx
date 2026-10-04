@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/robeem.Analyzers/robeem.Analyzers.csproj" />
+    <Project Path="src/robeem.DataModel/robeem.DataModel.csproj" />
+    <Project Path="src/robeem.HR/robeem.HR.csproj" />
+    <Project Path="src/robeem.Infrastructure/robeem.Infrastructure.csproj" />
+    <Project Path="src/robeem.System.Contract/robeem.System.Contract.csproj" />
+    <Project Path="src/robeem.Web/robeem.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/robeem.Tests/robeem.Tests.csproj" />
+  </Folder>
+</Solution>

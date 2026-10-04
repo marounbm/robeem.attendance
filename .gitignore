@@ -1,0 +1,16 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Test results
+TestResults/
+
+# OS cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Solution-wide build settings (CLAUDE.md §7). Every project under this folder gets the same
+    target framework, nullable context, StyleCop.Analyzers reference and stylecop.json, so no
+    individual .csproj can be left unanalyzed by omission.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" />
+  </ItemGroup>
+
+  <!-- Brand-name exception for SA1300 ("robeem" stays lower-case), see src/robeem.Analyzers. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'robeem.Analyzers'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/robeem.Analyzers/robeem.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+</Project>

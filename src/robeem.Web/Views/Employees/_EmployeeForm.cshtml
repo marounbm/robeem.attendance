@@ -1,0 +1,75 @@
+@model EmployeeFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Identity</div>
+    <div class="card-body row g-3">
+        <div class="col-md-4">
+            <label asp-for="Input.EmployeeNumber" class="form-label"></label>
+            <input asp-for="Input.EmployeeNumber" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.EmployeeNumber" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.FirstName" class="form-label"></label>
+            <input asp-for="Input.FirstName" class="form-control" />
+            <span asp-validation-for="Input.FirstName" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.LastName" class="form-label"></label>
+            <input asp-for="Input.LastName" class="form-control" />
+            <span asp-validation-for="Input.LastName" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Email" class="form-label"></label>
+            <input asp-for="Input.Email" class="form-control" />
+            <span asp-validation-for="Input.Email" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Phone" class="form-label"></label>
+            <input asp-for="Input.Phone" class="form-control" />
+            <span asp-validation-for="Input.Phone" class="text-danger small"></span>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Employment</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.Department" class="form-label"></label>
+            <input asp-for="Input.Department" class="form-control" />
+            <span asp-validation-for="Input.Department" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.JobTitle" class="form-label"></label>
+            <input asp-for="Input.JobTitle" class="form-control" />
+            <span asp-validation-for="Input.JobTitle" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.HireDate" class="form-label"></label>
+            <input asp-for="Input.HireDate" class="form-control" />
+            <span asp-validation-for="Input.HireDate" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.TerminationDate" class="form-label"></label>
+            <input asp-for="Input.TerminationDate" class="form-control" />
+            <span asp-validation-for="Input.TerminationDate" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check mb-2">
+                <input asp-for="Input.IsActive" class="form-check-input" />
+                <label asp-for="Input.IsActive" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.TimeScheduleId" class="form-label"></label>
+            <select asp-for="Input.TimeScheduleId" class="form-select"
+                    asp-items="@(new SelectList(Model.Schedules, nameof(ScheduleOption.Id), nameof(ScheduleOption.Title)))">
+                <option value="">— Not assigned —</option>
+            </select>
+            <div class="form-text">The employee joins the schedule's all-inclusive (default) team.</div>
+            <span asp-validation-for="Input.TimeScheduleId" class="text-danger small"></span>
+        </div>
+    </div>
+</div>

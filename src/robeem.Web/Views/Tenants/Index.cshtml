@@ -1,0 +1,29 @@
+@model TenantPickerViewModel
+@{
+    ViewData["Title"] = "Choose tenant";
+}
+
+<h1 class="h3 mb-1">Choose tenant</h1>
+<p class="text-muted">Each tenant has its own database. This picker exists for development only.</p>
+
+<div class="list-group" style="max-width: 32rem">
+    @foreach (var tenant in Model.Tenants)
+    {
+        <form method="post" asp-action="Select" class="list-group-item d-flex justify-content-between align-items-center">
+            <input type="hidden" name="tenantId" value="@tenant.Id" />
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <span>
+                <strong>@tenant.Name</strong>
+                <span class="text-muted small ms-1">@tenant.Id</span>
+            </span>
+            @if (string.Equals(tenant.Id, Model.CurrentTenantId, StringComparison.Ordinal))
+            {
+                <span class="badge text-bg-primary">Current</span>
+            }
+            else
+            {
+                <button type="submit" class="btn btn-sm btn-outline-primary">Use</button>
+            }
+        </form>
+    }
+</div>

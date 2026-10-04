@@ -30,7 +30,10 @@ dotnet_diagnostic.SA1304.severity = error  # Non-private readonly fields must be
 dotnet_diagnostic.SA1306.severity = error  # Field names must begin with lower-case letter
 dotnet_diagnostic.SA1307.severity = error  # Accessible fields must begin with upper-case letter
 dotnet_diagnostic.SA1308.severity = error  # Variable names must not be prefixed
-dotnet_diagnostic.SA1309.severity = warning # Field names must not begin with underscore — UNCONFIRMED, see CLAUDE.md §7.2; promote to error once Prompt 0 confirms the real private-field convention
+# SA1309 off: private-field convention is `_camelCase` (DISCOVERY_NOTES.md Q9 — robeem.storage uses it
+# exclusively, robeem.DataModel's own TimeSchedule.cs uses `_`-prefixed names). Inferred from sibling code;
+# the host robeem solution was not available to confirm directly.
+dotnet_diagnostic.SA1309.severity = none   # Field names must not begin with underscore
 dotnet_diagnostic.SA1310.severity = error  # Field names must not contain underscore
 dotnet_diagnostic.SA1311.severity = error  # Static readonly fields must begin with upper-case letter
 dotnet_diagnostic.SA1312.severity = error  # Variable names must begin with lower-case letter
@@ -41,7 +44,8 @@ dotnet_diagnostic.SA1314.severity = error  # Type parameter names must begin wit
 # StyleCop.Analyzers — maintainability / readability (error)
 # ---------------------------------------------------------------------------
 dotnet_diagnostic.SA1119.severity = warning # Statement must not use unnecessary parenthesis
-dotnet_diagnostic.SA1124.severity = error  # Do not use regions (robeem.DataModel uses #region deliberately — see override below)
+# SA1124 off: CLAUDE.md §2.6 makes `#region not mapped` / `#region method` the house convention for entities.
+dotnet_diagnostic.SA1124.severity = none   # Do not use regions
 dotnet_diagnostic.SA1201.severity = warning # Elements must appear in the correct order
 dotnet_diagnostic.SA1202.severity = warning # Elements must be ordered by access
 dotnet_diagnostic.SA1203.severity = warning # Constants must appear before fields
@@ -83,7 +87,8 @@ dotnet_diagnostic.SA1026.severity = warning
 dotnet_diagnostic.SA1027.severity = warning
 dotnet_diagnostic.SA1028.severity = warning
 dotnet_diagnostic.SA1100.severity = error  # Do not prefix calls with base unless local implementation exists
-dotnet_diagnostic.SA1101.severity = warning # Prefix local calls with this (robeem.DataModel doesn't follow this — see override below)
+# SA1101 off: robeem code never prefixes members with `this.`, and `_camelCase` fields (see SA1309) already mark members.
+dotnet_diagnostic.SA1101.severity = none   # Prefix local calls with this
 dotnet_diagnostic.SA1106.severity = error  # Code must not contain empty statements
 dotnet_diagnostic.SA1108.severity = error  # Block statements must not contain embedded comments
 dotnet_diagnostic.SA1116.severity = warning # Split parameters must start on line after declaration
@@ -170,12 +175,41 @@ dotnet_diagnostic.SA1648.severity = none   # Inheritdoc must be used with inheri
 dotnet_diagnostic.SA1651.severity = none   # Do not use placeholder elements
 
 # ---------------------------------------------------------------------------
-# Pre-existing robeem.DataModel files — path-scoped relaxation (see CLAUDE.md §7.4).
-# Adjust the glob once Prompt 0 confirms the real relative path; delete this section
-# entirely if robeem.DataModel turns out to live in a separate repo/solution.
+# Analyzer housekeeping
 # ---------------------------------------------------------------------------
-[**/DataModel/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
-dotnet_diagnostic.SA1101.severity = none
-dotnet_diagnostic.SA1124.severity = none
+dotnet_diagnostic.SA0001.severity = none   # XML comment analysis disabled (no project generates XML docs; SA16xx are off anyway)
+
+# SA1300 and the brand name: `robeem` is intentionally all lower-case. SA1300 cannot be scoped
+# to one identifier here, so src/robeem.Analyzers/BrandNameSuppressor.cs suppresses SA1300 only
+# where the identifier is exactly `robeem`. Every other SA1300 finding remains an error.
+
+# The suppressor project cannot load itself as an analyzer, so its own `namespace robeem.Analyzers`
+# gets the brand-name exception by path instead.
+[src/robeem.Analyzers/**.cs]
+dotnet_diagnostic.SA1300.severity = none
+
+# EF Core migrations are generated code.
+[**/Migrations/*.cs]
+generated_code = true
+
+# ---------------------------------------------------------------------------
+# Pre-existing robeem.DataModel files — path-scoped relaxation (see CLAUDE.md §7.4).
+# These files were supplied as-is and must not be reformatted.
+# ---------------------------------------------------------------------------
+[src/robeem.DataModel/**/{Entity,SystemEntity,TimeShiftEntity,TimeSchedule,TimeScheduleShift,TimeScheduleTeam,TimeScheduleLine,TimeScheduleEmployee}.cs]
+charset = unset                            # Entity/SystemEntity/TimeShiftEntity were supplied with a UTF-8 BOM, the others without
+dotnet_diagnostic.SA1122.severity = none
+dotnet_diagnostic.SA1133.severity = none   # [Serializable, Table(...)] combined attributes
 dotnet_diagnostic.SA1201.severity = none
+dotnet_diagnostic.SA1208.severity = none   # `using SmartEnum = ...` alias placed before System usings
+dotnet_diagnostic.SA1209.severity = none
+dotnet_diagnostic.SA1300.severity = none   # Entity.isSystemEntity / isWorkflowEntity are camelCase by contract
+dotnet_diagnostic.SA1312.severity = none   # TimeSchedule.GetCycleDay uses `_`-prefixed locals (_difference, _cycleDay, ...)
+dotnet_diagnostic.SA1503.severity = none
+dotnet_diagnostic.SA1507.severity = none
 dotnet_diagnostic.SA1516.severity = none
+
+# New files whose public member names are dictated by the shared sources above
+# (Set.asTime, Set.isSystemEntity, EntityPropertyExtensions.getPropertyValue, ...).
+[src/robeem.DataModel/Core/{Set,EntityPropertyExtensions}.cs]
+dotnet_diagnostic.SA1300.severity = none
