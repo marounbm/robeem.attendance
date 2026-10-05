@@ -1,4 +1,5 @@
 using robeem.Application.Attendance;
+using robeem.Application.Security;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
 
@@ -64,7 +65,11 @@ public abstract class AttendanceEngineTestBase : IDisposable
     }
 
     protected AttendanceProcessingEngine CreateEngine(RobeemDbContext db) =>
-        new(db, new ScheduleResolutionService(db), new AttendancePolicyResolver(db), Clock);
+        new(db, new ScheduleResolutionService(db), new AttendancePolicyResolver(db), CreateAudit(db), Clock);
+
+    /// <summary>The audit trail of a context, for the system unless a test names the user.</summary>
+    protected AttendanceAuditTrail CreateAudit(RobeemDbContext db, ICurrentUser? user = null) =>
+        new(db, user ?? new SystemCurrentUser(), Clock);
 
     /// <summary>A Monday-only schedule with the given shifts, its employee assigned to its all-inclusive team.</summary>
     protected void AssignSchedule(params ShiftSpec[] specs)

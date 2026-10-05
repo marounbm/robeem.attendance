@@ -206,7 +206,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var exceptionId = await GivenMissingBreakOutAsync();
         var other = AddProfile("E-2", "Charles", "Babbage");
 
-        Assert.Contains(nameof(ProposeCorrectionRequest.RequestedByEmployeeId), (await ProposeAsync(exceptionId, Monday.At(12, 0), requestedBy: other)).Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.RequestedBy, (await ProposeAsync(exceptionId, Monday.At(12, 0), requestedBy: other)).Errors.Keys);
         Assert.Contains(nameof(ProposeCorrectionRequest.Justification), (await ProposeAsync(exceptionId, Monday.At(12, 0), justification: "  ")).Errors.Keys);
         Assert.Contains(nameof(ProposeCorrectionRequest.ProposedValue), (await ProposeAsync(exceptionId, Monday.At(18, 30))).Errors.Keys);
         Assert.Contains(nameof(ProposeCorrectionRequest.ProposedValue), (await ProposeAsync(exceptionId, Monday.AddDays(-1).At(12, 0))).Errors.Keys);
@@ -251,8 +251,8 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var exceptionId = await GivenMissingBreakOutAsync();
         var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
 
-        Assert.Contains(nameof(DecideCorrectionRequest.DecidedByUserId), (await DecideAsync(id, EmployeeId, approved: true, isHr: false)).Errors.Keys);
-        Assert.Contains(nameof(DecideCorrectionRequest.DecidedByUserId), (await DecideAsync(id, 999, approved: true, isHr: false)).Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.DecidedBy, (await DecideAsync(id, EmployeeId, approved: true, isHr: false)).Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.DecidedBy, (await DecideAsync(id, 999, approved: true, isHr: false)).Errors.Keys);
         Assert.True((await DecideAsync(999, _managerId, approved: true, isHr: false)).NotFound);
 
         await DecideAsync(id, _managerId, approved: true, isHr: false);
@@ -260,6 +260,111 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         Assert.False(again.Succeeded);
         using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(AttendanceCorrectionStatus.Applied, Assert.Single(db.AttendanceCorrections).Status);
+    }
+
+    [Fact]
+    public async Task ADecision_WritesAnAuditEntry_WithTheDecidersActor()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var correctionId = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        await DecideAsync(correctionId, _managerId, approved: true, isHr: false);
+
+        var decision = Assert.Single(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
+        Assert.Equal($"employee:{_managerId}", decision.Actor);
+        Assert.Equal((nameof(AttendanceCorrection), correctionId), (decision.EntityType, decision.EntityId));
+        Assert.Contains("Approved by Manager", decision.Details);
+        Assert.Contains("Applied", decision.Details);
+    }
+
+    [Fact]
+    public async Task EveryExceptionStatusChange_IsAudited_WithItsActor()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var correctionId = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+        await DecideAsync(correctionId, _managerId, approved: true, isHr: false);
+
+        var changes = (await AuditAsync(AttendanceAuditActions.ExceptionStatusChanged)).OrderBy(e => e.Id).ToList();
+
+        // Raised by the engine (the system), proposed by the employee, closed by the manager's approval.
+        Assert.Equal(["system", $"employee:{EmployeeId}", $"employee:{_managerId}"], changes.Select(c => c.Actor));
+        Assert.All(changes, c => Assert.Equal((nameof(AttendanceException), exceptionId), (c.EntityType, c.EntityId)));
+        Assert.StartsWith("(new) -> Open", changes[0].Details);
+        Assert.StartsWith("Open -> PendingCorrection", changes[1].Details);
+        Assert.StartsWith("PendingCorrection -> Closed", changes[2].Details);
+    }
+
+    [Fact]
+    public async Task ARejection_IsAuditedAsADecision_AndAsTheExceptionReopening()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var correctionId = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        await DecideAsync(correctionId, _managerId, approved: false, isHr: false);
+
+        var decision = Assert.Single(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
+        Assert.Contains("Rejected by Manager", decision.Details);
+        Assert.Equal($"employee:{_managerId}", decision.Actor);
+        var reopened = (await AuditAsync(AttendanceAuditActions.ExceptionStatusChanged)).OrderBy(e => e.Id).Last();
+        Assert.StartsWith("PendingCorrection -> Open", reopened.Details);
+        Assert.Equal($"employee:{_managerId}", reopened.Actor);
+    }
+
+    [Fact]
+    public async Task ARefusedDecision_WritesNoDecisionEntry()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var correctionId = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        await DecideAsync(correctionId, EmployeeId, approved: true, isHr: false);
+
+        Assert.Empty(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
+    }
+
+    [Fact]
+    public async Task AStepOfABothWorkflow_IsAudited_WhileTheCorrectionIsStillPending()
+    {
+        AddDefaultPolicy(p => p.CorrectionApprovalWorkflow = CorrectionApprovalWorkflow.Both);
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var correctionId = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        await DecideAsync(correctionId, _managerId, approved: true, isHr: false);
+        await DecideAsync(correctionId, _hrId, approved: true, isHr: true);
+
+        var decisions = (await AuditAsync(AttendanceAuditActions.CorrectionDecided)).OrderBy(e => e.Id).ToList();
+        Assert.Equal([$"employee:{_managerId}", $"employee:{_hrId}"], decisions.Select(d => d.Actor));
+        Assert.Contains("still Pending", decisions[0].Details);
+        Assert.Contains("Approved by HR; the correction is Applied", decisions[1].Details);
+    }
+
+    [Fact]
+    public async Task ProposingReadsNormalizedAttendance_AndThatReadIsAudited()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+
+        await ProposeAsync(exceptionId, Monday.At(12, 0));
+
+        var read = Assert.Single(await AuditAsync(AttendanceAuditActions.AttendanceDataRead));
+        Assert.Equal($"employee:{EmployeeId}", read.Actor);
+        Assert.Equal(nameof(NormalizedAttendanceTransaction), read.EntityType);
+    }
+
+    [Fact]
+    public async Task AProposalRefusedForItsTimeOrJustification_StillAuditsTheRead()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+
+        Assert.False((await ProposeAsync(exceptionId, Monday.At(12, 0), justification: " ")).Succeeded);
+
+        // The read happened and is recorded; the exception did not move.
+        Assert.Single(await AuditAsync(AttendanceAuditActions.AttendanceDataRead));
+        Assert.DoesNotContain(await AuditAsync(AttendanceAuditActions.ExceptionStatusChanged), e => e.Details!.Contains("PendingCorrection"));
+    }
+
+    private async Task<IReadOnlyList<AuditLogEntry>> AuditAsync(string action)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await CreateAudit(db).ListAsync(action, null, null, 100, CancellationToken.None);
     }
 
     private async Task<int> GivenMissingBreakOutAsync()
@@ -304,5 +409,5 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     }
 
     private AttendanceCorrectionService CreateService(RobeemDbContext db) =>
-        new(db, new AttendancePolicyResolver(db), CreateEngine(db), Clock);
+        new(db, new AttendancePolicyResolver(db), CreateEngine(db), CreateAudit(db), Clock);
 }

@@ -14,13 +14,15 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
     private readonly IRobeemDbContext _db;
     private readonly IScheduleResolutionService _schedules;
     private readonly IAttendancePolicyResolver _policies;
+    private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
 
-    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies, TimeProvider clock)
+    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies, IAttendanceAuditTrail audit, TimeProvider clock)
     {
         _db = db;
         _schedules = schedules;
         _policies = policies;
+        _audit = audit;
         _clock = clock;
     }
 
@@ -71,6 +73,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
 
         // All of the day's changes in one save: one transaction.
         await _db.SaveChangesAsync(cancellationToken);
+
+        // The raised exceptions have ids now.
+        await _audit.FlushNewAsync(cancellationToken);
         return result with { ExceptionsRaised = exceptions.Raised, ExceptionsResolved = exceptions.Resolved };
     }
 
@@ -341,6 +346,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 DetectedAt = now,
             };
             _db.AttendanceExceptions.Add(opened);
+            _audit.RecordNew(AttendanceAuditActions.ExceptionStatusChanged, opened, $"(new) -> Open: {found.Description}");
             active.Add(opened);
             raised++;
         }
@@ -353,6 +359,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 gone.Status = AttendanceExceptionStatus.Closed;
                 gone.ResolutionMethod = AttendanceExceptionResolutionMethod.AutoResolved;
                 gone.ResolvedAt = now;
+                _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), gone.Id, "Open -> Closed: the problem is gone (auto-resolved).");
                 resolved++;
             }
             else

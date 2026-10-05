@@ -3,9 +3,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Attendance;
 using robeem.Application.Persistence;
+using robeem.Application.Security;
 using robeem.Application.Tenancy;
 using robeem.Infrastructure.Attendance.Providers;
 using robeem.Infrastructure.Persistence;
+using robeem.Infrastructure.Security;
 using robeem.Infrastructure.Seeding;
 using robeem.Infrastructure.Tenancy;
 
@@ -35,6 +37,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IRobeemDbContext>(sp => sp.GetRequiredService<RobeemDbContext>());
 
+        services.AddScoped<ISecretStore, ConfigurationSecretStore>();
         services.AddScoped<SeedDataRunner>();
         services.AddSingleton<TenantDatabaseInitializer>();
 

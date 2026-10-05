@@ -12,7 +12,7 @@ The product owner answered the open questions. The host robeem codebase will not
 | 2 | `SmartEnum.Module` | Defined here as a plain enum: `HR`, `Attendance`. Attendance entities use `Module.Attendance`. | §2.2 |
 | 3 | `ISeedData` | "Must not break the code." It is a marker consumed by `SeedDataRunner`, which only allows marked types to be seeded and runs idempotent contributors per tenant at startup. | §2.3 |
 | 4 | DbContext / repository | `RobeemDbContext` (EF Core 10, PostgreSQL via Npgsql; SQL Server until 2026-10-04) with `IEntityTypeConfiguration` classes. No repository layer: services use the DbContext directly as the unit of work. | §9 |
-| 5 | Background jobs | None yet. Per-tenant work goes through `TenantScopeFactory`. The scheduler is chosen in P10; robeem.storage's Hangfire is the reference pattern. | §2.8 |
+| 5 | Background jobs | Per-tenant work goes through `TenantScopeFactory`. **Decided in P10: one in-process `BackgroundService` running `IScheduledJob`s, Polly for per-integration resilience; Hangfire was considered and not adopted.** Reasons and the single-instance limit are in CLAUDE.md §2.8. | §2.8 |
 | 6 | Generic layer | "Must not break the code." The indexer helpers (`getPropertyValue`/`setPropertyValue`) and `Set.isSystemEntity`/`isWorkflowEntity` are implemented and tested. There is no generic grid; screens are explicit MVC views. | §2.7 |
 | 7 | `AllInclusive` | It is the schedule's default team and contains every employee assigned to the schedule. Assigning a schedule puts the employee in that team. | §3.2 |
 | 8 | Commands | Real values now exist: `robeem.attendance.slnx`, `src/robeem.Web`, `src/robeem.Infrastructure`, `RobeemDbContext`, `tests/robeem.Tests`. | §5 |

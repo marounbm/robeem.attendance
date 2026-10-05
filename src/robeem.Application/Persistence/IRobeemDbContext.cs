@@ -48,6 +48,10 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceCorrection> AttendanceCorrections { get; }
 
+    DbSet<PayPeriod> PayPeriods { get; }
+
+    DbSet<AttendanceAuditLog> AttendanceAuditLogs { get; }
+
     ChangeTracker ChangeTracker { get; }
 
     /// <summary>Gets the database facade, for a transaction around several saves.</summary>

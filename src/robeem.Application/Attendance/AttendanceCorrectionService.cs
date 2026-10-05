@@ -12,13 +12,15 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
     private readonly IRobeemDbContext _db;
     private readonly IAttendancePolicyResolver _policies;
     private readonly IAttendanceProcessingEngine _engine;
+    private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
 
-    public AttendanceCorrectionService(IRobeemDbContext db, IAttendancePolicyResolver policies, IAttendanceProcessingEngine engine, TimeProvider clock)
+    public AttendanceCorrectionService(IRobeemDbContext db, IAttendancePolicyResolver policies, IAttendanceProcessingEngine engine, IAttendanceAuditTrail audit, TimeProvider clock)
     {
         _db = db;
         _policies = policies;
         _engine = engine;
+        _audit = audit;
         _clock = clock;
     }
 
@@ -45,8 +47,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         }
         else if (requestedByEmployeeId != exception.EmployeeId)
         {
-            // TODO(P12): this becomes "the authenticated user is the exception's employee".
-            errors[nameof(ProposeCorrectionRequest.RequestedByEmployeeId)] = "A correction can only be proposed by the employee the exception belongs to.";
+            // The requester is the authenticated user: they must be the exception's employee.
+            errors[CorrectionErrorKeys.RequestedBy] = "A correction can only be proposed by the employee the exception belongs to.";
         }
 
         var trimmed = (justification ?? string.Empty).Trim();
@@ -68,7 +70,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         }
         else
         {
-            timeZoneId = await ResolveTimeZoneAsync(exception.EmployeeId, proposed, cancellationToken);
+            timeZoneId = await ResolveTimeZoneAsync(exception.EmployeeId, proposed, ActorOf(requestedByEmployeeId), cancellationToken);
             var instant = new VendorTimestamp(proposed, null).ToUtc(timeZoneId);
             if (instant is null)
             {
@@ -88,7 +90,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         var employeeExists = await _db.Profiles.AnyAsync(p => p.Id == requestedByEmployeeId, cancellationToken);
         if (!employeeExists)
         {
-            return CorrectionResult.Invalid(nameof(ProposeCorrectionRequest.RequestedByEmployeeId), "The employee does not exist.");
+            return CorrectionResult.Invalid(CorrectionErrorKeys.RequestedBy, "The employee does not exist.");
         }
 
         var policy = await _policies.ResolveAsync(exception.EmployeeId, cancellationToken);
@@ -108,6 +110,12 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         };
         _db.AttendanceCorrections.Add(correction);
         exception.Status = AttendanceExceptionStatus.PendingCorrection;
+        _audit.Record(
+            AttendanceAuditActions.ExceptionStatusChanged,
+            nameof(AttendanceException),
+            exception.Id,
+            "Open -> PendingCorrection: a correction was proposed.",
+            ActorOf(requestedByEmployeeId));
         await _db.SaveChangesAsync(cancellationToken);
 
         return CorrectionResult.Success(correction, exception.Status);
@@ -128,16 +136,16 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             return CorrectionResult.Invalid(nameof(correctionId), $"The correction is {correction.Status}, not waiting for a decision.");
         }
 
-        // TODO(P12): the decider comes from the authenticated user, and the role is checked
-        // against their permissions. Until then the caller says who decides and in which role.
+        // The decider is the authenticated user, and the endpoint has checked that they hold the
+        // role they decide in; here only the correction's own rules remain.
         if (!await _db.Profiles.AnyAsync(p => p.Id == decidedByUserId, cancellationToken))
         {
-            return CorrectionResult.Invalid(nameof(DecideCorrectionRequest.DecidedByUserId), "The user does not exist.");
+            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "The user does not exist.");
         }
 
         if (decidedByUserId == correction.RequestedByEmployeeId)
         {
-            return CorrectionResult.Invalid(nameof(DecideCorrectionRequest.DecidedByUserId), "A correction can't be decided by the person who proposed it.");
+            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "A correction can't be decided by the person who proposed it.");
         }
 
         if (RoleProblem(correction, isHrDecision) is { } problem)
@@ -147,6 +155,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
         var now = _clock.GetLocalNow().DateTime;
         var decision = approved ? AttendanceCorrectionDecision.Approved : AttendanceCorrectionDecision.Rejected;
+        var actor = ActorOf(decidedByUserId);
+        var role = isHrDecision ? "HR" : "Manager";
         if (isHrDecision)
         {
             (correction.HrDecision, correction.HrDecidedById, correction.HrDecidedAt) = (decision, decidedByUserId, now);
@@ -161,6 +171,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             // Back to Open, so a new correction can be proposed (study §11.1).
             correction.Status = AttendanceCorrectionStatus.Rejected;
             exception.Status = AttendanceExceptionStatus.Open;
+            _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
+            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Open: the correction was rejected.", actor);
             await _db.SaveChangesAsync(cancellationToken);
             return CorrectionResult.Success(correction, exception.Status);
         }
@@ -170,6 +182,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         var complete = correction.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager ? !isHrDecision : isHrDecision;
         if (!complete)
         {
+            _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is still {correction.Status}.", actor);
             await _db.SaveChangesAsync(cancellationToken);
             return CorrectionResult.Success(correction, exception.Status);
         }
@@ -183,6 +196,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         exception.Status = AttendanceExceptionStatus.Closed;
         exception.ResolutionMethod = AttendanceExceptionResolutionMethod.Correction;
         exception.ResolvedAt = now;
+        _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
+        _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Closed: the correction was applied.", actor);
         await _db.SaveChangesAsync(cancellationToken);
 
         await _engine.ProcessEmployeeDayAsync(correction.EmployeeId, correction.AttendanceDate, cancellationToken);
@@ -193,8 +208,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
     public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, CancellationToken cancellationToken)
     {
-        // TODO(P12): limit the list to the approver's scope (their team or department). There is
-        // no manager or organization structure in this solution to scope by.
+        // TODO(approver scope): limit the list to the approver's team or department. There is no
+        // manager or organization structure in this solution to scope by, so a manager sees every
+        // pending correction awaiting a manager (ATTENDANCE_P12_NOTES.md).
         var pending = _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.Status == AttendanceCorrectionStatus.Pending);
@@ -244,6 +260,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             .ToList();
     }
 
+    private static string ActorOf(int employeeId) => $"employee:{employeeId}";
+
     /// <summary>Why this role can't decide the correction now, or null when it can.</summary>
     private static string? RoleProblem(AttendanceCorrection correction, bool isHrDecision) => correction.ApprovalWorkflow switch
     {
@@ -259,8 +277,13 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
     /// device's clock is the one the schedule is compared with; the server's zone when the employee
     /// has no punch around then.
     /// </summary>
-    private async Task<string> ResolveTimeZoneAsync(int employeeId, DateTime proposed, CancellationToken cancellationToken)
+    private async Task<string> ResolveTimeZoneAsync(int employeeId, DateTime proposed, string actor, CancellationToken cancellationToken)
     {
+        // A direct read of normalized attendance outside the engine: audited, and saved at once, since
+        // a proposal that is then refused saves nothing else.
+        _audit.Record(AttendanceAuditActions.AttendanceDataRead, nameof(NormalizedAttendanceTransaction), null, $"Time zone for a correction of employee {employeeId}, near {proposed:s}.", actor);
+        await _db.SaveChangesAsync(cancellationToken);
+
         var nearby = await _db.NormalizedAttendanceTransactions
             .AsNoTracking()
             .Where(n => n.EmployeeId == employeeId

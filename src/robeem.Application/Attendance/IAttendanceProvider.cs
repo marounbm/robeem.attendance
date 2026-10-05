@@ -19,6 +19,11 @@ public interface IAttendanceProvider
     /// <summary>Retrieves the transactions in <paramref name="range"/>, or every available one when it is null.</summary>
     Task<AttendanceBatchResult> RetrieveAttendanceTransactionsAsync(AttendanceIntegrationConfig config, DateRange? range, CancellationToken cancellationToken);
 
-    /// <summary>Retrieves the transactions after <paramref name="cursor"/>, or from the beginning when it is null.</summary>
+    /// <summary>
+    /// Retrieves the transactions after <paramref name="cursor"/>, or from the beginning when it is
+    /// null, reading back <see cref="AttendanceIntegrationConfig.SyncOverlap"/> from the cursor when
+    /// the cursor is a time. Throws <see cref="NotSupportedException"/> when the vendor has no
+    /// incremental sync: the sync job then skips the integration instead of counting a failure.
+    /// </summary>
     Task<AttendanceBatchResult> GetTransactionChangesAsync(AttendanceIntegrationConfig config, SyncCursor? cursor, CancellationToken cancellationToken);
 }

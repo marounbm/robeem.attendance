@@ -78,7 +78,7 @@ Implemented by `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeSch
 - The runner **rejects** any contributor that stages a change to an entity type not marked `ISeedData`, and saves nothing from it.
 - Implementing the marker on a new type is always safe: it only *permits* seeding, and does nothing on its own.
 
-To seed the provider catalog (P15), add an `ISeedContributor`.
+The provider catalog and the default attendance policy are seeded by `AttendanceSeedContributor` (P15, `src/robeem.Application/Attendance/Seeding`).
 
 ### 2.4 Foreign keys and navigation properties
 
@@ -174,7 +174,30 @@ Decided by the product owner (2026-10-04): **every tenant has its own database**
   2. `Tenancy:DefaultTenantId`.
 - A rejection is a ProblemDetails response with a `code` extension: `tenant_required` (403), `unknown_tenant` (400) or `tenant_unavailable` (403). The constants are in `TenancyProtocol`.
 - Controllers or actions that must work without a tenant carry `[AllowWithoutTenant]`, as `GET api/tenants` does.
-- **There is no authentication in this solution yet.** In production, `AllowUnauthenticatedTenantSelection` stays false, so no request reaches tenant data until authentication issues a `tenant_id` claim (P12).
+- **Authentication is JWT bearer validation (decided in P12, below).** In production, `AllowUnauthenticatedTenantSelection` stays false, so a request reaches tenant data only with a valid token whose `tenant_id` claim names a configured tenant.
+
+**Authentication and authorization — decided in P12 (2026-10-05, provisional: made on the assistant's recommendation when asked to continue; revisit before production).**
+
+`robeem.Api` is a **resource server only**: it validates JWT bearer tokens (`Microsoft.AspNetCore.Authentication.JwtBearer`) from an external identity provider. **Entra ID is the target**, given the planned Azure move; any OpenID Connect provider works, since the Api only needs `Authentication:Jwt:Authority` and `Audience`. It has no user store, issues no tokens and never sees a password.
+
+Why not the other two options:
+
+- **ASP.NET Core Identity with cookies:** the Web front end reaches the Api server-to-server, so a browser cookie never arrives at the Api; the Web would have to log in on the user's behalf and forward something anyway. It would also make this solution own user storage, password reset and lockout.
+- **Api-issued JWTs:** the same user store burden, plus token issuing, refresh and key rotation, to build what an identity provider already does.
+
+What the token must carry (names are in `src/robeem.Api/Security/SecurityClaims.cs`; the IdP is configured to emit them):
+
+| Claim | Meaning |
+|---|---|
+| `tenant_id` | the tenant database, read by `TenantResolutionMiddleware` (unchanged contract) |
+| `role` (one per role) | `Employee`, `Manager`, `HRAdministrator`, `PayrollAdministrator`, `IntegrationAdministrator` (study §16.5) |
+| `employee_id` | the user's `Profile` id: who proposes or decides a correction, and the actor in the audit log |
+
+- **Roles are checked with `[Authorize(Roles = ...)]` on every Attendance endpoint, and on the HR ones.** There is no fallback policy: `GET api/tenants` stays anonymous for the tenant picker.
+- **Development:** `Authentication:DevelopmentUser:Enabled` authenticates every request without a bearer token as a configured user with every role. The Api **refuses to start with it on outside Development**, as it does for `AllowUnauthenticatedTenantSelection`. It exists so the Web works locally.
+- **Not done: Web sign-in.** The Web has no login and does not forward tokens, so in production its calls get 401. Add OpenID Connect sign-in to the Web and a handler that attaches the user's access token next to `TenantHeaderHandler`. Until then, the Web works in Development only.
+- **Secrets:** `AttendanceIntegration.ConnectionConfigRef` is a *reference*; `ISecretStore` resolves it to the secret under `Secrets:{tenantId}:{reference}` in configuration. Development: user-secrets. Production: any configuration provider, e.g. Azure Key Vault (`AddAzureKeyVault`) or environment variables; nothing in the code changes. Secrets are never logged or stored in a table.
+- **Audit log:** `AttendanceAuditLog` (`SystemEntity`, insert-only) records every correction decision, every exception status change, and every read of raw or normalized attendance outside normalization and processing. `IAttendanceAuditLog` stages the entry in the caller's unit of work, so it commits or rolls back with the change.
 
 **On the Web side** (`src/robeem.Web/Tenancy`):
 
@@ -182,6 +205,24 @@ Decided by the product owner (2026-10-04): **every tenant has its own database**
 - `TenantHeaderHandler` forwards that cookie to the Api as `X-Tenant-Id`, but only when it is shaped like a tenant id.
 - When the Api rejects the tenant, `TenantSelectionRequiredFilter` redirects GET requests to the picker. If the tenant was unknown, it deletes the cookie first.
 - The Web has no tenant configuration of its own. The tenant list and the current tenant come from `GET api/tenants` and `GET api/tenants/current`.
+
+**Background jobs and the scheduler — decided in P10 (2026-10-04): no Hangfire; one in-process scheduler in `robeem.Api`, Polly for resilience.**
+
+`robeem.Api` runs a single `BackgroundService`, `ScheduledJobsHostedService`, which runs the `IScheduledJob`s in `src/robeem.Api/Attendance/Jobs`: `NormalizationJob` (every few seconds), `IntegrationSyncJob` (a short tick; each integration is due by its own `AttendanceIntegration.PollingScheduleCron`) and `ReconciliationJob` (nightly cron). Each job walks `ITenantRegistry.Tenants` and works inside its own `ITenantScopeFactory.CreateScope`. The logic is in Application services (`INormalizationService`, `IIntegrationSyncService`); a job only decides what is due. Per-integration retry with exponential backoff and jitter, and a circuit breaker, are Polly pipelines held by `IntegrationResilience`.
+
+Why not Hangfire.PostgreSql (robeem.storage's choice):
+
+- **Database per tenant.** Hangfire needs one storage database. This solution has no control database; it would have to be a tenant's, or a new connection and a new thing to provision. Job arguments would also carry tenant ids outside the tenant isolation this solution enforces.
+- **The dashboard is a control surface with no authentication** until P12, and "do not expose it" is a rule that gets forgotten.
+- **Retries would be doubled.** Hangfire retries a failed job on its own; the study wants retries and a breaker *per integration*, with health reported on the integration. Polly does that inside the sync, and Hangfire's job-level retry would fight it.
+- **The workload is three periodic jobs.** The schedule already lives on the integration row (`PollingScheduleCron`); there are no queues, continuations or fire-and-forget jobs to justify the dependency.
+- **At-least-once is safe by design.** Overlapping sync windows and the duplicate detection of normalization (§1.4) absorb a repeated run.
+
+What this gives up, and when to revisit:
+
+- **Run a single Api instance.** There is no distributed lock. Two instances would sync the same integration twice (harmless: duplicates are absorbed) and could normalize the same raw row twice (not harmless). When the Api must scale out, adopt Hangfire.PostgreSql on a dedicated control database, or PostgreSQL advisory locks per tenant database, in place of this host. The Application services stay as they are.
+- **Missed runs are not replayed.** After downtime, incremental sync catches up through its cursor; the nightly reconciliation waits for the next night.
+- The circuit breaker state is in memory. A restart closes it; `AttendanceIntegration.HealthStatus` is what persists.
 
 ---
 
@@ -245,7 +286,7 @@ Each layer gets an `Attendance` folder next to its `HR` folder. There are no sep
 | Services, processing engine, schedule resolution | `src/robeem.Application/Attendance/`. Add each `DbSet` to `IRobeemDbContext`, and register services in `AddRobeemApplication`. |
 | EF mapping | `RobeemDbContext` `DbSet`s, plus `IEntityTypeConfiguration` classes under `src/robeem.Infrastructure/Persistence/Configurations/Attendance`. |
 | Vendor adapters (`IAttendanceProvider` and `IAttendanceEventInterpreter`, both defined in Application) | `src/robeem.Infrastructure/Attendance/Providers`. Register both as **keyed services under the vendor's `ProviderKey`** in `AddRobeemInfrastructure`. Ingestion resolves the adapter, and normalization resolves the interpreter, by the integration's provider key. A vendor's timestamp formats and event-type codes live only in its interpreter. A new vendor is these two classes plus their registrations (invariant 9). |
-| Background jobs (P5, P10) | Hosted services in `robeem.Api`, which call Application services through `ITenantScopeFactory`. |
+| Background jobs (P5, P10) | `IScheduledJob`s in `robeem.Api/Attendance/Jobs`, run by one hosted service (§2.8); they call Application services through `ITenantScopeFactory`. |
 | REST endpoints | `src/robeem.Api/Controllers`, under `api/attendance/...`. |
 | Screens | `src/robeem.Web`, calling the Api through a typed client in `ApiClients/`. |
 
@@ -264,6 +305,7 @@ Each layer gets an `Attendance` folder next to its `HR` folder. There are no sep
 | `AttendanceCorrection` | `Entity` | No | Proposed/approved fix to an exception (§11.2) |
 | `AttendanceRecord` | `Entity` | No | Computed per-shift result (§13.2) |
 | `AttendanceDaySummary` | `Entity` | No | Per-employee/day rollup of one or more records (§13.2) |
+| `PayPeriod` | `Entity` | No | Minimal pay period (start, end, closed) for the payroll gate (P11, §18.3). A stand-in for a Payroll module that does not exist |
 
 Full field lists for every entity are in the study, §6.2, §7.3, §9.3, §11.2, §13.2 — do not re-derive them from scratch; the prompt series below references the exact section for each.
 
@@ -346,12 +388,24 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
   - Only a `MissingPunch` exception can be corrected; a correction supplies that punch. The engine reads `Applied` corrections as punches with source `Corrected` (`AttendancePunch.NormalizedTransactionId` is null for them); no punch row is changed.
   - Approving, applying, closing the exception and recalculating the day is one transaction.
   - The endpoints take the requester and the decider (and the decider's role) from the request. **P12 must replace that with the authenticated user and RBAC**; `TODO(P12)` marks each place.
-- [ ] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job.
-- [ ] **P11** — HR/Payroll extraction contract (Approved-only).
-- [ ] **P12** — Security hardening (secrets reference, audit logging, RBAC).
-- [ ] **P13** — Observability (KPIs, integration health, alerts).
-- [ ] **P14** — Tests (Appendix B worked scenarios as automated cases).
-- [ ] **P15** — Seed data for `AttendanceProvider` catalog.
+- [x] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job. No migration; scheduler decision in §2.8. Deviations are in `ATTENDANCE_P10_NOTES.md`. Rules later prompts must keep:
+  - The cursor moves only after the batch's raw rows are committed; reconciliation never moves it.
+  - Retry and the circuit breaker wrap the provider call only, per tenant + integration; `HealthStatus` is `Degraded` after a failed sync, `Unhealthy` once the breaker has opened, `Healthy` after a success.
+  - An adapter without incremental sync throws `NotSupportedException`; the sync job skips it rather than counting a failure.
+- [x] **P11** — HR/Payroll extraction contract (Approved-only): `IPayrollAttendanceExtract`, `PayPeriod` (migration `AddPayPeriods`), and NetArchTest architecture tests. Deviations are in `ATTENDANCE_P11_NOTES.md`. Rules later prompts must keep:
+  - Anything outside Attendance reads attendance only through `IPayrollAttendanceExtract`; the architecture tests enforce that Web, Contracts, and non-Attendance Application code never touch raw or normalized rows.
+  - A day is returned whole or not at all: its summary and every current record must be `Approved`.
+  - No path approves a `PendingReview` record yet, and a correction can only supply a missing punch: P12's review work must settle what "overtime pre-approved" means.
+- [x] **P12** — Authentication (JWT bearer, provisional: §2.8), roles on every endpoint, `ISecretStore`, `AttendanceAuditLog` (migration `AddAttendanceAuditLog`), `api/attendance/payroll` and `api/attendance/audit`. Deviations are in `ATTENDANCE_P12_NOTES.md`. Rules later prompts must keep:
+  - Every controller action names its roles (a test fails otherwise); the actor of a correction is the authenticated user, never a request field.
+  - Every correction decision, exception status change and direct read of raw or normalized attendance outside normalization and processing writes an audit entry through `IAttendanceAuditTrail`; the audit log is insert-only.
+  - A secret is resolved from `ConnectionConfigRef` for one call and never logged or stored.
+  - Still open: Web sign-in (the Web works in Development only), overtime approval, approver scope.
+- [x] **P13** — Observability: `IIntegrationHealthService` (six KPIs + stored health + breaker state) and `GET api/attendance/integrations/{id}/health`. No new schema, no metrics package, and no alerts yet. Deviations are in `ATTENDANCE_P13_NOTES.md`. Rules later prompts must keep:
+  - The health query writes nothing but its audit entry; `HealthStatus` is written by the sync job alone.
+  - A rate is `null` when the window has nothing to measure, never 0.
+- [x] **P14** — Test consolidation and `TEST_COVERAGE.md`: Scenario 4 end to end (`AttendanceEndToEndTests`), the §14.1 sequence table (`AttendanceSequenceTableTests`), two invariant tests. `TEST_COVERAGE.md` maps each scenario, decision-table row and invariant to its tests and lists the real gaps (the study was never readable, PostgreSQL and the scheduler are untested, among others). Keep it current: a prompt that adds behaviour adds its row.
+- [x] **P15** — Seed data: `AttendanceSeedContributor` (provider catalog, default policy). Deviations are in `ATTENDANCE_P15_NOTES.md`. Rule later prompts must keep: a provider is seeded active only when its adapter and interpreter are registered; adding a vendor means flipping its seed flag too.
 
 ---
 

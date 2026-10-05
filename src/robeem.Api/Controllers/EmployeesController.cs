@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using robeem.Api.Security;
 using robeem.Application.HR.Employees;
 using robeem.Contracts.Common;
 using robeem.Contracts.HR.Employees;
@@ -6,6 +8,7 @@ using robeem.Contracts.HR.Employees;
 namespace robeem.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = AttendanceRoles.HRAdministrator)]
 [Route("api/employees")]
 public sealed class EmployeesController : ControllerBase
 {

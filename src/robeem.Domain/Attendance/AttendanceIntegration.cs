@@ -30,7 +30,7 @@ namespace robeem.DataModel
         /// Gets or sets a reference (key) to the connection settings in secrets storage. Never a
         /// raw secret.
         /// </summary>
-        /// <remarks>TODO (P12): resolve through the secrets mechanism decided there; stored as a plain key until then.</remarks>
+        /// <remarks>Resolved to the secret by <c>ISecretStore</c>, under <c>Secrets:{tenantId}:{reference}</c> in configuration (CLAUDE.md §2.8).</remarks>
         [MaxLength(255)]
         public string ConnectionConfigRef { get; set; } = string.Empty;
 

@@ -1,10 +1,13 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
 
 namespace robeem.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
 [Route("api/attendance/ingestion")]
 public sealed class AttendanceIngestionController : ControllerBase
 {

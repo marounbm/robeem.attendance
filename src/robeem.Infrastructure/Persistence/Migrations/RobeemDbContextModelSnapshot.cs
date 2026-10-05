@@ -22,6 +22,54 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("robeem.DataModel.AttendanceAuditLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("TargetId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Action", "Id");
+
+                    b.HasIndex("TenantId", "TargetType", "TargetId");
+
+                    b.ToTable("AttendanceAuditLog", "Attendance");
+                });
+
             modelBuilder.Entity("robeem.DataModel.AttendanceCorrection", b =>
                 {
                     b.Property<int>("Id")
@@ -889,6 +937,52 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasFilter("\"DuplicateStatus\" = 'Unique'");
 
                     b.ToTable("NormalizedAttendanceTransaction", "Attendance");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.PayPeriod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "StartDate", "EndDate")
+                        .IsUnique();
+
+                    b.ToTable("PayPeriod", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.Profile", b =>

@@ -71,6 +71,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
 
+    public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
+
+    public DbSet<AttendanceAuditLog> AttendanceAuditLogs => Set<AttendanceAuditLog>();
+
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
 
@@ -158,6 +162,14 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         }
     }
 
+    private static void EnsureAuditLogAppendOnly(EntityEntry entry)
+    {
+        if (entry.Entity is AttendanceAuditLog)
+        {
+            throw new InvalidOperationException("AttendanceAuditLog is append-only: a row is never changed or deleted.");
+        }
+    }
+
     private static void ApplyAudit(EntityEntry entry)
     {
         if (entry.State == EntityState.Modified && entry.Metadata.FindProperty(nameof(Entity.ModifiedOn)) is not null)
@@ -216,6 +228,7 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
                     }
 
                     EnsureRawTransactionImmutable(entry);
+                    EnsureAuditLogAppendOnly(entry);
                     break;
             }
 

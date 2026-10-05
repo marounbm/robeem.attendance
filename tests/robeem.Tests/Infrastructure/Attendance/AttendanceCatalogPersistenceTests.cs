@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.DataModel;
 
-namespace robeem.Tests.Infrastructure;
+namespace robeem.Tests.Infrastructure.Attendance;
 
 public sealed class AttendanceCatalogPersistenceTests : IDisposable
 {

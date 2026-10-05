@@ -1,6 +1,9 @@
 namespace robeem.Contracts.Attendance;
 
-/// <summary>An employee's proposal to fix their own open attendance exception.</summary>
+/// <summary>
+/// An employee's proposal to fix their own open attendance exception. The proposer is the
+/// authenticated user, who must be the exception's employee.
+/// </summary>
 public sealed class ProposeCorrectionRequest
 {
     public int ExceptionId { get; init; }
@@ -9,11 +12,4 @@ public sealed class ProposeCorrectionRequest
     public DateTime ProposedValue { get; init; }
 
     public string Justification { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the employee who proposes. Must be the exception's employee.
-    /// TODO(P12): take this from the authenticated user instead of the body; there is no
-    /// authentication in this solution yet (CLAUDE.md §2.8).
-    /// </summary>
-    public int RequestedByEmployeeId { get; init; }
 }
