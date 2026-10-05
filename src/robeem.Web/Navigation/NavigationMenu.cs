@@ -26,7 +26,9 @@ public static class NavigationMenu
             new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr),
         ]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals];
+    private static readonly NavSection Integrations = new("Integrations", [new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health, uploads and sync.", Integration)]);
+
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations];
 
     /// <summary>The sections the actor may open, each with only the items it may open; empty sections are dropped.</summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor) =>

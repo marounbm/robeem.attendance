@@ -21,6 +21,18 @@ public static class DisplayFormats
 
     public static string DateTime(DateTime? time) => time?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "—";
 
+    /// <summary>Writes a share as a percentage, or a dash when there was nothing to measure.</summary>
+    public static string Percent(double? share) => share is { } value ? $"{value * 100:0.#}%" : "—";
+
+    /// <summary>Writes a delay in seconds as seconds, minutes or hours.</summary>
+    public static string Delay(double? seconds) => seconds switch
+    {
+        null => "—",
+        < 90 => $"{seconds:0} s",
+        < 5400 => $"{seconds / 60:0.#} min",
+        _ => $"{seconds / 3600:0.#} h",
+    };
+
     /// <summary>Splits a name such as <c>PendingCorrection</c> into words: <c>Pending correction</c>.</summary>
     public static string Words(string? name)
     {

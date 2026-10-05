@@ -29,6 +29,7 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IExceptionsApiClient, ExceptionsApiClient>(services);
         AddClient<ICorrectionsApiClient, CorrectionsApiClient>(services);
         AddClient<IReviewsApiClient, ReviewsApiClient>(services);
+        AddClient<IIntegrationsApiClient, IntegrationsApiClient>(services);
 
         return services;
     }

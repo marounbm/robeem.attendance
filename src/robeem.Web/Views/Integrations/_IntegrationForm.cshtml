@@ -1,0 +1,66 @@
+@model IntegrationFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Connection</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.DisplayName" class="form-label"></label>
+            <input asp-for="Input.DisplayName" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.DisplayName" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ProviderId" class="form-label"></label>
+            @if (Model.Id is null)
+            {
+                <select asp-for="Input.ProviderId" class="form-select">
+                    @foreach (var provider in Model.Providers)
+                    {
+                        <option value="@provider.Id" disabled="@(!provider.IsActive)" selected="@(provider.Id == Model.Input.ProviderId)">
+                            @provider.DisplayName@(provider.IsActive ? string.Empty : " (no adapter yet)")
+                        </option>
+                    }
+                </select>
+                <div class="form-text">Only a provider with an adapter can be chosen.</div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Input.ProviderId" />
+                <input class="form-control" value="@(Model.Providers.FirstOrDefault(p => p.Id == Model.Input.ProviderId)?.DisplayName)" disabled />
+                <div class="form-text">The provider can't be changed: the devices and punches belong to its adapter.</div>
+            }
+            <span asp-validation-for="Input.ProviderId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ConnectionConfigRef" class="form-label"></label>
+            <input asp-for="Input.ConnectionConfigRef" class="form-control" autocomplete="off" placeholder="e.g. acme-clock-api" />
+            <div class="form-text">
+                The <em>name</em> the secret is kept under in configuration (user-secrets, environment variable, or a vault).
+                Never type the secret itself here. Leave it empty for an integration you only upload files to.
+            </div>
+            <span asp-validation-for="Input.ConnectionConfigRef" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.PollingScheduleCron" class="form-label"></label>
+            <input asp-for="Input.PollingScheduleCron" class="form-control" autocomplete="off" placeholder="*/5 * * * *" list="cron-examples" />
+            <datalist id="cron-examples">
+                <option value="*/5 * * * *">every 5 minutes</option>
+                <option value="*/15 * * * *">every 15 minutes</option>
+                <option value="0 * * * *">every hour</option>
+                <option value="0 6 * * *">daily at 06:00</option>
+            </datalist>
+            <div class="form-text">When to pull from the vendor, in server time. Empty: never pull (uploads only).</div>
+            <span asp-validation-for="Input.PollingScheduleCron" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.Status" class="form-label"></label>
+            <select asp-for="Input.Status" class="form-select">
+                <option value="Active">Active</option>
+                <option value="Paused">Paused: no sync runs</option>
+            </select>
+            <div class="form-text">There is no delete: the punches already stored stay.</div>
+            <span asp-validation-for="Input.Status" class="text-danger small"></span>
+        </div>
+    </div>
+</div>

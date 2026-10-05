@@ -1,0 +1,223 @@
+@model IntegrationDetailsViewModel
+@{
+    var integration = Model.Integration;
+    var health = Model.Health;
+    ViewData["Title"] = integration.DisplayName;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
+    <div>
+        <h1 class="h3 mb-1">@integration.DisplayName</h1>
+        <div class="text-muted">
+            @integration.ProviderName
+            · <span class="badge text-bg-@(integration.Status == "Active" ? "success" : integration.Status == "Failed" ? "danger" : "secondary")">@integration.Status</span>
+            · schedule <code>@(integration.PollingScheduleCron ?? "uploads only")</code>
+            @if (!string.IsNullOrEmpty(integration.ConnectionConfigRef))
+            {
+                <span>· secret reference <code>@integration.ConnectionConfigRef</code></span>
+            }
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@integration.Id">Edit</a>
+        <form method="post" asp-action="Run" asp-route-id="@integration.Id">
+            <input type="hidden" name="reconcile" value="false" />
+            <button type="submit" class="btn btn-outline-primary">Sync now</button>
+        </form>
+        <form method="post" asp-action="Run" asp-route-id="@integration.Id">
+            <input type="hidden" name="reconcile" value="true" />
+            <button type="submit" class="btn btn-outline-primary" title="Re-pull the last two days, to catch late punches">Reconcile now</button>
+        </form>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between">
+        <span>Health, last @(health is null ? "day" : $"{(health.WindowEnd - health.WindowStart).TotalHours:0} hours")</span>
+        <span>
+            <span class="badge text-bg-@DisplayFormats.Badge(integration.HealthStatus)">@integration.HealthStatus</span>
+            @if (health?.IsCircuitOpen == true)
+            {
+                <span class="badge text-bg-danger">Circuit open: the provider is not being called</span>
+            }
+        </span>
+    </div>
+    <div class="card-body">
+        @if (health is null)
+        {
+            <p class="text-muted mb-0">No health report.</p>
+        }
+        else
+        {
+            <div class="row g-3 text-center">
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@DisplayFormats.Percent(health.SyncSuccessRate)</div><div class="small text-muted">Sync success (@health.FailedSyncs of @health.Syncs failed)</div></div>
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@DisplayFormats.Percent(health.FailedTransactionRate)</div><div class="small text-muted">Punches unusable (@health.TransactionsFailed of @health.TransactionsReceived)</div></div>
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@DisplayFormats.Percent(health.DuplicateRate)</div><div class="small text-muted">Duplicates (@health.Duplicates of @health.TransactionsNormalized)</div></div>
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@DisplayFormats.Percent(health.MissingEventRate)</div><div class="small text-muted">Days with a missing punch (@health.MissingPunchExceptions of @health.EmployeeDays)</div></div>
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@DisplayFormats.Delay(health.AverageSyncDelaySeconds)</div><div class="small text-muted">Average delay, punch to receipt</div></div>
+                <div class="col-6 col-md-2"><div class="h5 mb-0">@health.UnresolvedExceptions</div><div class="small text-muted">Unresolved exceptions</div></div>
+            </div>
+            <div class="small text-muted mt-3">
+                Last successful sync: @DisplayFormats.DateTime(health.LastSuccessfulSyncAt).
+                @if (health.LastFailureMessage is not null)
+                {
+                    <span>Last failure @DisplayFormats.DateTime(health.LastFailureAt): @health.LastFailureMessage</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Devices</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            The vendor's device ids and the time zone each device's clock runs in: a punch without a UTC offset is read in
+            its device's zone. A device with punches on record can't be deleted.
+        </p>
+        <datalist id="time-zones">
+            @foreach (var zone in IntegrationDetailsViewModel.CommonTimeZones)
+            {
+                <option value="@zone"></option>
+            }
+        </datalist>
+
+        @foreach (var device in Model.Devices)
+        {
+            <form method="post" asp-action="UpdateDevice" asp-route-id="@integration.Id" class="row g-2 align-items-end border-bottom pb-2 mb-2">
+                <input type="hidden" name="deviceId" value="@device.Id" />
+                <div class="col-md-2">
+                    <label class="form-label small mb-0" for="dev-id-@device.Id">Device id</label>
+                    <input id="dev-id-@device.Id" name="ExternalDeviceId" value="@device.ExternalDeviceId" class="form-control form-control-sm" required maxlength="100" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-0" for="dev-name-@device.Id">Name</label>
+                    <input id="dev-name-@device.Id" name="Name" value="@device.Name" class="form-control form-control-sm" required maxlength="255" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0" for="dev-type-@device.Id">Type</label>
+                    <select id="dev-type-@device.Id" name="DeviceType" class="form-select form-select-sm">
+                        @foreach (var type in IntegrationDetailsViewModel.DeviceTypes)
+                        {
+                            <option value="@type" selected="@(type == device.DeviceType)">@type</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0" for="dev-zone-@device.Id">Time zone</label>
+                    <input id="dev-zone-@device.Id" name="TimeZoneId" value="@device.TimeZoneId" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
+                </div>
+                <div class="col-md-3 d-flex gap-1 justify-content-end">
+                    <span class="small text-muted align-self-center me-1">Last seen @DisplayFormats.DateTime(device.LastSeenAt)</span>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" formaction="@Url.Action("DeleteDevice", new { id = integration.Id })"
+                            onclick="return confirm('Delete this device?');">Delete</button>
+                </div>
+            </form>
+        }
+
+        <form method="post" asp-action="AddDevice" asp-route-id="@integration.Id" class="row g-2 align-items-end mt-2">
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="new-dev-id">New device id</label>
+                <input id="new-dev-id" name="ExternalDeviceId" class="form-control form-control-sm" required maxlength="100" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="new-dev-name">Name</label>
+                <input id="new-dev-name" name="Name" class="form-control form-control-sm" required maxlength="255" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="new-dev-type">Type</label>
+                <select id="new-dev-type" name="DeviceType" class="form-select form-select-sm">
+                    @foreach (var type in IntegrationDetailsViewModel.DeviceTypes)
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="new-dev-zone">Time zone</label>
+                <input id="new-dev-zone" name="TimeZoneId" value="UTC" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary">Add device</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Employee-id mappings</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            Which of your employees each employee id from the vendor stands for. A punch whose id isn't mapped is still stored,
+            and flagged until it is.
+        </p>
+        @if (Model.Mappings.Count > 0)
+        {
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th scope="col">Vendor employee id</th><th scope="col">Employee</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var mapping in Model.Mappings)
+                    {
+                        <tr>
+                            <td><code>@mapping.ExternalEmployeeId</code></td>
+                            <td>@mapping.EmployeeName</td>
+                            <td class="text-end">
+                                <form method="post" asp-action="DeleteMapping" asp-route-id="@integration.Id" class="d-inline">
+                                    <input type="hidden" name="mappingId" value="@mapping.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this mapping?');">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <form method="post" asp-action="AddMapping" asp-route-id="@integration.Id" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="new-ext">Vendor employee id</label>
+                <input id="new-ext" name="ExternalEmployeeId" class="form-control form-control-sm" required maxlength="255" autocomplete="off" />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small mb-0" for="new-emp">Employee</label>
+                <select id="new-emp" name="EmployeeId" class="form-select form-select-sm" required>
+                    <option value="">— Choose —</option>
+                    @foreach (var employee in Model.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary">Add mapping</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Upload a file</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            A CSV export from the clock (the generic format: <code>transaction_id, employee_id, timestamp, type, device_id</code>).
+            Every row is stored as received, including unusable ones; a row's problem is counted, not dropped. Biometric
+            columns are never stored.
+        </p>
+        <form method="post" asp-action="Upload" asp-route-id="@integration.Id" enctype="multipart/form-data" class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label small mb-0" for="file">File (up to 10 MB)</label>
+                <input id="file" type="file" name="file" accept=".csv,text/csv" class="form-control form-control-sm" required />
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<a asp-action="Index">Back to integrations</a>

@@ -1,0 +1,16 @@
+@model IntegrationFormViewModel
+@{
+    ViewData["Title"] = "Edit integration";
+}
+
+<h1 class="h3 mb-3">Edit integration</h1>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.Id">
+    <partial name="_IntegrationForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Details" asp-route-id="@Model.Id">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

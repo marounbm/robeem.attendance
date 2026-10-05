@@ -234,11 +234,9 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task TheIntegrationAndAuditEndpoints_AreForTheirRolesOnly()
+    public async Task TheAuditEndpoint_IsForHrOnly()
     {
-        Assert.Equal(HttpStatusCode.NotFound, (await Send(HttpMethod.Get, "api/attendance/integrations/1/health", As(1, AttendanceRoles.IntegrationAdministrator))).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/integrations/1/health", As(1, AttendanceRoles.HRAdministrator))).StatusCode);
-
+        // The integration endpoints, health included, are in IntegrationsEndpointTests.
         Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get, "api/attendance/audit", As(1, AttendanceRoles.HRAdministrator))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/audit", As(1, AttendanceRoles.Manager))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/audit", As(1, AttendanceRoles.PayrollAdministrator))).StatusCode);

@@ -2,24 +2,137 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
+using robeem.Application.Common;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Api.Controllers;
 
+/// <summary>
+/// Integrations: the tenant's connections to attendance providers, their devices and vendor-id
+/// mappings, run-now, and health. An integration is paused, never deleted (raw data points at it).
+/// </summary>
 [ApiController]
 [Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
 [Route("api/attendance/integrations")]
 public sealed class AttendanceIntegrationsController : ControllerBase
 {
+    private readonly IAttendanceIntegrationService _integrations;
     private readonly IIntegrationHealthService _health;
 
-    public AttendanceIntegrationsController(IIntegrationHealthService health)
+    public AttendanceIntegrationsController(IAttendanceIntegrationService integrations, IIntegrationHealthService health)
     {
+        _integrations = integrations;
         _health = health;
     }
+
+    [HttpGet]
+    public async Task<IReadOnlyList<IntegrationListItem>> List(CancellationToken cancellationToken) =>
+        await _integrations.ListAsync(cancellationToken);
+
+    /// <summary>The providers of the catalog; only an active one can be chosen for a new integration.</summary>
+    [HttpGet("providers")]
+    public async Task<IReadOnlyList<ProviderOption>> Providers(CancellationToken cancellationToken) =>
+        await _integrations.ListProvidersAsync(cancellationToken);
+
+    /// <summary>The active employees, to choose whom a vendor's employee id stands for.</summary>
+    [HttpGet("employee-options")]
+    public async Task<IReadOnlyList<EmployeeOption>> EmployeeOptions(CancellationToken cancellationToken) =>
+        await _integrations.ListEmployeeOptionsAsync(cancellationToken);
+
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<IntegrationListItem>> Get(int id, CancellationToken cancellationToken) =>
+        await _integrations.GetAsync(id, cancellationToken) is { } item ? item : NotFound();
+
+    /// <summary>The integration as editable input.</summary>
+    [HttpGet("{id:int}/input")]
+    public async Task<ActionResult<IntegrationInput>> GetInput(int id, CancellationToken cancellationToken) =>
+        await _integrations.GetInputAsync(id, cancellationToken) is { } input ? input : NotFound();
+
+    [HttpPost]
+    public async Task<ActionResult<CreatedResponse>> Create(IntegrationInput input, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.CreateAsync(input, cancellationToken);
+        return result.Succeeded ? StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value }) : Failure(result);
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, IntegrationInput input, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.UpdateAsync(id, input, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
+    [HttpGet("{id:int}/devices")]
+    public async Task<ActionResult<IReadOnlyList<DeviceItem>>> Devices(int id, CancellationToken cancellationToken) =>
+        await _integrations.ListDevicesAsync(id, cancellationToken) is { } devices ? Ok(devices) : NotFound();
+
+    [HttpPost("{id:int}/devices")]
+    public async Task<ActionResult<CreatedResponse>> AddDevice(int id, DeviceInput input, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.AddDeviceAsync(id, input, cancellationToken);
+        return result.Succeeded ? StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value }) : Failure(result);
+    }
+
+    [HttpPut("{id:int}/devices/{deviceId:int}")]
+    public async Task<IActionResult> UpdateDevice(int id, int deviceId, DeviceInput input, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.UpdateDeviceAsync(id, deviceId, input, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
+    [HttpDelete("{id:int}/devices/{deviceId:int}")]
+    public async Task<IActionResult> DeleteDevice(int id, int deviceId, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.DeleteDeviceAsync(id, deviceId, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
+    [HttpGet("{id:int}/mappings")]
+    public async Task<ActionResult<IReadOnlyList<MappingItem>>> Mappings(int id, CancellationToken cancellationToken) =>
+        await _integrations.ListMappingsAsync(id, cancellationToken) is { } mappings ? Ok(mappings) : NotFound();
+
+    [HttpPost("{id:int}/mappings")]
+    public async Task<ActionResult<CreatedResponse>> AddMapping(int id, MappingInput input, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.AddMappingAsync(id, input, cancellationToken);
+        return result.Succeeded ? StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value }) : Failure(result);
+    }
+
+    [HttpDelete("{id:int}/mappings/{mappingId:int}")]
+    public async Task<IActionResult> DeleteMapping(int id, int mappingId, CancellationToken cancellationToken)
+    {
+        var result = await _integrations.DeleteMappingAsync(id, mappingId, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
+    /// <summary>Syncs now, instead of at the next scheduled time. A provider failure is the outcome (200), not an error.</summary>
+    [HttpPost("{id:int}/sync")]
+    public async Task<ActionResult<SyncOutcomeResponse>> Sync(int id, CancellationToken cancellationToken) =>
+        await _integrations.RunAsync(id, reconcile: false, cancellationToken) is { } outcome ? outcome : NotFound();
+
+    /// <summary>Re-pulls the wider reconciliation window now.</summary>
+    [HttpPost("{id:int}/reconcile")]
+    public async Task<ActionResult<SyncOutcomeResponse>> Reconcile(int id, CancellationToken cancellationToken) =>
+        await _integrations.RunAsync(id, reconcile: true, cancellationToken) is { } outcome ? outcome : NotFound();
 
     /// <summary>The integration's stored health, its circuit breaker and the KPIs of the last day.</summary>
     [HttpGet("{id:int}/health")]
     public async Task<ActionResult<IntegrationHealthReport>> GetHealth(int id, CancellationToken cancellationToken) =>
         await _health.GetIntegrationHealthAsync(id, cancellationToken) is { } report ? report : NotFound();
+
+    private ActionResult Failure(SaveResult result)
+    {
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        foreach (var (field, message) in result.Errors)
+        {
+            ModelState.AddModelError(field, message);
+        }
+
+        return ValidationProblem(ModelState);
+    }
 }

@@ -75,6 +75,33 @@ internal static class ApiResponses
     }
 
     /// <summary>
+    /// Reads the answer to a create, update or delete: 201 with the new id, 204, a 400 mapped onto
+    /// <typeparamref name="TInput"/> property names, or a 404. Anything else is thrown as usual.
+    /// </summary>
+    public static async Task<ApiSaveResult> SaveAsync<TInput>(HttpResponseMessage response, int? knownId, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            await ThrowIfTenantRejectedAsync(response, cancellationToken);
+            return ApiSaveResult.Invalid(await ReadValidationErrorsAsync<TInput>(response, cancellationToken));
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return ApiSaveResult.Missing();
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Created)
+        {
+            var created = await response.Content.ReadFromJsonAsync<robeem.Contracts.Common.CreatedResponse>(cancellationToken);
+            return ApiSaveResult.Success(created?.Id);
+        }
+
+        return ApiSaveResult.Success(knownId);
+    }
+
+    /// <summary>
     /// Maps a 400 ValidationProblemDetails onto <typeparamref name="TInput"/> property names. Keys
     /// that name no property (e.g. a JSON path the API could not bind) map to <see cref="string.Empty"/>,
     /// a model-level error.
