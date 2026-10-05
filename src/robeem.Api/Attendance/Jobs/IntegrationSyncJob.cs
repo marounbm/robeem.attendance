@@ -60,14 +60,23 @@ public sealed class IntegrationSyncJob : IScheduledJob
                     }
 
                     _lastAttempt[(tenant.Id, integration.IntegrationId)] = _clock.GetLocalNow();
-                    var outcome = await sync.SyncAsync(integration.IntegrationId, cancellationToken);
-                    _logger.LogInformation(
-                        "Sync of integration {IntegrationId} of tenant {TenantId}: {Status}, {Records} records. {Message}",
-                        integration.IntegrationId,
-                        tenant.Id,
-                        outcome.Status,
-                        outcome.RecordsIngested,
-                        outcome.Message);
+                    try
+                    {
+                        var outcome = await sync.SyncAsync(integration.IntegrationId, cancellationToken);
+                        _logger.LogInformation(
+                            "Sync of integration {IntegrationId} of tenant {TenantId}: {Status}, {Records} records. {Message}",
+                            integration.IntegrationId,
+                            tenant.Id,
+                            outcome.Status,
+                            outcome.RecordsIngested,
+                            outcome.Message);
+                    }
+                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // The service turns a provider failure into an outcome; this is something worse (the
+                        // database, say). It must not keep this tenant's other integrations from syncing.
+                        _logger.LogError(ex, "Sync of integration {IntegrationId} of tenant {TenantId} threw.", integration.IntegrationId, tenant.Id);
+                    }
                 }
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

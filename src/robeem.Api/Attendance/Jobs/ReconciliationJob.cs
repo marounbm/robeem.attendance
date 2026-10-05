@@ -47,14 +47,21 @@ public sealed class ReconciliationJob : IScheduledJob
                 // pull at all (a manual-upload one).
                 foreach (var integration in (await sync.ListPollingIntegrationsAsync(cancellationToken)).Where(i => i.LastSuccessfulSyncAt is not null))
                 {
-                    var outcome = await sync.ReconcileAsync(integration.IntegrationId, cancellationToken);
-                    _logger.LogInformation(
-                        "Reconciliation of integration {IntegrationId} of tenant {TenantId}: {Status}, {Records} records. {Message}",
-                        integration.IntegrationId,
-                        tenant.Id,
-                        outcome.Status,
-                        outcome.RecordsIngested,
-                        outcome.Message);
+                    try
+                    {
+                        var outcome = await sync.ReconcileAsync(integration.IntegrationId, cancellationToken);
+                        _logger.LogInformation(
+                            "Reconciliation of integration {IntegrationId} of tenant {TenantId}: {Status}, {Records} records. {Message}",
+                            integration.IntegrationId,
+                            tenant.Id,
+                            outcome.Status,
+                            outcome.RecordsIngested,
+                            outcome.Message);
+                    }
+                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        _logger.LogError(ex, "Reconciliation of integration {IntegrationId} of tenant {TenantId} threw.", integration.IntegrationId, tenant.Id);
+                    }
                 }
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
