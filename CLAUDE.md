@@ -331,7 +331,7 @@ In other environments, supply them through environment variables (`Tenancy__Tena
 | Web front end | `src/robeem.Web` (http://localhost:5180), calls the Api at `RobeemApi:BaseUrl` |
 | Migrations project | `src/robeem.Infrastructure` (folder `Persistence/Migrations`) |
 | DbContext | `robeem.Infrastructure.Persistence.RobeemDbContext` |
-| Test project | `tests/robeem.Tests` (xUnit, in-memory SQLite) |
+| Test project | `tests/robeem.Tests` (xUnit, in-memory SQLite; opt-in PostgreSQL tests, below) |
 
 ```bash
 # Build (must finish with zero StyleCop errors, see §7)
@@ -347,8 +347,15 @@ dotnet run --project src/robeem.Web --launch-profile http
 # Add a migration (one schema for all tenants; each tenant database is migrated at startup)
 dotnet ef migrations add <MigrationName> --project src/robeem.Infrastructure --startup-project src/robeem.Api --output-dir Persistence/Migrations
 
-# Tests
+# Tests (in-memory SQLite; the PostgreSQL tests are skipped)
 dotnet test robeem.attendance.slnx
+
+# The PostgreSQL tests: migrations applied to an empty database, and the model's special cases on Npgsql.
+# Set a connection string of a user who may create databases; each run creates and drops its own
+# robeem_migtest_* database. Never put the password in a file that is committed.
+#   PowerShell: $env:ROBEEM_TEST_POSTGRES = "Host=localhost;Username=postgres;Password=<pwd>"
+#   bash:       export ROBEEM_TEST_POSTGRES="Host=localhost;Username=postgres;Password=<pwd>"
+dotnet test robeem.attendance.slnx --filter "FullyQualifiedName~PostgresMigrationTests"
 
 # Formatting check (part of every prompt's Definition of Done)
 dotnet format robeem.attendance.slnx --verify-no-changes
