@@ -54,13 +54,13 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
             .Select(e => (e.EmployeeId, Date: e.AttendanceDate.Date))
             .ToHashSet();
 
-        var corrected = (await _db.AttendanceCorrections
+        // The records a reviewer approved. A decision belongs to one record version, so one given to a
+        // version a recalculation retired never covers the current one.
+        var approvedRecordIds = (await _db.AttendanceReviewDecisions
             .AsNoTracking()
-            .Where(c => (c.Status == AttendanceCorrectionStatus.Approved || c.Status == AttendanceCorrectionStatus.Applied)
-                && c.AttendanceDate >= from && c.AttendanceDate <= to)
-            .Select(c => new { c.EmployeeId, c.AttendanceDate })
+            .Where(d => d.Outcome == AttendanceReviewOutcome.Approved && d.AttendanceDate >= from && d.AttendanceDate <= to)
+            .Select(d => d.AttendanceRecordId)
             .ToListAsync(cancellationToken))
-            .Select(c => (c.EmployeeId, Date: c.AttendanceDate.Date))
             .ToHashSet();
 
         var needsPreApproval = new Dictionary<int, bool>();
@@ -78,8 +78,8 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
                 continue;
             }
 
-            // A record with overtime under a policy that wants it pre-approved needs its correction.
-            if (!corrected.Contains(key) && dayRecords.Any(r => r.OvertimeMinutes > 0))
+            // A record with overtime under a policy that wants it pre-approved needs its reviewer's approval.
+            if (dayRecords.Any(r => r.OvertimeMinutes > 0 && !approvedRecordIds.Contains(r.Id)))
             {
                 if (!needsPreApproval.TryGetValue(summary.EmployeeId, out var required))
                 {

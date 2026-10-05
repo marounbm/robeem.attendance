@@ -71,6 +71,8 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
 
+    public DbSet<AttendanceReviewDecision> AttendanceReviewDecisions => Set<AttendanceReviewDecision>();
+
     public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
 
     public DbSet<AttendanceAuditLog> AttendanceAuditLogs => Set<AttendanceAuditLog>();

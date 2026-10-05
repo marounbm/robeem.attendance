@@ -47,33 +47,57 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task OvertimeNeedingPreApproval_IsExcluded_UntilTheCorrectionExists()
+    public async Task OvertimeNeedingPreApproval_IsExcluded_UntilAReviewerApprovesThatRecord()
     {
-        AssignSchedule(StandardDay);
-        AddDefaultPolicy(p => p.RequiresOvertimePreApproval = true);
-        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
-        AddPunch(NormalizedEventType.BreakOut, Monday.At(12, 0));
-        AddPunch(NormalizedEventType.BreakIn, Monday.At(13, 0));
-        AddPunch(NormalizedEventType.CheckOut, Monday.At(18, 30));
-        await ProcessAsync(Monday);
+        await WorkOvertimeUnderAPreApprovalPolicyAsync();
 
         // The engine leaves it PendingReview, so it is out.
         Assert.Empty(await ExtractAsync(Monday, Monday));
 
-        // A reviewer approves it (no review screen exists yet, so the test does what one would do). Still out: no pre-approval.
+        // Marking it Approved without a reviewer's decision is not enough for payroll.
         ApproveRecordsOf(Monday);
         Assert.Empty(await ExtractAsync(Monday, Monday));
 
-        AddCorrection(Monday, AttendanceCorrectionStatus.Pending);
-        Assert.Empty(await ExtractAsync(Monday, Monday));
-
-        AddCorrection(Monday, AttendanceCorrectionStatus.Applied);
+        AddDecision(CurrentRecordId(), AttendanceReviewOutcome.Approved);
         var day = Assert.Single(await ExtractAsync(Monday, Monday));
         Assert.Equal(TimeSpan.FromMinutes(90), day.TotalOvertimeHours);
     }
 
     [Fact]
-    public async Task Overtime_WithoutAPreApprovalPolicy_NeedsNoCorrection()
+    public async Task ARejectedDecision_DoesNotPayTheOvertime()
+    {
+        await WorkOvertimeUnderAPreApprovalPolicyAsync();
+        ApproveRecordsOf(Monday);
+
+        AddDecision(CurrentRecordId(), AttendanceReviewOutcome.Rejected);
+
+        Assert.Empty(await ExtractAsync(Monday, Monday));
+    }
+
+    [Fact]
+    public async Task AnApproval_OfARetiredVersion_DoesNotCoverTheRecalculatedDay()
+    {
+        await WorkOvertimeUnderAPreApprovalPolicyAsync();
+        ApproveRecordsOf(Monday);
+        AddDecision(CurrentRecordId(), AttendanceReviewOutcome.Approved);
+        Assert.Single(await ExtractAsync(Monday, Monday));
+
+        // The employee stayed longer than what was approved: a late check-out replaces the first. The day
+        // is recalculated into a new version, which no reviewer has seen.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.NormalizedAttendanceTransactions.Single(n => n.NormalizedEventType == NormalizedEventType.CheckOut).DuplicateStatus = DuplicateStatus.DuplicateConfirmed;
+            db.SaveChanges();
+        }
+
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(19, 30));
+        await ProcessAsync(Monday);
+
+        Assert.Empty(await ExtractAsync(Monday, Monday));
+    }
+
+    [Fact]
+    public async Task Overtime_WithoutAPreApprovalPolicy_NeedsNoReviewDecision()
     {
         AssignSchedule(StandardDay);
         AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
@@ -203,21 +227,40 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
         db.SaveChanges();
     }
 
-    private void AddCorrection(DateTime date, AttendanceCorrectionStatus status)
+    private async Task WorkOvertimeUnderAPreApprovalPolicyAsync()
     {
-        var exceptionId = AddException(date, AttendanceExceptionStatus.Closed);
+        AssignSchedule(StandardDay);
+        AddDefaultPolicy(p => p.RequiresOvertimePreApproval = true);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+        AddPunch(NormalizedEventType.BreakOut, Monday.At(12, 0));
+        AddPunch(NormalizedEventType.BreakIn, Monday.At(13, 0));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(18, 30));
+        await ProcessAsync(Monday);
+    }
+
+    private int CurrentRecordId()
+    {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        db.AttendanceCorrections.Add(new AttendanceCorrection
+        return db.AttendanceRecords.Single(r => r.IsCurrent).Id;
+    }
+
+    /// <summary>A review decision inserted as the review service would write it, by someone who is not the employee.</summary>
+    private void AddDecision(int recordId, AttendanceReviewOutcome outcome)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var reviewer = new Profile { EmployeeNumber = "R-" + Guid.NewGuid().ToString("N")[..6], FirstName = "Rae", LastName = "Viewer", Title = "Rae Viewer" };
+        db.Profiles.Add(reviewer);
+        db.SaveChanges();
+        db.AttendanceReviewDecisions.Add(new AttendanceReviewDecision
         {
-            AttendanceExceptionId = exceptionId,
+            AttendanceRecordId = recordId,
             EmployeeId = EmployeeId,
-            AttendanceDate = date,
-            CorrectedEventType = NormalizedEventType.CheckOut,
-            ProposedValue = date.At(18, 30),
-            TimeZoneId = "UTC",
-            Justification = "Stayed late on request.",
-            RequestedByEmployeeId = EmployeeId,
-            Status = status,
+            AttendanceDate = Monday,
+            Outcome = outcome,
+            DecidedById = reviewer.Id,
+            DecidedByRole = AttendanceReviewerRole.Manager,
+            Reason = outcome == AttendanceReviewOutcome.Rejected ? "Not authorised." : null,
+            OvertimeMinutes = 90,
         });
         db.SaveChanges();
     }

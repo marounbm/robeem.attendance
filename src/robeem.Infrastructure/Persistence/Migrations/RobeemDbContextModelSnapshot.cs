@@ -789,6 +789,83 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.ToTable("AttendanceRecord", "Attendance");
                 });
 
+            modelBuilder.Entity("robeem.DataModel.AttendanceReviewDecision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AttendanceDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("AttendanceRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DecidedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DecidedByRole")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("OvertimeMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttendanceRecordId");
+
+                    b.HasIndex("DecidedById");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "AttendanceRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "AttendanceDate", "Outcome");
+
+                    b.ToTable("AttendanceReviewDecision", "Attendance");
+                });
+
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>
                 {
                     b.Property<int>("Id")
@@ -1575,6 +1652,33 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("SupersededByRecord");
 
                     b.Navigation("TimeScheduleShift");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.AttendanceReviewDecision", b =>
+                {
+                    b.HasOne("robeem.DataModel.AttendanceRecord", "AttendanceRecord")
+                        .WithMany()
+                        .HasForeignKey("AttendanceRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("robeem.DataModel.Profile", "DecidedBy")
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AttendanceRecord");
+
+                    b.Navigation("DecidedBy");
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>

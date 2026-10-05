@@ -16,8 +16,9 @@ public interface IPayrollAttendanceExtract
     /// <list type="bullet">
     /// <item>its summary and every current record of it are Approved;</item>
     /// <item>no exception of that employee and date is still Open or PendingCorrection;</item>
-    /// <item>a record with overtime under a policy that requires pre-approval has an Approved or
-    /// Applied correction of that employee and date;</item>
+    /// <item>a record with overtime under a policy that requires pre-approval has an approving
+    /// review decision (<see cref="robeem.DataModel.AttendanceReviewDecision"/>) of that very record
+    /// version;</item>
     /// <item>no closed <see cref="robeem.DataModel.PayPeriod"/> contains the date.</item>
     /// </list>
     /// A day that fails any of this is left out whole, never partly paid.

@@ -197,7 +197,7 @@ What the token must carry (names are in `src/robeem.Api/Security/SecurityClaims.
 - **Development:** `Authentication:DevelopmentUser:Enabled` authenticates every request without a bearer token as a configured user with every role. The Api **refuses to start with it on outside Development**, as it does for `AllowUnauthenticatedTenantSelection`. It exists so the Web works locally.
 - **Not done: Web sign-in.** The Web has no login and does not forward tokens, so in production its calls get 401. Add OpenID Connect sign-in to the Web and a handler that attaches the user's access token next to `TenantHeaderHandler`. Until then, the Web works in Development only.
 - **Secrets:** `AttendanceIntegration.ConnectionConfigRef` is a *reference*; `ISecretStore` resolves it to the secret under `Secrets:{tenantId}:{reference}` in configuration. Development: user-secrets. Production: any configuration provider, e.g. Azure Key Vault (`AddAzureKeyVault`) or environment variables; nothing in the code changes. Secrets are never logged or stored in a table.
-- **Audit log:** `AttendanceAuditLog` (`SystemEntity`, insert-only) records every correction decision, every exception status change, and every read of raw or normalized attendance outside normalization and processing. `IAttendanceAuditLog` stages the entry in the caller's unit of work, so it commits or rolls back with the change.
+- **Audit log:** `AttendanceAuditLog` (`SystemEntity`, insert-only) records every correction decision, every exception status change, and every read of raw or normalized attendance outside normalization and processing. `IAttendanceAuditTrail` stages the entry in the caller's unit of work, so it commits or rolls back with the change.
 
 **On the Web side** (`src/robeem.Web/Tenancy`):
 
@@ -305,6 +305,7 @@ Each layer gets an `Attendance` folder next to its `HR` folder. There are no sep
 | `AttendanceCorrection` | `Entity` | No | Proposed/approved fix to an exception (§11.2) |
 | `AttendanceRecord` | `Entity` | No | Computed per-shift result (§13.2) |
 | `AttendanceDaySummary` | `Entity` | No | Per-employee/day rollup of one or more records (§13.2) |
+| `AttendanceReviewDecision` | `Entity` | No | A reviewer's additive decision on one `PendingReview` record version (follow-up) |
 | `PayPeriod` | `Entity` | No | Minimal pay period (start, end, closed) for the payroll gate (P11, §18.3). A stand-in for a Payroll module that does not exist |
 
 Full field lists for every entity are in the study, §6.2, §7.3, §9.3, §11.2, §13.2 — do not re-derive them from scratch; the prompt series below references the exact section for each.
@@ -394,7 +395,7 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
 - [x] **P9** — `AttendanceCorrection` (`IWorkflowEntity`) + `IAttendanceCorrectionService` + `api/attendance/corrections`. Migration `AddAttendanceCorrections`. Deviations are in `ATTENDANCE_P9_NOTES.md`. Rules later prompts must keep:
   - Only a `MissingPunch` exception can be corrected; a correction supplies that punch. The engine reads `Applied` corrections as punches with source `Corrected` (`AttendancePunch.NormalizedTransactionId` is null for them); no punch row is changed.
   - Approving, applying, closing the exception and recalculating the day is one transaction.
-  - The endpoints take the requester and the decider (and the decider's role) from the request. **P12 must replace that with the authenticated user and RBAC**; `TODO(P12)` marks each place.
+  - The requester and the decider come from the authenticated user (P12), and a manager decides only their direct reports' corrections (follow-up, `ATTENDANCE_FOLLOWUP_NOTES.md`).
 - [x] **P10** — Scheduled polling ingestion job, incremental sync via high-water mark, reconciliation job. No migration; scheduler decision in §2.8. Deviations are in `ATTENDANCE_P10_NOTES.md`. Rules later prompts must keep:
   - The cursor moves only after the batch's raw rows are committed; reconciliation never moves it.
   - Retry and the circuit breaker wrap the provider call only, per tenant + integration; `HealthStatus` is `Degraded` after a failed sync, `Unhealthy` once the breaker has opened, `Healthy` after a success.
@@ -407,11 +408,15 @@ Checklist form of the full prompt series (see `PROMPT_PLAN.md` for the actual pr
   - Every controller action names its roles (a test fails otherwise); the actor of a correction is the authenticated user, never a request field.
   - Every correction decision, exception status change and direct read of raw or normalized attendance outside normalization and processing writes an audit entry through `IAttendanceAuditTrail`; the audit log is insert-only.
   - A secret is resolved from `ConnectionConfigRef` for one call and never logged or stored.
-  - Still open: Web sign-in (the Web works in Development only), overtime approval, approver scope.
+  - Still open: Web sign-in (the Web works in Development only). Overtime approval and approver scope were closed in the follow-up below.
+- [x] **Follow-up** — a batch for every sync (empty ones pruned nightly), an optional `Profile.ManagerId` that scopes approvers (migration `AddEmployeeManager`), and `AttendanceReviewDecision` + `IAttendanceReviewService` + `api/attendance/reviews` for approving PendingReview records (migration `AddAttendanceReviewDecisions`). Deviations and open points are in `ATTENDANCE_FOLLOWUP_NOTES.md`. Rules later prompts must keep:
+  - A review decision belongs to one record version; payroll requires the approving decision of the *current* version for overtime under a pre-approval policy.
+  - A record with an open exception is never reviewable; nobody reviews their own record.
+  - A manager sees and decides only direct reports; HR covers employees with no (or an inactive) manager.
 - [x] **P13** — Observability: `IIntegrationHealthService` (six KPIs + stored health + breaker state) and `GET api/attendance/integrations/{id}/health`. No new schema, no metrics package, and no alerts yet. Deviations are in `ATTENDANCE_P13_NOTES.md`. Rules later prompts must keep:
   - The health query writes nothing but its audit entry; `HealthStatus` is written by the sync job alone.
   - A rate is `null` when the window has nothing to measure, never 0.
-- [x] **P14** — Test consolidation and `TEST_COVERAGE.md`: Scenario 4 end to end (`AttendanceEndToEndTests`), the §14.1 sequence table (`AttendanceSequenceTableTests`), two invariant tests. `TEST_COVERAGE.md` maps each scenario, decision-table row and invariant to its tests and lists the real gaps (the study was never readable, PostgreSQL and the scheduler are untested, among others). Keep it current: a prompt that adds behaviour adds its row.
+- [x] **P14** — Test consolidation and `TEST_COVERAGE.md`: Scenario 4 end to end (`AttendanceEndToEndTests`), the §14.1 sequence table (`AttendanceSequenceTableTests`), two invariant tests. `TEST_COVERAGE.md` maps each scenario, decision-table row and invariant to its tests and lists the real gaps (the study was never readable, and the PostgreSQL tests exist but are opt-in and not yet run, among others). Keep it current: a prompt that adds behaviour adds its row.
 - [x] **P15** — Seed data: `AttendanceSeedContributor` (provider catalog, default policy). Deviations are in `ATTENDANCE_P15_NOTES.md`. Rule later prompts must keep: a provider is seeded active only when its adapter and interpreter are registered; adding a vendor means flipping its seed flag too.
 
 ---

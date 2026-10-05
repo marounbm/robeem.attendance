@@ -7,6 +7,8 @@ public static class AttendanceAuditActions
 
     public const string ExceptionStatusChanged = "ExceptionStatusChanged";
 
+    public const string ReviewDecided = "ReviewDecided";
+
     /// <summary>Raw or normalized attendance read outside normalization and processing.</summary>
     public const string AttendanceDataRead = "AttendanceDataRead";
 }
