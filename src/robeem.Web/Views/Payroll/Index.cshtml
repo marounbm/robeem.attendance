@@ -1,0 +1,141 @@
+@model PayrollIndexViewModel
+@{
+    ViewData["Title"] = "Payroll";
+}
+
+<h1 class="h3 mb-3">Payroll</h1>
+
+<p class="text-muted">
+    The days payroll may pay for: approved, with no open exception, in an open pay period. A day with anything still to settle
+    isn't listed until it is settled and approved.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" asp-action="Index" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="periodId">Pay period</label>
+                <select id="periodId" name="periodId" class="form-select">
+                    <option value="">Choose dates instead…</option>
+                    @foreach (var period in Model.Periods)
+                    {
+                        <option value="@period.Id" selected="@(period.Id == Model.PeriodId)">
+                            @period.StartDate.ToString("yyyy-MM-dd") to @period.EndDate.ToString("yyyy-MM-dd")@(period.IsClosed ? " (closed)" : string.Empty)
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="from">From</label>
+                <input id="from" name="from" type="date" class="form-control" value="@Model.From?.ToString("yyyy-MM-dd")" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="to">To (inclusive)</label>
+                <input id="to" name="to" type="date" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" />
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary">Show</button>
+                @if (Model.Days is not null)
+                {
+                    <a class="btn btn-outline-secondary" asp-action="Export" asp-route-periodId="@Model.PeriodId" asp-route-from="@(Model.PeriodId is null ? Model.From?.ToString("yyyy-MM-dd") : null)" asp-route-to="@(Model.PeriodId is null ? Model.To?.ToString("yyyy-MM-dd") : null)">Download CSV</a>
+                }
+            </div>
+            <div class="col-12 form-text">A pay period, when chosen, sets the dates; otherwise give both dates.</div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+else if (Model.Days is null)
+{
+    <div class="card"><div class="card-body text-muted">Choose a pay period or a range of dates to see what payroll may pay for.</div></div>
+}
+else
+{
+    if (Model.PeriodIsClosed)
+    {
+        <div class="alert alert-secondary" role="status">
+            This pay period is closed, so payroll receives none of its days. To pay it, reopen it on
+            <a asp-controller="PayPeriods" asp-action="Index">Pay periods</a> (a reason is required).
+        </div>
+    }
+    else if (Model.Days.Count == 0)
+    {
+        <div class="alert alert-info" role="status">
+            No day in this range is ready for payroll yet. Days appear here once they are approved and have no open exception.
+        </div>
+    }
+
+    if (Model.Days.Count > 0)
+    {
+        <div class="card mb-4">
+            <div class="card-header">Totals per employee</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Employee</th>
+                            <th scope="col" class="text-end">Days</th>
+                            <th scope="col" class="text-end">Working</th>
+                            <th scope="col" class="text-end">Overtime</th>
+                            <th scope="col" class="text-end">Break</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var total in Model.Employees)
+                        {
+                            <tr>
+                                <td>@total.EmployeeNumber</td>
+                                <td class="text-end">@total.Days</td>
+                                <td class="text-end">@DisplayFormats.Hours(total.WorkingHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(total.OvertimeHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(total.BreakHours)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Approved days</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Employee</th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Shifts</th>
+                            <th scope="col" class="text-end">Working</th>
+                            <th scope="col" class="text-end">Overtime</th>
+                            <th scope="col" class="text-end">Break</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var day in Model.Days.OrderBy(d => d.EmployeeNumber, StringComparer.Ordinal).ThenBy(d => d.AttendanceDate))
+                        {
+                            <tr>
+                                <td>@day.EmployeeNumber</td>
+                                <td class="text-nowrap">@DisplayFormats.Date(day.AttendanceDate)</td>
+                                <td class="text-nowrap">
+                                    @foreach (var shift in day.Shifts)
+                                    {
+                                        <div class="small">@DisplayFormats.Time(shift.ActualCheckIn)–@DisplayFormats.Time(shift.ActualCheckOut)</div>
+                                    }
+                                </td>
+                                <td class="text-end">@DisplayFormats.Hours(day.TotalWorkingHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(day.TotalOvertimeHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(day.TotalBreakHours)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}

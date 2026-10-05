@@ -12,6 +12,9 @@ public static class AttendanceAuditActions
     /// <summary>An integration, one of its devices or one of its vendor-id mappings was created, changed or removed.</summary>
     public const string IntegrationChanged = "IntegrationChanged";
 
+    /// <summary>A pay period was created, closed or reopened.</summary>
+    public const string PayPeriodChanged = "PayPeriodChanged";
+
     /// <summary>A sync or reconciliation was started by a person instead of the schedule.</summary>
     public const string IntegrationRunRequested = "IntegrationRunRequested";
 

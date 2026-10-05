@@ -28,7 +28,14 @@ public static class NavigationMenu
 
     private static readonly NavSection Integrations = new("Integrations", [new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health, uploads and sync.", Integration)]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations];
+    private static readonly NavSection PayrollSection = new(
+        "Payroll",
+        [
+            new NavItem("Payroll", "Payroll", "Index", "The approved days payroll may pay for, per period, with a CSV export.", Payroll),
+            new NavItem("Pay periods", "PayPeriods", "Index", "Create, close and reopen the pay periods; closing ends payroll extraction of a period.", Payroll),
+        ]);
+
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, PayrollSection];
 
     /// <summary>The sections the actor may open, each with only the items it may open; empty sections are dropped.</summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor) =>
