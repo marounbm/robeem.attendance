@@ -1,23 +1,12 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Reflection;
-using System.Security.Claims;
-using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using robeem.Api.Controllers;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
-using robeem.Application.Security;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
 
@@ -32,44 +21,20 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 {
     private readonly FakeCorrectionService _corrections = new();
     private readonly FakePayroll _payroll = new();
-    private readonly IHost _host;
-    private readonly HttpClient _client;
+    private readonly TestApi _api;
 
     public ApiAuthorizationTests()
     {
-        _host = new HostBuilder()
-            .ConfigureWebHost(web => web
-                .UseTestServer()
-                .ConfigureServices(services =>
-                {
-                    services.AddControllers().AddApplicationPart(typeof(AttendanceCorrectionsController).Assembly);
-                    services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, HeaderAuthenticationHandler>("Test", null);
-                    services.AddAuthorization();
-                    services.AddHttpContextAccessor();
-                    services.AddScoped<ICurrentUser, HttpCurrentUser>();
-                    services.AddSingleton<IAttendanceCorrectionService>(_corrections);
-                    services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
-                    services.AddSingleton<IIntegrationHealthService, FakeHealth>();
-                    services.AddSingleton<IAttendanceAuditTrail, FakeAudit>();
-                })
-                .Configure(app =>
-                {
-                    app.UseRouting();
-                    app.UseAuthentication();
-                    app.UseAuthorization();
-                    app.UseEndpoints(endpoints => endpoints.MapControllers());
-                }))
-            .Build();
-        _host.Start();
-        _client = _host.GetTestClient();
+        _api = TestApi.Start(services =>
+        {
+            services.AddSingleton<IAttendanceCorrectionService>(_corrections);
+            services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
+            services.AddSingleton<IIntegrationHealthService, FakeHealth>();
+            services.AddSingleton<IAttendanceAuditTrail, FakeAudit>();
+        });
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        _client.Dispose();
-        await _host.StopAsync();
-        _host.Dispose();
-    }
+    public async ValueTask DisposeAsync() => await _api.DisposeAsync();
 
     [Fact]
     public async Task AnEmployee_CanNotCallTheDecisionEndpoint()
@@ -224,57 +189,13 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         Assert.Empty(unprotected);
     }
 
-    private static string As(int? employeeId, params string[] roles) =>
-        $"{employeeId?.ToString() ?? "-"};{string.Join(",", roles)}";
+    private static string As(int? employeeId, params string[] roles) => TestApi.As(employeeId, roles);
 
     private Task<HttpResponseMessage> DecideAsync(string? user, bool approved = true, bool isHr = false) =>
         Send(HttpMethod.Post, "api/attendance/corrections/5/decision", user, new { approved, isHrDecision = isHr });
 
-    private async Task<HttpResponseMessage> Send(HttpMethod method, string url, string? user, object? body = null)
-    {
-        using var request = new HttpRequestMessage(method, url);
-        if (user is not null)
-        {
-            request.Headers.Add(HeaderAuthenticationHandler.Header, user);
-        }
-
-        if (body is not null)
-        {
-            request.Content = JsonContent.Create(body);
-        }
-
-        return await _client.SendAsync(request);
-    }
-
-    /// <summary>Signs in whoever the header names: <c>{employee id or -};{roles, comma-separated}</c>.</summary>
-    private sealed class HeaderAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
-    {
-        public const string Header = "X-Test-User";
-
-        public HeaderAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
-            : base(options, logger, encoder)
-        {
-        }
-
-        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-        {
-            if (!Request.Headers.TryGetValue(Header, out var value))
-            {
-                return Task.FromResult(AuthenticateResult.NoResult());
-            }
-
-            var parts = value.ToString().Split(';');
-            var claims = new List<Claim> { new("sub", "test") };
-            claims.AddRange(parts[1].Split(',', StringSplitOptions.RemoveEmptyEntries).Select(role => new Claim(SecurityClaims.Role, role)));
-            if (parts[0] != "-")
-            {
-                claims.Add(new Claim(SecurityClaims.EmployeeId, parts[0]));
-            }
-
-            var identity = new ClaimsIdentity(claims, "Test", "sub", SecurityClaims.Role);
-            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), "Test")));
-        }
-    }
+    private Task<HttpResponseMessage> Send(HttpMethod method, string url, string? user, object? body = null) =>
+        _api.Send(method, url, user, body);
 
     private sealed class FakeCorrectionService : IAttendanceCorrectionService
     {
