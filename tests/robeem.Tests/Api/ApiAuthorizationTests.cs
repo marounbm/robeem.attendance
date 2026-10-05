@@ -21,12 +21,16 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 {
     private readonly FakeCorrectionService _corrections = new();
     private readonly FakePayroll _payroll = new();
+    private readonly FakeExceptions _exceptions = new();
+    private readonly FakeReviews _reviews = new();
     private readonly TestApi _api;
 
     public ApiAuthorizationTests()
     {
         _api = TestApi.Start(services =>
         {
+            services.AddSingleton<IAttendanceExceptionQuery>(_exceptions);
+            services.AddSingleton<IAttendanceReviewService>(_reviews);
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
             services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
             services.AddSingleton<IIntegrationHealthService, FakeHealth>();
@@ -150,6 +154,67 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Exceptions_AreListedForTheUsersOwnRoles_NotForWhatTheCallerClaims()
+    {
+        await Send(HttpMethod.Get, "api/attendance/exceptions?employeeId=5", As(7, AttendanceRoles.Employee));
+        await Send(HttpMethod.Get, "api/attendance/exceptions", As(12, AttendanceRoles.Manager, AttendanceRoles.Employee));
+        await Send(HttpMethod.Get, "api/attendance/exceptions?status=closed&take=20", As(13, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal(
+            [
+                (new ExceptionViewer(7, true, false, false), 5, ExceptionStatusFilter.Active),
+                (new ExceptionViewer(12, true, true, false), null, ExceptionStatusFilter.Active),
+                (new ExceptionViewer(13, false, false, true), null, ExceptionStatusFilter.Closed),
+            ],
+            _exceptions.Calls.Select(c => (c.Viewer, c.Filter.EmployeeId, c.Filter.Status)));
+        Assert.Equal(20, _exceptions.Calls[2].Filter.Take);
+    }
+
+    [Fact]
+    public async Task Exceptions_AreNotForPayrollOrIntegrationAdministrators_NorForSomeoneWithNoEmployeeIdentity_NorABadStatus()
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/exceptions", As(7, AttendanceRoles.PayrollAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/exceptions", As(7, AttendanceRoles.IntegrationAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/exceptions", As(null, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Send(HttpMethod.Get, "api/attendance/exceptions?status=nonsense", As(7, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get, "api/attendance/exceptions", null)).StatusCode);
+        Assert.Empty(_exceptions.Calls);
+    }
+
+    [Fact]
+    public async Task TheReviewQueue_IsAskedForTheAuthenticatedUser_AndHrSeesEveryone()
+    {
+        await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(12, AttendanceRoles.Manager));
+        await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(13, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal([(12, false), (13, true)], _reviews.Lists);
+    }
+
+    [Fact]
+    public async Task Reviews_AreForApproversOnly_WithAnEmployeeIdentity()
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(7, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(7, AttendanceRoles.PayrollAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/reviews/5/decision", As(7, AttendanceRoles.Employee), new { approved = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(null, AttendanceRoles.Manager))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/reviews/5/decision", As(null, AttendanceRoles.Manager), new { approved = true })).StatusCode);
+        Assert.Empty(_reviews.Decisions);
+        Assert.Empty(_reviews.Lists);
+    }
+
+    [Fact]
+    public async Task AReviewDecision_IsMadeAsTheUser_InTheirRole_WithTheReason()
+    {
+        await Send(HttpMethod.Post, "api/attendance/reviews/5/decision", As(12, AttendanceRoles.Manager), new { approved = false, reason = "Not authorised.", isHrDecision = true });
+        await Send(HttpMethod.Post, "api/attendance/reviews/6/decision", As(13, AttendanceRoles.HRAdministrator), new { approved = true });
+        await Send(HttpMethod.Post, "api/attendance/reviews/7/decision", As(14, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator), new { approved = true, isHrDecision = true });
+
+        Assert.Equal(
+            [(5, 12, false, false, "Not authorised."), (6, 13, true, true, null), (7, 14, true, true, null)],
+            _reviews.Decisions);
+    }
+
+    [Fact]
     public async Task AnEmployee_ProposesAsThemselves_NotAsTheBodySays()
     {
         var response = await Send(HttpMethod.Post, "api/attendance/corrections", As(7, AttendanceRoles.Employee), new { exceptionId = 3, proposedValue = "2026-10-05T12:00:00", justification = "Reader missed it", requestedByEmployeeId = 999 });
@@ -237,6 +302,36 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         {
             Lists.Add((approver, approverEmployeeId));
             return Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
+        }
+    }
+
+    private sealed class FakeExceptions : IAttendanceExceptionQuery
+    {
+        public List<(ExceptionFilter Filter, ExceptionViewer Viewer)> Calls { get; } = [];
+
+        public Task<IReadOnlyList<ExceptionListItem>> ListAsync(ExceptionFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
+        {
+            Calls.Add((filter, viewer));
+            return Task.FromResult<IReadOnlyList<ExceptionListItem>>([]);
+        }
+    }
+
+    private sealed class FakeReviews : IAttendanceReviewService
+    {
+        public List<(int RecordId, int DecidedBy, bool Approved, bool AsHr, string? Reason)> Decisions { get; } = [];
+
+        public List<(int ApproverId, bool IsHr)> Lists { get; } = [];
+
+        public Task<ReviewResult> DecideAsync(int recordId, int decidedByEmployeeId, bool asHr, bool approved, string? reason, CancellationToken cancellationToken)
+        {
+            Decisions.Add((recordId, decidedByEmployeeId, approved, asHr, reason));
+            return Task.FromResult(ReviewResult.Success(new AttendanceReviewDecision { Id = 1, Outcome = approved ? AttendanceReviewOutcome.Approved : AttendanceReviewOutcome.Rejected }, AttendanceRecordStatus.Approved));
+        }
+
+        public Task<IReadOnlyList<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, CancellationToken cancellationToken)
+        {
+            Lists.Add((approverEmployeeId, isHr));
+            return Task.FromResult<IReadOnlyList<ReviewListItem>>([]);
         }
     }
 

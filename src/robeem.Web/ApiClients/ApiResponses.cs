@@ -52,6 +52,29 @@ internal static class ApiResponses
     }
 
     /// <summary>
+    /// Reads the answer to an action: a success body, or a 400 as the messages to show the user.
+    /// Anything else (a refusal of access, a missing record, a server error) is thrown as usual.
+    /// </summary>
+    public static async Task<ApiCommandResult<T>> CommandAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+        where T : class
+    {
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            await ThrowIfTenantRejectedAsync(response, cancellationToken);
+            var problem = await ReadJsonOrDefaultAsync<ValidationProblem>(response, cancellationToken);
+            var messages = problem?.Errors?.Values.SelectMany(m => m).Where(m => !string.IsNullOrWhiteSpace(m)).ToList() ?? [];
+            if (messages.Count == 0)
+            {
+                messages.Add(problem?.Title ?? "robeem.Api rejected the request.");
+            }
+
+            return ApiCommandResult<T>.Refused(messages);
+        }
+
+        return ApiCommandResult<T>.Ok(await ReadAsync<T>(response, cancellationToken));
+    }
+
+    /// <summary>
     /// Maps a 400 ValidationProblemDetails onto <typeparamref name="TInput"/> property names. Keys
     /// that name no property (e.g. a JSON path the API could not bind) map to <see cref="string.Empty"/>,
     /// a model-level error.

@@ -19,17 +19,21 @@ internal sealed class StubHttpHandler : HttpMessageHandler
 
     public List<HttpRequestMessage> Requests { get; } = new();
 
+    /// <summary>Gets the body of each request, read when it arrived (the request's own content is disposed after the call).</summary>
+    public List<string?> Bodies { get; } = new();
+
     public HttpClient CreateClient() => new(this) { BaseAddress = new Uri("http://api.test/") };
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests.Add(request);
+        Bodies.Add(request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken));
         var response = new HttpResponseMessage(_status) { RequestMessage = request };
         if (_json is not null)
         {
             response.Content = new StringContent(_json, Encoding.UTF8, _mediaType);
         }
 
-        return Task.FromResult(response);
+        return response;
     }
 }

@@ -1,0 +1,86 @@
+@model CorrectionsQueueViewModel
+@{
+    ViewData["Title"] = "Corrections";
+}
+
+<h1 class="h3 mb-1">Corrections to decide</h1>
+<p class="text-muted">
+    An employee proposed the time of a punch that was missing. Approve it and the punch is added and the day recalculated;
+    reject it and the employee can propose again. Nothing in the original punches is ever changed.
+</p>
+
+<partial name="_StatusMessage" />
+
+<ul class="nav nav-tabs mb-3">
+    @if (Model.CanManager)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(Model.Awaiting == CorrectionApprover.Manager ? "active" : "")" asp-action="Index" asp-route-awaiting="Manager">As manager</a>
+        </li>
+    }
+    @if (Model.CanHr)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(Model.Awaiting == CorrectionApprover.HR ? "active" : "")" asp-action="Index" asp-route-awaiting="HR">As HR</a>
+        </li>
+    }
+</ul>
+
+@if (Model.Awaiting == CorrectionApprover.HR)
+{
+    <p class="small text-muted">
+        HR also decides, in the manager's place, the corrections of employees who have no manager (or whose manager is inactive).
+    </p>
+}
+
+<div class="card">
+    @if (Model.Items.Count == 0)
+    {
+        <div class="card-body text-muted">Nothing is waiting for you.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Employee</th>
+                        <th scope="col">Day</th>
+                        <th scope="col">Punch</th>
+                        <th scope="col">Proposed time</th>
+                        <th scope="col">Reason</th>
+                        <th scope="col">Who decides</th>
+                        <th scope="col"><span class="visually-hidden">Decide</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td>@item.EmployeeName</td>
+                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td>@DisplayFormats.Words(item.CorrectedEventType)</td>
+                            <td class="text-nowrap">@DisplayFormats.DateTime(item.ProposedValue)</td>
+                            <td>@item.Justification<div class="small text-muted">Asked @DisplayFormats.DateTime(item.RequestedAt)</div></td>
+                            <td>
+                                @item.ApprovalWorkflow
+                                @if (item.ManagerDecision is not null)
+                                {
+                                    <div class="small text-muted">Manager: @item.ManagerDecision</div>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">
+                                <form method="post" asp-action="Decide" class="d-inline">
+                                    <input type="hidden" name="id" value="@item.Id" />
+                                    <input type="hidden" name="awaiting" value="@Model.Awaiting" />
+                                    <button type="submit" name="approved" value="true" class="btn btn-sm btn-success">Approve</button>
+                                    <button type="submit" name="approved" value="false" class="btn btn-sm btn-outline-danger">Reject</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

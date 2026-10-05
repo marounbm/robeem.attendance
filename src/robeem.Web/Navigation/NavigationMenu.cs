@@ -17,7 +17,16 @@ public static class NavigationMenu
 
     private static readonly NavSection People = new("People", [new NavItem("Employees", "Employees", "Index", "Add and edit employees, their time schedule and their manager.", Hr)]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People];
+    private static readonly NavSection MyWork = new("My work", [new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr)]);
+
+    private static readonly NavSection Approvals = new(
+        "Approvals",
+        [
+            new NavItem("Corrections", "Corrections", "Index", "Decide the corrections employees proposed for missing punches.", Manager, Hr),
+            new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr),
+        ]);
+
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals];
 
     /// <summary>The sections the actor may open, each with only the items it may open; empty sections are dropped.</summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor) =>

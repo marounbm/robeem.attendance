@@ -26,6 +26,9 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IEmployeesApiClient, EmployeesApiClient>(services);
         AddClient<ITenantsApiClient, TenantsApiClient>(services);
         AddClient<IActorsApiClient, ActorsApiClient>(services);
+        AddClient<IExceptionsApiClient, ExceptionsApiClient>(services);
+        AddClient<ICorrectionsApiClient, CorrectionsApiClient>(services);
+        AddClient<IReviewsApiClient, ReviewsApiClient>(services);
 
         return services;
     }

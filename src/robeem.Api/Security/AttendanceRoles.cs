@@ -16,5 +16,8 @@ public static class AttendanceRoles
     /// <summary>The roles that decide corrections, for <c>[Authorize(Roles = ...)]</c>.</summary>
     public const string Approvers = Manager + "," + HRAdministrator;
 
+    /// <summary>The roles that look at exceptions: their own, their reports', or everyone's.</summary>
+    public const string ExceptionViewers = Employee + "," + Manager + "," + HRAdministrator;
+
     public static readonly IReadOnlyList<string> All = [Employee, Manager, HRAdministrator, PayrollAdministrator, IntegrationAdministrator];
 }

@@ -1,0 +1,122 @@
+@model ExceptionsIndexViewModel
+@{
+    ViewData["Title"] = "Exceptions";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Exceptions</h1>
+</div>
+
+<p class="text-muted">
+    A missing punch, or punches in the wrong order, that a person has to settle. You see your own; a manager also sees
+    their reports'; HR sees everyone's. If a punch is missing from your day, propose the time it happened and your
+    approver decides.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="status">Show</label>
+        <select id="status" name="status" class="form-select">
+            @foreach (var status in ExceptionsIndexViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@DisplayFormats.Words(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Items.Count == 0)
+    {
+        <div class="card-body text-muted">No exceptions match.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Date</th>
+                        <th scope="col">Employee</th>
+                        <th scope="col">Shift</th>
+                        <th scope="col">Problem</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Detected</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td>@item.EmployeeName</td>
+                            <td>@(item.ShiftTitle ?? "—")</td>
+                            <td>
+                                @if (item.MissingEventType is not null)
+                                {
+                                    <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
+                                }
+                                else
+                                {
+                                    <span>Wrong order</span>
+                                }
+                                <div class="small text-muted">@item.Description</div>
+                            </td>
+                            <td>
+                                <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
+                                @if (item.ResolutionMethod is not null)
+                                {
+                                    <div class="small text-muted">@DisplayFormats.Words(item.ResolutionMethod)</div>
+                                }
+                            </td>
+                            <td class="text-nowrap small">@DisplayFormats.DateTime(item.DetectedAt)</td>
+                            <td class="text-end">
+                                @if (item.CanPropose)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
+                                            data-bs-target="#propose-@item.Id" aria-expanded="false" aria-controls="propose-@item.Id">Propose correction</button>
+                                }
+                            </td>
+                        </tr>
+                        @if (item.CanPropose)
+                        {
+                            <tr class="collapse" id="propose-@item.Id">
+                                <td colspan="7" class="bg-light">
+                                    <form method="post" asp-action="Propose" class="row g-2 align-items-end">
+                                        <input type="hidden" name="exceptionId" value="@item.Id" />
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0" for="time-@item.Id">When did the @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant() happen?</label>
+                                            <input id="time-@item.Id" type="datetime-local" name="proposedValue" class="form-control"
+                                                   value="@item.AttendanceDate.ToString("yyyy-MM-dd")T12:00" required />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small mb-0" for="why-@item.Id">Why was it missed?</label>
+                                            <input id="why-@item.Id" type="text" name="justification" maxlength="1000" class="form-control" required />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="submit" class="btn btn-primary">Send for approval</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
