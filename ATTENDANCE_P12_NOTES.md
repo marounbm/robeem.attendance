@@ -33,7 +33,7 @@ The prompt requires a human to choose the authentication approach. I asked, and 
 - **The Web has no sign-in.** It does not forward a token, so its calls get 401 anywhere but Development. **In Development** `Authentication:DevelopmentUser:Enabled` (on in `appsettings.Development.json`) signs every token-less request in as a stand-in user with every role (no `tenant_id`, so tenant selection stays by header; no `employee_id` unless configured, so proposing a correction as that user needs `Authentication:DevelopmentUser:EmployeeId`). OpenID Connect sign-in in the Web plus a handler that forwards the access token is the missing piece.
 - **HR screens are locked to HRAdministrator too**, which the prompt did not ask for: leaving them open after adding authentication seemed wrong.
 - **The overtime question of P11 is still open.** Roles now exist, but nothing approves a `PendingReview` record, and a correction still only supplies a missing punch.
-- **Approver scope is still missing.** A manager sees every correction awaiting a manager; there is no team or department structure to scope by (`TODO(approver scope)`).
+- **Approver scope was missing here, and is now done** (see `ATTENDANCE_FOLLOWUP_NOTES.md`): an employee has an optional manager, and a manager sees and decides only their direct reports' corrections.
 - **Reads of attendance by the health report write a row each call.** That is what the prompt asks for ("every direct read"); a dashboard that polls will fill the table. Consider sampling or dropping this one if it does.
 - **Audit retention is undecided:** the table only grows.
 - **`IsHrDecision` is still a request field**, but only for a user holding both roles.

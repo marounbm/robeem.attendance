@@ -48,6 +48,15 @@ namespace robeem.DataModel
 
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// Gets or sets the employee's manager (another <see cref="Profile"/>); null when they have
+        /// none. A manager decides the attendance corrections of their direct reports; for an
+        /// employee with no manager, or an inactive one, HR decides.
+        /// </summary>
+        public int? ManagerId { get; set; }
+
+        public Profile? Manager { get; set; }
+
         #region not mapped
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}".Trim();

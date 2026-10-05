@@ -10,5 +10,9 @@ public sealed class ProfileConfiguration : IEntityTypeConfiguration<Profile>
     {
         builder.HasIndex(p => new { p.TenantId, p.EmployeeNumber }).IsUnique();
         builder.HasIndex(p => new { p.LastName, p.FirstName });
+
+        // A manager is another employee. The foreign key restricts deletes, like every other.
+        builder.HasOne(p => p.Manager).WithMany().HasForeignKey(p => p.ManagerId);
+        builder.HasIndex(p => new { p.TenantId, p.ManagerId });
     }
 }

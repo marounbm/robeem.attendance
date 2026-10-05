@@ -21,6 +21,20 @@ public sealed class EmployeesApiClientTests
     }
 
     [Fact]
+    public async Task ManagerOptions_AskForEveryoneExceptTheEmployeeBeingEdited()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"id":3,"name":"Grace Hopper (M-1)"}]""");
+        var client = new EmployeesApiClient(handler.CreateClient());
+
+        var options = await client.ListManagerOptionsAsync(7, CancellationToken.None);
+        await client.ListManagerOptionsAsync(null, CancellationToken.None);
+
+        Assert.Equal("/api/employees/manager-options?excludeId=7", handler.Requests[0].RequestUri!.PathAndQuery);
+        Assert.Equal("/api/employees/manager-options", handler.Requests[1].RequestUri!.PathAndQuery);
+        Assert.Equal((3, "Grace Hopper (M-1)"), (Assert.Single(options).Id, options[0].Name));
+    }
+
+    [Fact]
     public async Task Get_ReturnsNullWhenNotFound()
     {
         var client = new EmployeesApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());

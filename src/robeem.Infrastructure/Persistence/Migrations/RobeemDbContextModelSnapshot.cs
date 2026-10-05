@@ -1036,6 +1036,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int?>("ManagerId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ModifiedBy")
                         .HasColumnType("integer");
 
@@ -1062,10 +1065,14 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ManagerId");
+
                     b.HasIndex("LastName", "FirstName");
 
                     b.HasIndex("TenantId", "EmployeeNumber")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ManagerId");
 
                     b.ToTable("Profile", "HR");
                 });
@@ -1627,6 +1634,16 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("Integration");
 
                     b.Navigation("RawTransaction");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.Profile", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "Manager")
+                        .WithMany()
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Manager");
                 });
 
             modelBuilder.Entity("robeem.DataModel.RawAttendanceTransaction", b =>

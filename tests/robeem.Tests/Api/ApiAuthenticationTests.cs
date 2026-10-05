@@ -268,7 +268,7 @@ public sealed class ApiAuthenticationTests
         public Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken) =>
             Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = correctionId, Status = robeem.DataModel.AttendanceCorrectionStatus.Applied }, robeem.DataModel.AttendanceExceptionStatus.Closed));
 
-        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, CancellationToken cancellationToken) =>
+        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
     }
 }

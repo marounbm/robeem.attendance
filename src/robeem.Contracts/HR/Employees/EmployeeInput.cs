@@ -46,6 +46,10 @@ public sealed class EmployeeInput
     [Display(Name = "Active")]
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Gets or sets the employee's manager; <c>null</c> means none, and HR then decides their attendance corrections.</summary>
+    [Display(Name = "Manager")]
+    public int? ManagerId { get; set; }
+
     /// <summary>Gets or sets the time schedule the employee follows; <c>null</c> means not assigned.</summary>
     [Display(Name = "Time schedule")]
     public int? TimeScheduleId { get; set; }

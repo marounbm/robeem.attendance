@@ -59,7 +59,12 @@ public sealed class AttendanceCorrectionsController : ControllerBase
             return Forbid();
         }
 
-        return Ok(await _corrections.ListPendingAsync(awaiting, cancellationToken));
+        if (_user.EmployeeId is not { } approverId)
+        {
+            return NoEmployeeIdentity();
+        }
+
+        return Ok(await _corrections.ListPendingAsync(awaiting, approverId, cancellationToken));
     }
 
     /// <summary>A manager or HR user approves or rejects a pending correction.</summary>

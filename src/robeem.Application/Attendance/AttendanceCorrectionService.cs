@@ -148,16 +148,28 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "A correction can't be decided by the person who proposed it.");
         }
 
-        if (RoleProblem(correction, isHrDecision) is { } problem)
+        // Who may take the manager's step: the employee's own manager. HR takes it only when the
+        // employee has no manager, or an inactive one, so that no correction can be left undecidable.
+        var employee = await _db.Profiles.AsNoTracking().Include(p => p.Manager).SingleAsync(p => p.Id == correction.EmployeeId, cancellationToken);
+        var awaitingManagerStep = correction.ApprovalWorkflow != CorrectionApprovalWorkflow.HR && correction.ManagerDecision is null;
+        var standsIn = isHrDecision && awaitingManagerStep && IsUnmanaged(employee);
+        var decidesAsHr = isHrDecision && !standsIn;
+
+        if (RoleProblem(correction, decidesAsHr) is { } problem)
         {
             return CorrectionResult.Invalid(nameof(DecideCorrectionRequest.IsHrDecision), problem);
+        }
+
+        if (!decidesAsHr && !standsIn && employee.ManagerId != decidedByUserId)
+        {
+            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "Only the employee's manager can decide this correction.");
         }
 
         var now = _clock.GetLocalNow().DateTime;
         var decision = approved ? AttendanceCorrectionDecision.Approved : AttendanceCorrectionDecision.Rejected;
         var actor = ActorOf(decidedByUserId);
-        var role = isHrDecision ? "HR" : "Manager";
-        if (isHrDecision)
+        var role = decidesAsHr ? "HR" : standsIn ? "HR, in place of the manager" : "Manager";
+        if (decidesAsHr)
         {
             (correction.HrDecision, correction.HrDecidedById, correction.HrDecidedAt) = (decision, decidedByUserId, now);
         }
@@ -179,7 +191,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
         // Every approval the workflow asks for is in once the last role of the workflow has approved:
         // the manager for Manager, HR for HR and for Both (the manager decides first).
-        var complete = correction.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager ? !isHrDecision : isHrDecision;
+        var complete = correction.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager ? !decidesAsHr : decidesAsHr;
         if (!complete)
         {
             _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is still {correction.Status}.", actor);
@@ -206,21 +218,24 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         return CorrectionResult.Success(correction, exception.Status);
     }
 
-    public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken)
     {
-        // TODO(approver scope): limit the list to the approver's team or department. There is no
-        // manager or organization structure in this solution to scope by, so a manager sees every
-        // pending correction awaiting a manager (ATTENDANCE_P12_NOTES.md).
         var pending = _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.Status == AttendanceCorrectionStatus.Pending);
 
-        // The manager is asked first; HR next, or alone when the policy asks for HR only.
+        // The manager is asked first; HR next, or alone when the policy asks for HR only. A manager
+        // sees their direct reports' corrections. HR also sees the manager-step corrections of
+        // employees with no manager (or an inactive one): nobody else can decide them.
         pending = approver == CorrectionApprover.Manager
             ? pending.Where(c => c.ManagerDecision == null
-                && (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager || c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both))
+                && (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager || c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both)
+                && c.Employee!.ManagerId == approverEmployeeId)
             : pending.Where(c => c.ApprovalWorkflow == CorrectionApprovalWorkflow.HR
-                || (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both && c.ManagerDecision == AttendanceCorrectionDecision.Approved));
+                || (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both && c.ManagerDecision == AttendanceCorrectionDecision.Approved)
+                || (c.ManagerDecision == null
+                    && c.ApprovalWorkflow != CorrectionApprovalWorkflow.HR
+                    && (c.Employee!.ManagerId == null || c.Employee.Manager!.IsActive == false)));
 
         var rows = await pending
             .OrderBy(c => c.RequestedAt)
@@ -261,6 +276,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
     }
 
     private static string ActorOf(int employeeId) => $"employee:{employeeId}";
+
+    /// <summary>An employee with no manager, or whose manager is inactive: HR decides for them.</summary>
+    private static bool IsUnmanaged(Profile employee) => employee.ManagerId is null || employee.Manager is not { IsActive: true };
 
     /// <summary>Why this role can't decide the correction now, or null when it can.</summary>
     private static string? RoleProblem(AttendanceCorrection correction, bool isHrDecision) => correction.ApprovalWorkflow switch

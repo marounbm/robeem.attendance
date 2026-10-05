@@ -134,6 +134,22 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheQueue_IsAskedForTheAuthenticatedUser_NotForWhoeverTheCallerNames()
+    {
+        await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=Manager&approverEmployeeId=999", As(12, AttendanceRoles.Manager));
+        await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=HR", As(13, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal([(CorrectionApprover.Manager, 12), (CorrectionApprover.HR, 13)], _corrections.Lists);
+    }
+
+    [Fact]
+    public async Task AnApproverWithoutAnEmployeeIdentity_CanNotListAQueue()
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=Manager", As(null, AttendanceRoles.Manager))).StatusCode);
+        Assert.Empty(_corrections.Lists);
+    }
+
+    [Fact]
     public async Task AnEmployee_ProposesAsThemselves_NotAsTheBodySays()
     {
         var response = await Send(HttpMethod.Post, "api/attendance/corrections", As(7, AttendanceRoles.Employee), new { exceptionId = 3, proposedValue = "2026-10-05T12:00:00", justification = "Reader missed it", requestedByEmployeeId = 999 });
@@ -203,6 +219,8 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 
         public List<int> Proposals { get; } = [];
 
+        public List<(CorrectionApprover Approver, int ApproverId)> Lists { get; } = [];
+
         public Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
         {
             Proposals.Add(requestedByEmployeeId);
@@ -215,8 +233,11 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             return Task.FromResult(CorrectionResult.Success(new AttendanceCorrection { Id = correctionId, Status = AttendanceCorrectionStatus.Applied }, AttendanceExceptionStatus.Closed));
         }
 
-        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
+        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken)
+        {
+            Lists.Add((approver, approverEmployeeId));
+            return Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
+        }
     }
 
     private sealed class FakePayroll : IPayrollAttendanceExtract

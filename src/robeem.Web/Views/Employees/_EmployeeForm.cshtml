@@ -71,5 +71,14 @@
             <div class="form-text">The employee joins the schedule's all-inclusive (default) team.</div>
             <span asp-validation-for="Input.TimeScheduleId" class="text-danger small"></span>
         </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ManagerId" class="form-label"></label>
+            <select asp-for="Input.ManagerId" class="form-select"
+                    asp-items="@(new SelectList(Model.Managers, nameof(ManagerOption.Id), nameof(ManagerOption.Name)))">
+                <option value="">— No manager —</option>
+            </select>
+            <div class="form-text">The manager decides this employee's attendance corrections. With no manager, HR decides.</div>
+            <span asp-validation-for="Input.ManagerId" class="text-danger small"></span>
+        </div>
     </div>
 </div>

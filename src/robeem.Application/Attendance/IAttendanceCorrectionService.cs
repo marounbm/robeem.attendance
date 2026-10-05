@@ -22,9 +22,16 @@ public interface IAttendanceCorrectionService
     /// correction is Applied only once every approval the policy asks for is in (Manager, HR, or
     /// the manager and then HR); then the day is recalculated with the corrected punch and the
     /// exception closed. A rejection by anyone rejects the correction and reopens the exception.
+    /// The manager's step belongs to the employee's own manager; HR may take it only when the
+    /// employee has no manager or an inactive one (then <paramref name="isHrDecision"/> true on a
+    /// correction still awaiting its manager step is recorded as that step).
     /// </summary>
     Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken);
 
-    /// <summary>Lists the pending corrections whose next decision is <paramref name="approver"/>'s, oldest first.</summary>
-    Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, CancellationToken cancellationToken);
+    /// <summary>
+    /// Lists the pending corrections whose next decision is <paramref name="approver"/>'s, oldest
+    /// first. A manager (<paramref name="approverEmployeeId"/>) gets their direct reports'; HR gets
+    /// every HR-step one, plus the manager-step ones of employees who have no active manager.
+    /// </summary>
+    Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken);
 }

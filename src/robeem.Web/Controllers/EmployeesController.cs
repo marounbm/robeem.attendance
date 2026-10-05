@@ -33,6 +33,7 @@ public sealed class EmployeesController : Controller
         {
             Input = new EmployeeInput { TimeScheduleId = schedules.FirstOrDefault()?.Id },
             Schedules = schedules,
+            Managers = await _employees.ListManagerOptionsAsync(null, cancellationToken),
         });
     }
 
@@ -52,6 +53,7 @@ public sealed class EmployeesController : Controller
         }
 
         model.Schedules = await _employees.ListSchedulesAsync(cancellationToken);
+        model.Managers = await _employees.ListManagerOptionsAsync(null, cancellationToken);
         return View(model);
     }
 
@@ -69,6 +71,7 @@ public sealed class EmployeesController : Controller
             Id = id,
             Input = input,
             Schedules = await _employees.ListSchedulesAsync(cancellationToken),
+            Managers = await _employees.ListManagerOptionsAsync(id, cancellationToken),
         });
     }
 
@@ -93,6 +96,7 @@ public sealed class EmployeesController : Controller
         }
 
         model.Id = id;
+        model.Managers = await _employees.ListManagerOptionsAsync(id, cancellationToken);
         model.Schedules = await _employees.ListSchedulesAsync(cancellationToken);
         return View(model);
     }

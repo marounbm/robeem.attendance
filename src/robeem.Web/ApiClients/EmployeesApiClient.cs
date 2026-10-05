@@ -48,6 +48,18 @@ public sealed class EmployeesApiClient : IEmployeesApiClient
         return await ApiResponses.ReadAsync<List<ScheduleOption>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ManagerOption>> ListManagerOptionsAsync(int? excludeEmployeeId, CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?>();
+        if (excludeEmployeeId is { } excluded)
+        {
+            query["excludeId"] = excluded.ToString(CultureInfo.InvariantCulture);
+        }
+
+        using var response = await _http.GetAsync(QueryHelpers.AddQueryString($"{EmployeesPath}/manager-options", query), cancellationToken);
+        return await ApiResponses.ReadAsync<List<ManagerOption>>(response, cancellationToken);
+    }
+
     public async Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsJsonAsync(EmployeesPath, input, cancellationToken);

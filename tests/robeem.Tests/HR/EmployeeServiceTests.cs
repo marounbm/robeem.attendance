@@ -108,11 +108,109 @@ public sealed class EmployeeServiceTests : IDisposable
         Assert.Empty(await new EmployeeService(otherTenant).ListAsync(null, includeInactive: true, CancellationToken.None));
     }
 
-    private static EmployeeInput Input(string number, int? scheduleId) => new()
+    [Fact]
+    public async Task Create_WithAManager_StoresIt_AndTheListAndEditShowIt()
     {
+        var boss = (await CreateAsync(Input("B-1", null, "Grace", "Hopper"))).EmployeeId!.Value;
+
+        var report = await CreateAsync(Input("E-1", null, managerId: boss));
+
+        Assert.True(report.Succeeded);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var service = new EmployeeService(db);
+        Assert.Equal(boss, (await service.GetAsync(report.EmployeeId!.Value, CancellationToken.None))!.ManagerId);
+        var listed = (await service.ListAsync(null, includeInactive: true, CancellationToken.None)).Single(e => e.EmployeeNumber == "E-1");
+        Assert.Equal("Grace Hopper", listed.ManagerName);
+    }
+
+    [Fact]
+    public async Task AManager_CanBeChanged_AndRemoved()
+    {
+        var boss = (await CreateAsync(Input("B-1", null, "Grace", "Hopper"))).EmployeeId!.Value;
+        var other = (await CreateAsync(Input("B-2", null, "Alan", "Turing"))).EmployeeId!.Value;
+        var id = (await CreateAsync(Input("E-1", null, managerId: boss))).EmployeeId!.Value;
+
+        Assert.True((await UpdateAsync(id, Input("E-1", null, managerId: other))).Succeeded);
+        Assert.True((await UpdateAsync(id, Input("E-1", null, managerId: null))).Succeeded);
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Null((await new EmployeeService(db).GetAsync(id, CancellationToken.None))!.ManagerId);
+    }
+
+    [Fact]
+    public async Task ANobodyManager_ASelfManager_AnUnknownOne_AndAnInactiveOne_AreRefused()
+    {
+        var id = (await CreateAsync(Input("E-1", null))).EmployeeId!.Value;
+        var inactive = Input("B-9", null, "Old", "Boss");
+        inactive.IsActive = false;
+        var inactiveId = (await CreateAsync(inactive)).EmployeeId!.Value;
+
+        var self = await UpdateAsync(id, Input("E-1", null, managerId: id));
+        var unknown = await UpdateAsync(id, Input("E-1", null, managerId: 999));
+        var notActive = await UpdateAsync(id, Input("E-1", null, managerId: inactiveId));
+
+        Assert.Contains("own manager", self.Errors[nameof(EmployeeInput.ManagerId)]);
+        Assert.Contains("does not exist", unknown.Errors[nameof(EmployeeInput.ManagerId)]);
+        Assert.Contains("not active", notActive.Errors[nameof(EmployeeInput.ManagerId)]);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Null((await new EmployeeService(db).GetAsync(id, CancellationToken.None))!.ManagerId);
+    }
+
+    [Fact]
+    public async Task AReportingLoop_IsRefused_AtAnyDepth()
+    {
+        var a = (await CreateAsync(Input("A", null))).EmployeeId!.Value;
+        var b = (await CreateAsync(Input("B", null, managerId: a))).EmployeeId!.Value;
+        var c = (await CreateAsync(Input("C", null, managerId: b))).EmployeeId!.Value;
+
+        // A -> C would close the loop A -> C -> B -> A.
+        var loop = await UpdateAsync(a, Input("A", null, managerId: c));
+
+        Assert.Contains("loop", loop.Errors[nameof(EmployeeInput.ManagerId)]);
+    }
+
+    [Fact]
+    public async Task ManagerOptions_AreTheActiveEmployees_WithoutTheOneBeingEdited()
+    {
+        var a = (await CreateAsync(Input("A", null, "Ada", "Aa"))).EmployeeId!.Value;
+        await CreateAsync(Input("B", null, "Ben", "Bb"));
+        var gone = Input("C", null, "Cy", "Cc");
+        gone.IsActive = false;
+        await CreateAsync(gone);
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var service = new EmployeeService(db);
+
+        Assert.Equal(["Ada Aa (A)", "Ben Bb (B)"], (await service.ListManagerOptionsAsync(null, CancellationToken.None)).Select(o => o.Name));
+        Assert.Equal(["Ben Bb (B)"], (await service.ListManagerOptionsAsync(a, CancellationToken.None)).Select(o => o.Name));
+    }
+
+    [Fact]
+    public async Task AManagerFromAnotherTenant_DoesNotExist()
+    {
+        using (var other = _database.CreateContext(TestDatabase.TenantB))
+        {
+            var created = await new EmployeeService(other).CreateAsync(Input("B-1", null, "Grace", "Hopper"), CancellationToken.None);
+            Assert.True(created.Succeeded);
+        }
+
+        int foreignId;
+        using (var db = _database.CreateContext(TestDatabase.TenantB))
+        {
+            foreignId = db.Profiles.Single().Id;
+        }
+
+        var result = await CreateAsync(Input("E-1", null, managerId: foreignId));
+
+        Assert.Contains("does not exist", result.Errors[nameof(EmployeeInput.ManagerId)]);
+    }
+
+    private static EmployeeInput Input(string number, int? scheduleId, string firstName = "Ada", string lastName = "Lovelace", int? managerId = null) => new()
+    {
+        ManagerId = managerId,
+        FirstName = firstName,
+        LastName = lastName,
         EmployeeNumber = number,
-        FirstName = "Ada",
-        LastName = "Lovelace",
         HireDate = new DateTime(2026, 1, 5),
         TimeScheduleId = scheduleId,
     };

@@ -50,6 +50,7 @@
                         <th scope="col">Department</th>
                         <th scope="col">Job title</th>
                         <th scope="col">Time schedule</th>
+                        <th scope="col">Manager</th>
                         <th scope="col">Hire date</th>
                         <th scope="col">Status</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -64,6 +65,7 @@
                             <td>@employee.Department</td>
                             <td>@employee.JobTitle</td>
                             <td>@(employee.TimeScheduleTitle ?? "—")</td>
+                            <td>@(employee.ManagerName ?? "—")</td>
                             <td>@employee.HireDate.ToString("yyyy-MM-dd")</td>
                             <td>
                                 @if (employee.IsActive)

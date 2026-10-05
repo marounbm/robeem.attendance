@@ -17,4 +17,6 @@ public sealed class EmployeeListItem
     public bool IsActive { get; init; }
 
     public string? TimeScheduleTitle { get; init; }
+
+    public string? ManagerName { get; init; }
 }

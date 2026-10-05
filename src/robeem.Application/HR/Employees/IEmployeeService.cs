@@ -11,6 +11,9 @@ public interface IEmployeeService
 
     Task<IReadOnlyList<ScheduleOption>> ListSchedulesAsync(CancellationToken cancellationToken);
 
+    /// <summary>Lists the active employees who can be chosen as a manager, except <paramref name="excludeEmployeeId"/> (nobody manages themselves).</summary>
+    Task<IReadOnlyList<ManagerOption>> ListManagerOptionsAsync(int? excludeEmployeeId, CancellationToken cancellationToken);
+
     Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken);
 
     Task<EmployeeSaveResult> UpdateAsync(int id, EmployeeInput input, CancellationToken cancellationToken);

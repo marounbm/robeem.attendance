@@ -23,6 +23,11 @@ public sealed class EmployeesController : ControllerBase
     public async Task<IReadOnlyList<EmployeeListItem>> List(string? search, bool includeInactive, CancellationToken cancellationToken)
         => await _employees.ListAsync(search, includeInactive, cancellationToken);
 
+    /// <summary>Employees who can be chosen as a manager; <paramref name="excludeId"/> is left out (nobody manages themselves).</summary>
+    [HttpGet("manager-options")]
+    public async Task<IReadOnlyList<ManagerOption>> ListManagerOptions(int? excludeId, CancellationToken cancellationToken)
+        => await _employees.ListManagerOptionsAsync(excludeId, cancellationToken);
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EmployeeInput>> Get(int id, CancellationToken cancellationToken)
         => await _employees.GetAsync(id, cancellationToken) is { } input ? input : NotFound();

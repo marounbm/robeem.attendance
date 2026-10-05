@@ -13,4 +13,7 @@ public sealed class EmployeeFormViewModel
 
     [BindNever]
     public IReadOnlyList<ScheduleOption> Schedules { get; set; } = Array.Empty<ScheduleOption>();
+
+    [BindNever]
+    public IReadOnlyList<ManagerOption> Managers { get; set; } = Array.Empty<ManagerOption>();
 }

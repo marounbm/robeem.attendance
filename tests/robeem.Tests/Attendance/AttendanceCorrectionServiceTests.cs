@@ -18,6 +18,9 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     {
         _managerId = AddProfile("M-1", "Grace", "Hopper");
         _hrId = AddProfile("H-1", "Alan", "Turing");
+
+        // The employee's manager decides their corrections; the scope tests below change this.
+        SetManager(_managerId);
         Clock.Local = Monday.At(18, 0);
     }
 
@@ -263,6 +266,109 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task AManager_SeesAndDecidesOnlyTheirOwnDirectReports()
+    {
+        var otherManager = AddProfile("M-2", "Katherine", "Johnson");
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        // The employee reports to Grace: it is in her queue, and not in another manager's or HR's.
+        Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.Manager, _managerId)).Id);
+        Assert.Empty(await ListPendingAsync(CorrectionApprover.Manager, otherManager));
+        Assert.Empty(await ListPendingAsync(CorrectionApprover.HR));
+
+        // Another manager can not decide it ...
+        var refused = await DecideAsync(id, otherManager, approved: true, isHr: false);
+        Assert.Contains(CorrectionErrorKeys.DecidedBy, refused.Errors.Keys);
+        Assert.Equal(AttendanceCorrectionStatus.Pending, (await CorrectionAsync(id)).Status);
+        Assert.Empty(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
+
+        // ... until the employee moves to them.
+        SetManager(otherManager);
+        Assert.Empty(await ListPendingAsync(CorrectionApprover.Manager, _managerId));
+        Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.Manager, otherManager)).Id);
+        Assert.Equal(AttendanceCorrectionStatus.Applied, (await DecideAsync(id, otherManager, approved: true, isHr: false)).Status);
+    }
+
+    [Fact]
+    public async Task ForAnEmployeeWithNoManager_HrSeesTheManagersStep_AndDecidesItInTheManagersPlace()
+    {
+        SetManager(null);
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        Assert.Empty(await ListPendingAsync(CorrectionApprover.Manager, _managerId));
+        Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.HR)).Id);
+
+        var decided = await DecideAsync(id, _hrId, approved: true, isHr: true);
+
+        // The manager's policy asked for the manager's decision only: HR's stands as that decision.
+        Assert.Equal((AttendanceCorrectionStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var correction = Assert.Single(db.AttendanceCorrections);
+        Assert.Equal((AttendanceCorrectionDecision.Approved, _hrId, null), (correction.ManagerDecision, correction.ManagerDecidedById, correction.HrDecision));
+        Assert.Contains("HR, in place of the manager", Assert.Single(await AuditAsync(AttendanceAuditActions.CorrectionDecided)).Details);
+    }
+
+    [Fact]
+    public async Task AManagerOfNoOne_CanNotDecide_ForAnEmployeeWithNoManager()
+    {
+        SetManager(null);
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        var refused = await DecideAsync(id, _managerId, approved: true, isHr: false);
+
+        Assert.Contains(CorrectionErrorKeys.DecidedBy, refused.Errors.Keys);
+        Assert.Equal(AttendanceCorrectionStatus.Pending, (await CorrectionAsync(id)).Status);
+    }
+
+    [Fact]
+    public async Task AnInactiveManager_IsAsGoodAsNone_HrDecidesInTheirPlace()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+        SetActive(_managerId, false);
+
+        Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.HR)).Id);
+        Assert.Equal(AttendanceCorrectionStatus.Applied, (await DecideAsync(id, _hrId, approved: true, isHr: true)).Status);
+    }
+
+    [Fact]
+    public async Task UnderBoth_ForAnUnmanagedEmployee_HrDecidesBothSteps_InTwoDecisions()
+    {
+        AddDefaultPolicy(p => p.CorrectionApprovalWorkflow = CorrectionApprovalWorkflow.Both);
+        SetManager(null);
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        var first = await DecideAsync(id, _hrId, approved: true, isHr: true);
+
+        // The manager's step is in; the HR step still waits, in HR's queue.
+        Assert.Equal(AttendanceCorrectionStatus.Pending, first.Status);
+        Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.HR)).Id);
+
+        var second = await DecideAsync(id, _hrId, approved: true, isHr: true);
+
+        Assert.Equal(AttendanceCorrectionStatus.Applied, second.Status);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var correction = Assert.Single(db.AttendanceCorrections);
+        Assert.Equal((_hrId, _hrId), (correction.ManagerDecidedById, correction.HrDecidedById));
+    }
+
+    [Fact]
+    public async Task ForAManagedEmployee_HrDoesNotSeeTheManagersStep_AndCanNotTakeIt()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        var id = (await ProposeAsync(exceptionId, Monday.At(12, 0))).CorrectionId!.Value;
+
+        Assert.Empty(await ListPendingAsync(CorrectionApprover.HR));
+        var refused = await DecideAsync(id, _hrId, approved: true, isHr: true);
+
+        Assert.Contains(nameof(DecideCorrectionRequest.IsHrDecision), refused.Errors.Keys);
+    }
+
+    [Fact]
     public async Task ADecision_WritesAnAuditEntry_WithTheDecidersActor()
     {
         var exceptionId = await GivenMissingBreakOutAsync();
@@ -361,6 +467,12 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         Assert.DoesNotContain(await AuditAsync(AttendanceAuditActions.ExceptionStatusChanged), e => e.Details!.Contains("PendingCorrection"));
     }
 
+    private async Task<AttendanceCorrection> CorrectionAsync(int id)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return db.AttendanceCorrections.Single(c => c.Id == id);
+    }
+
     private async Task<IReadOnlyList<AuditLogEntry>> AuditAsync(string action)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
@@ -379,6 +491,20 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var exception = Assert.Single(db.AttendanceExceptions);
         Assert.Equal(NormalizedEventType.BreakOut, exception.MissingEventType);
         return exception.Id;
+    }
+
+    private void SetManager(int? managerId)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.Profiles.Single(p => p.Id == EmployeeId).ManagerId = managerId;
+        db.SaveChanges();
+    }
+
+    private void SetActive(int profileId, bool active)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.Profiles.Single(p => p.Id == profileId).IsActive = active;
+        db.SaveChanges();
     }
 
     private int AddProfile(string number, string firstName, string lastName)
@@ -402,10 +528,10 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         return await CreateService(db).DecideCorrectionAsync(correctionId, decidedBy, approved, isHr, CancellationToken.None);
     }
 
-    private async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver)
+    private async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int? approverId = null)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await CreateService(db).ListPendingAsync(approver, CancellationToken.None);
+        return await CreateService(db).ListPendingAsync(approver, approverId ?? (approver == CorrectionApprover.Manager ? _managerId : _hrId), CancellationToken.None);
     }
 
     private AttendanceCorrectionService CreateService(RobeemDbContext db) =>
