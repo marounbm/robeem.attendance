@@ -33,7 +33,7 @@ public sealed class IntegrationHealthReport
 
     public DateTime WindowEnd { get; init; }
 
-    /// <summary>Gets the number of synchronizations recorded in the window (those that delivered data, and the failed ones).</summary>
+    /// <summary>Gets the number of synchronizations recorded in the window, quiet ones included. Meaningful for windows within the empty-sync retention (default 7 days).</summary>
     public int Syncs { get; init; }
 
     public int FailedSyncs { get; init; }

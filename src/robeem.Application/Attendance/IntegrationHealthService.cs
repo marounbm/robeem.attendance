@@ -46,8 +46,9 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
         var windowStart = windowEnd - TimeSpan.FromHours(Math.Max(1, _options.HealthWindowHours));
         var firstDate = windowStart.Date;
 
-        // A synchronization that delivered nothing writes no batch, so the sync rate counts the
-        // ones that delivered data and the ones that failed (a provider failure: no rows, a reason).
+        // Every successful synchronization leaves a batch, a quiet one included (pruned after
+        // EmptySyncRetentionDays), so the rate counts them all. A failed one is a provider failure:
+        // no rows, and a reason.
         var syncs = _db.AttendanceProcessingBatches
             .Where(b => b.IntegrationId == integrationId && b.BatchType == AttendanceBatchType.IncrementalSync && b.StartedAt >= windowStart);
         var syncCount = await syncs.CountAsync(cancellationToken);

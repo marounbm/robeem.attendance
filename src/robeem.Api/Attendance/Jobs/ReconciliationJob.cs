@@ -63,6 +63,13 @@ public sealed class ReconciliationJob : IScheduledJob
                         _logger.LogError(ex, "Reconciliation of integration {IntegrationId} of tenant {TenantId} threw.", integration.IntegrationId, tenant.Id);
                     }
                 }
+
+                // Nightly housekeeping: the batches of quiet syncs only live for the health window.
+                var pruned = await sync.PruneEmptyBatchesAsync(cancellationToken);
+                if (pruned > 0)
+                {
+                    _logger.LogInformation("Pruned {Count} empty sync batches of tenant {TenantId}.", pruned, tenant.Id);
+                }
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {

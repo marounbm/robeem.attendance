@@ -191,7 +191,20 @@ public sealed class AttendanceJobsTests
 
         await ReconciliationJob(tenants).RunAsync(CancellationToken.None);
 
-        Assert.Equal(["a:reconcile:1", "b:reconcile:5"], _log.Entries);
+        // Each tenant is reconciled, then its empty sync batches are pruned.
+        Assert.Equal(["a:reconcile:1", "a:prune", "b:reconcile:5", "b:prune"], _log.Entries);
+    }
+
+    [Fact]
+    public async Task Reconciliation_AFailingPrune_DoesNotStopTheOtherTenants()
+    {
+        var tenants = new FakeTenants(_log)
+            .Add("a", polling: [new PollingIntegration(1, "*/5 * * * *", Monday)], throwOnPrune: true)
+            .Add("b", polling: [new PollingIntegration(5, "*/5 * * * *", Monday)]);
+
+        await ReconciliationJob(tenants).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["a:reconcile:1", "a:prune", "b:reconcile:5", "b:prune"], _log.Entries);
     }
 
     [Fact]
@@ -204,7 +217,7 @@ public sealed class AttendanceJobsTests
 
         await ReconciliationJob(tenants).RunAsync(CancellationToken.None);
 
-        Assert.Equal(["a:reconcile:1", "a:reconcile:2", "c:reconcile:8"], _log.Entries);
+        Assert.Equal(["a:reconcile:1", "a:reconcile:2", "a:prune", "c:reconcile:8", "c:prune"], _log.Entries);
     }
 
     [Theory]
@@ -263,7 +276,8 @@ public sealed class AttendanceJobsTests
             bool throwOnNormalize = false,
             bool throwOnList = false,
             int? throwOnSyncOf = null,
-            SyncOutcome? syncOutcome = null)
+            SyncOutcome? syncOutcome = null,
+            bool throwOnPrune = false)
         {
             _tenants.Add(new TenantDefinition { Id = id, Name = id, ConnectionString = "-" });
             if (broken)
@@ -273,7 +287,7 @@ public sealed class AttendanceJobsTests
 
             _providers[id] = new ServiceCollection()
                 .AddSingleton<INormalizationService>(new FakeNormalization(_log, id, pendingBatches ?? [], throwOnNormalize))
-                .AddSingleton<IIntegrationSyncService>(new FakeSync(_log, id, polling ?? [], throwOnList, throwOnSyncOf, syncOutcome ?? new SyncOutcome(SyncOutcomeStatus.Succeeded)))
+                .AddSingleton<IIntegrationSyncService>(new FakeSync(_log, id, polling ?? [], throwOnList, throwOnSyncOf, syncOutcome ?? new SyncOutcome(SyncOutcomeStatus.Succeeded), throwOnPrune))
                 .BuildServiceProvider();
             return this;
         }
@@ -296,8 +310,14 @@ public sealed class AttendanceJobsTests
         }
     }
 
-    private sealed class FakeSync(Log log, string tenant, PollingIntegration[] polling, bool throwOnList, int? throwOnSyncOf, SyncOutcome outcome) : IIntegrationSyncService
+    private sealed class FakeSync(Log log, string tenant, PollingIntegration[] polling, bool throwOnList, int? throwOnSyncOf, SyncOutcome outcome, bool throwOnPrune) : IIntegrationSyncService
     {
+        public Task<int> PruneEmptyBatchesAsync(CancellationToken cancellationToken)
+        {
+            log.Entries.Add($"{tenant}:prune");
+            return throwOnPrune ? throw new InvalidOperationException("prune failed") : Task.FromResult(3);
+        }
+
         public Task<IReadOnlyList<PollingIntegration>> ListPollingIntegrationsAsync(CancellationToken cancellationToken) =>
             throwOnList ? throw new InvalidOperationException("listing failed") : Task.FromResult<IReadOnlyList<PollingIntegration>>(polling);
 

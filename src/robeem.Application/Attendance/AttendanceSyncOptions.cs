@@ -38,4 +38,7 @@ public sealed class AttendanceSyncOptions
 
     /// <summary>Gets or sets how far back the integration health KPIs look, in hours.</summary>
     public int HealthWindowHours { get; set; } = 24;
+
+    /// <summary>Gets or sets how many days a successful sync that delivered nothing is kept, so the health window can count it. Older ones are pruned nightly; 0 keeps them all.</summary>
+    public int EmptySyncRetentionDays { get; set; } = 7;
 }

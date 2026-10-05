@@ -66,6 +66,35 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
     public Task<SyncOutcome> ReconcileAsync(int integrationId, CancellationToken cancellationToken) =>
         RunAsync(integrationId, Mode.Reconciliation, cancellationToken);
 
+    public async Task<int> PruneEmptyBatchesAsync(CancellationToken cancellationToken)
+    {
+        var days = _options.EmptySyncRetentionDays;
+        if (days <= 0)
+        {
+            return 0;
+        }
+
+        // Only a successful sync or reconciliation that delivered nothing, with no raw row pointing
+        // at it, and old enough. A failed batch (the evidence of an outage), a batch with rows and an
+        // upload are never touched; raw rows are not involved (CLAUDE.md §1.2).
+        var cutoff = _clock.GetLocalNow().DateTime.AddDays(-days);
+        var stale = await _db.AttendanceProcessingBatches
+            .Where(b => (b.BatchType == AttendanceBatchType.IncrementalSync || b.BatchType == AttendanceBatchType.Reconciliation)
+                && b.Status == AttendanceBatchStatus.Succeeded
+                && b.RecordsIngested == 0
+                && b.StartedAt < cutoff
+                && !_db.RawAttendanceTransactions.Any(r => r.ImportBatchId == b.Id))
+            .ToListAsync(cancellationToken);
+        if (stale.Count == 0)
+        {
+            return 0;
+        }
+
+        _db.AttendanceProcessingBatches.RemoveRange(stale);
+        await _db.SaveChangesAsync(cancellationToken);
+        return stale.Count;
+    }
+
     private static string Truncate(string text) => text.Length <= ErrorSummaryMaxLength ? text : text[..ErrorSummaryMaxLength];
 
     private async Task<SyncOutcome> RunAsync(int integrationId, Mode mode, CancellationToken cancellationToken)
@@ -137,17 +166,25 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
 
         try
         {
-            int? batchId = null;
-            var stored = 0;
+            // Every successful run leaves a batch, also one that delivered nothing, so the health
+            // report's sync success rate counts the quiet syncs too. The empty ones are pruned later
+            // (PruneEmptyBatchesAsync). The batch and its rows are committed together, and before
+            // anything else changes.
+            var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = batchType, StartedAt = _clock.GetLocalNow().DateTime };
+            _db.AttendanceProcessingBatches.Add(batch);
             if (retrieved.Transactions.Count > 0)
             {
-                // The batch and its rows are committed together, and before anything else changes.
-                var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = batchType, StartedAt = _clock.GetLocalNow().DateTime };
-                _db.AttendanceProcessingBatches.Add(batch);
                 await _writer.AddTransactionsAsync(integration, batch, providerKey, retrieved.Transactions, cancellationToken);
-                await _db.SaveChangesAsync(cancellationToken);
-                (batchId, stored) = (batch.Id, batch.RecordsIngested);
             }
+            else
+            {
+                batch.Status = AttendanceBatchStatus.Succeeded;
+                batch.CompletedAt = _clock.GetLocalNow().DateTime;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+            int? batchId = batch.Id;
+            var stored = batch.RecordsIngested;
 
             if (mode == Mode.Incremental)
             {

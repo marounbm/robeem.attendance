@@ -123,16 +123,103 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task EmptyIncrement_StillAdvancesTheCursor_WithoutABatch()
+    public async Task EmptyIncrement_AdvancesTheCursor_AndLeavesAnEmptySucceededBatch()
     {
+        Clock.Local = Monday.At(9, 0);
         _provider.Changes = (_, _) => new AttendanceBatchResult([], new SyncCursor("cursor-2"));
 
         var outcome = await SyncAsync();
 
-        Assert.Equal(new SyncOutcome(SyncOutcomeStatus.Succeeded), outcome);
+        Assert.Equal(SyncOutcomeStatus.Succeeded, outcome.Status);
+        Assert.NotNull(outcome.BatchId);
+        Assert.Equal(0, outcome.RecordsIngested);
         using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal("cursor-2", db.AttendanceIntegrations.Single().SyncCursor);
-        Assert.DoesNotContain(db.AttendanceProcessingBatches, b => b.BatchType == AttendanceBatchType.IncrementalSync);
+
+        // The quiet sync is on record, so the health report counts it as a success.
+        var batch = db.AttendanceProcessingBatches.Single(b => b.BatchType == AttendanceBatchType.IncrementalSync);
+        Assert.Equal((AttendanceBatchStatus.Succeeded, 0, Monday.At(9, 0), Monday.At(9, 0)), (batch.Status, batch.RecordsIngested, batch.StartedAt, batch.CompletedAt));
+    }
+
+    [Fact]
+    public async Task AQuietIntegration_WithOneFailureInTwenty_ReportsAFivePercentFailureRate_NotFifty()
+    {
+        _provider.Changes = (_, _) => new AttendanceBatchResult([], new SyncCursor("cursor-2"));
+        for (var i = 0; i < 19; i++)
+        {
+            Assert.Equal(SyncOutcomeStatus.Succeeded, (await SyncAsync()).Status);
+        }
+
+        _provider.Changes = (_, _) => throw new HttpRequestException("blip");
+        Assert.Equal(SyncOutcomeStatus.Failed, (await SyncAsync()).Status);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var report = await CreateHealthService(db).GetIntegrationHealthAsync(_integrationId, CancellationToken.None);
+
+        Assert.Equal((20, 1, 0.95), (report!.Syncs, report.FailedSyncs, report.SyncSuccessRate));
+    }
+
+    [Fact]
+    public async Task Pruning_RemovesOnlyOldEmptySuccessfulSyncsAndReconciliations()
+    {
+        var old = Monday.AddDays(-10);
+        int keptWithRowsId;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var integration = db.AttendanceIntegrations.Single();
+            AttendanceProcessingBatch Batch(AttendanceBatchType type, DateTime at, AttendanceBatchStatus status = AttendanceBatchStatus.Succeeded, int records = 0, string? error = null) =>
+                new() { Integration = integration, BatchType = type, StartedAt = at, Status = status, RecordsIngested = records, ErrorSummary = error };
+
+            var withRows = Batch(AttendanceBatchType.IncrementalSync, old, records: 1);
+            db.AddRange(
+                Batch(AttendanceBatchType.IncrementalSync, old),
+                Batch(AttendanceBatchType.Reconciliation, old),
+                Batch(AttendanceBatchType.IncrementalSync, Monday.AddDays(-1)),
+                Batch(AttendanceBatchType.IncrementalSync, old, AttendanceBatchStatus.Failed, error: "vendor was down"),
+                Batch(AttendanceBatchType.ManualUpload, old),
+                withRows);
+            db.RawAttendanceTransactions.Add(new RawAttendanceTransaction
+            {
+                Integration = integration,
+                ImportBatch = withRows,
+                TransactionTimestampRaw = "-",
+                RawPayload = "{}",
+                SourceSystem = "generic-csv",
+                RecordHash = "kept-row",
+            });
+            db.SaveChanges();
+            keptWithRowsId = withRows.Id;
+        }
+
+        int pruned;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            pruned = await CreateService(db).PruneEmptyBatchesAsync(CancellationToken.None);
+        }
+
+        // The two old empty successes are gone; the recent one, the failure, the upload and the one with rows stay.
+        Assert.Equal(2, pruned);
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        var remaining = check.AttendanceProcessingBatches.ToList();
+        Assert.DoesNotContain(remaining, b => b.StartedAt == old && b.Status == AttendanceBatchStatus.Succeeded && b.RecordsIngested == 0 && b.BatchType != AttendanceBatchType.ManualUpload);
+        Assert.Contains(remaining, b => b.Id == keptWithRowsId);
+        Assert.Contains(remaining, b => b.Status == AttendanceBatchStatus.Failed && b.ErrorSummary == "vendor was down");
+        Assert.Contains(remaining, b => b.BatchType == AttendanceBatchType.ManualUpload && b.StartedAt == old);
+        Assert.Contains(remaining, b => b.StartedAt == Monday.AddDays(-1));
+    }
+
+    [Fact]
+    public async Task Pruning_WithARetentionOfZero_KeepsEverything()
+    {
+        _options.EmptySyncRetentionDays = 0;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceProcessingBatches.Add(new AttendanceProcessingBatch { IntegrationId = _integrationId, BatchType = AttendanceBatchType.IncrementalSync, StartedAt = Monday.AddDays(-400), Status = AttendanceBatchStatus.Succeeded });
+            db.SaveChanges();
+        }
+
+        using var run = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(0, await CreateService(run).PruneEmptyBatchesAsync(CancellationToken.None));
     }
 
     [Fact]

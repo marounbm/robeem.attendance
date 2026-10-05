@@ -28,4 +28,11 @@ public interface IIntegrationSyncService
     /// does not restore it, which stays the incremental sync's to say.
     /// </summary>
     Task<SyncOutcome> ReconcileAsync(int integrationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes the batches of successful syncs and reconciliations that delivered nothing and are
+    /// older than <see cref="AttendanceSyncOptions.EmptySyncRetentionDays"/>. Failed batches, batches
+    /// with raw rows and uploads are never deleted. Returns how many were removed.
+    /// </summary>
+    Task<int> PruneEmptyBatchesAsync(CancellationToken cancellationToken);
 }
