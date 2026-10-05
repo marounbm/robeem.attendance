@@ -18,6 +18,7 @@ using robeem.Api.Controllers;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Security;
 
 namespace robeem.Tests.Api;
 
@@ -96,6 +97,60 @@ public sealed class ApiAuthenticationTests
     }
 
     [Fact]
+    public async Task InDevelopment_TheActAsHeader_ChangesWhoTheRequestIs()
+    {
+        using var host = await StartAsync(developmentUser: true);
+
+        var response = await host.Client.SendAsync(Request("whoami", null, actAs: "12;Employee,Manager"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var who = await response.Content.ReadFromJsonAsync<WhoAmI>();
+        Assert.Equal(("12", true, false, "employee:12"), (who!.EmployeeId, who.IsManager, who.IsHr, who.Actor));
+    }
+
+    [Fact]
+    public async Task TheActAsHeader_CanNameNoEmployeeAndNoRoles()
+    {
+        using var host = await StartAsync(developmentUser: true);
+
+        var response = await host.Client.SendAsync(Request("whoami", null, actAs: "-;"));
+
+        var who = await response.Content.ReadFromJsonAsync<WhoAmI>();
+        Assert.Equal((null, false, false), (who!.EmployeeId, who.IsManager, who.IsHr));
+    }
+
+    [Theory]
+    [InlineData("12")]
+    [InlineData("12;Root")]
+    [InlineData("0;Employee")]
+    [InlineData("12;Employee;x")]
+    public async Task AMalformedActAsHeader_IsRefused_NotIgnored(string header)
+    {
+        using var host = await StartAsync(developmentUser: true);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(Request("whoami", null, actAs: header))).StatusCode);
+    }
+
+    [Fact]
+    public async Task ARealToken_IsNeverOverriddenByTheActAsHeader()
+    {
+        using var host = await StartAsync(developmentUser: true);
+
+        var response = await host.Client.SendAsync(Request("whoami", Token([AttendanceRoles.Manager], 12), actAs: "99;HRAdministrator"));
+
+        var who = await response.Content.ReadFromJsonAsync<WhoAmI>();
+        Assert.Equal(("12", true, false), (who!.EmployeeId, who.IsManager, who.IsHr));
+    }
+
+    [Fact]
+    public async Task WithoutTheStandInUser_TheActAsHeaderSignsNobodyIn()
+    {
+        using var host = await StartAsync(developmentUser: false);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(Request("whoami", null, actAs: "12;Manager"))).StatusCode);
+    }
+
+    [Fact]
     public async Task TheStandInUser_NeverReplacesABadToken()
     {
         using var host = await StartAsync(developmentUser: true);
@@ -144,12 +199,17 @@ public sealed class ApiAuthenticationTests
         })
         .Build();
 
-    private static HttpRequestMessage Request(string url, string? token, object? body = null)
+    private static HttpRequestMessage Request(string url, string? token, object? body = null, string? actAs = null)
     {
         var request = new HttpRequestMessage(body is null ? HttpMethod.Get : HttpMethod.Post, url);
         if (token is not null)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        if (actAs is not null)
+        {
+            request.Headers.Add(ActorProtocol.Header, actAs);
         }
 
         if (body is not null)

@@ -1,0 +1,24 @@
+@using robeem.Web.Actors
+@inject ICurrentActor Actor
+@inject IWebHostEnvironment Environment
+@{
+    ViewData["Title"] = "Not allowed";
+}
+
+<h1 class="h3 mb-2">Not allowed</h1>
+<p>
+    robeem.Api refused this: the roles you hold do not allow it.
+    @if (Actor.Choice is { } choice)
+    {
+        <span>You are acting as <strong>@choice.Name</strong> with @(choice.Roles.Count == 0 ? "no roles" : string.Join(", ", choice.Roles)).</span>
+    }
+</p>
+@if (Environment.IsDevelopment())
+{
+    <p><a asp-controller="Actor" asp-action="Index" asp-route-returnUrl="/">Act as someone else</a></p>
+}
+else
+{
+    <p class="text-muted">Ask an administrator for the role this needs.</p>
+}
+<p><a asp-controller="Home" asp-action="Index">Back to the start page</a></p>

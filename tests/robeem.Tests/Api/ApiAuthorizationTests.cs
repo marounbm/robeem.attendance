@@ -190,7 +190,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     public void EveryActionOfTheApi_NamesItsRoles_ExceptTheTenantPicker()
     {
         var controllers = typeof(AttendanceCorrectionsController).Assembly.GetTypes()
-            .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract && t != typeof(TenantsController))
+            .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract && t != typeof(TenantsController) && t != typeof(DevelopmentActorsController))
             .ToList();
         Assert.NotEmpty(controllers);
 

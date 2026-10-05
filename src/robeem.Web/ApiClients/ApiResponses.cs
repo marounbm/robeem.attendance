@@ -24,6 +24,16 @@ internal static class ApiResponses
     public static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         await ThrowIfTenantRejectedAsync(response, cancellationToken);
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            throw new ApiAccessDeniedException(response.StatusCode);
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new ApiNotFoundException();
+        }
+
         response.EnsureSuccessStatusCode();
     }
 

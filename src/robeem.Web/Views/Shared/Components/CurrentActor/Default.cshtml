@@ -1,0 +1,15 @@
+@model robeem.Web.Actors.ActingAs?
+<span class="navbar-text small ms-3">
+    Acting as:
+    @if (Model is null)
+    {
+        <strong>stand-in (every role)</strong>
+    }
+    else
+    {
+        <strong>@Model.Name</strong>
+        <span class="text-muted">(@(Model.Roles.Count == 0 ? "no roles" : string.Join(", ", Model.Roles)))</span>
+    }
+    <a class="ms-1" asp-controller="Actor" asp-action="Index"
+       asp-route-returnUrl="@(Context.Request.Path + Context.Request.QueryString)">Change</a>
+</span>

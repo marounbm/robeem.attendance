@@ -1,0 +1,36 @@
+@using robeem.Web.Actors
+@using robeem.Web.Navigation
+@inject ICurrentActor Actor
+@{
+    ViewData["Title"] = "Start";
+    var sections = NavigationMenu.For(Actor);
+}
+
+<h1 class="h3 mb-3">Attendance management</h1>
+
+@if (sections.Count == 0)
+{
+    <div class="card">
+        <div class="card-body text-muted">
+            The roles you hold open no screens. Choose other roles (Development: <a asp-controller="Actor" asp-action="Index">Act as</a>).
+        </div>
+    </div>
+}
+
+@foreach (var group in sections)
+{
+    <h2 class="h5 mt-4">@group.Title</h2>
+    <div class="row g-3">
+        @foreach (var item in group.Items)
+        {
+            <div class="col-md-6 col-lg-4">
+                <a class="card h-100 text-decoration-none" asp-controller="@item.Controller" asp-action="@item.Action">
+                    <div class="card-body">
+                        <h3 class="h6 card-title">@item.Title</h3>
+                        <p class="card-text small text-muted mb-0">@item.Description</p>
+                    </div>
+                </a>
+            </div>
+        }
+    </div>
+}

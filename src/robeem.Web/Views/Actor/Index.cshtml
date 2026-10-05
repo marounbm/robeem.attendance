@@ -1,0 +1,99 @@
+@using robeem.Contracts.Security
+@model ActorPickerViewModel
+@{
+    ViewData["Title"] = "Act as";
+    var current = Model.Current;
+}
+
+<h1 class="h3 mb-1">Act as</h1>
+<p class="text-muted">
+    Development only. Pick who you are acting as, to try approvals and the role-specific screens as different
+    people. The Api refuses what the roles you pick may not do. Real sign-in will replace this.
+</p>
+
+<div class="card mb-3" style="max-width: 40rem">
+    <div class="card-body">
+        @if (current is null)
+        {
+            <p class="mb-0">Not set: you are acting as the development stand-in user, who holds every role and no employee identity.</p>
+        }
+        else
+        {
+            <p class="mb-1">Acting as <strong>@current.Name</strong></p>
+            <p class="mb-0">
+                Roles:
+                @if (current.Roles.Count == 0)
+                {
+                    <span class="text-muted">none</span>
+                }
+                else
+                {
+                    @foreach (var role in current.Roles)
+                    {
+                        <span class="badge text-bg-secondary me-1">@role</span>
+                    }
+                }
+            </p>
+        }
+    </div>
+</div>
+
+<form method="post" asp-action="Select" class="card" style="max-width: 40rem">
+    <div class="card-body">
+        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+
+        <div class="mb-3">
+            <label for="employeeId" class="form-label">Employee</label>
+            <select id="employeeId" name="employeeId" class="form-select">
+                <option value="">— No employee —</option>
+                @foreach (var actor in Model.Actors)
+                {
+                    <option value="@actor.Id" selected="@(current?.EmployeeId == actor.Id)">@actor.Name</option>
+                }
+            </select>
+            <div class="form-text">Proposing, deciding and reviewing need an employee: they are recorded against this person.</div>
+        </div>
+
+        <fieldset class="mb-3">
+            <legend class="form-label fs-6">Roles</legend>
+            @foreach (var role in ActorProtocol.Roles)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="roles" value="@role" id="role-@role"
+                           checked="@(current?.Roles.Contains(role) == true)" />
+                    <label class="form-check-label" for="role-@role">@role</label>
+                </div>
+            }
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary">Act as this</button>
+    </div>
+</form>
+
+<div class="card mt-3" style="max-width: 40rem">
+    <div class="card-body">
+        <p class="mb-2 small text-muted">Quick roles for the employee chosen above:</p>
+        <form method="post" asp-action="Select" class="d-flex flex-wrap gap-2">
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <select name="employeeId" class="form-select form-select-sm w-auto" aria-label="Employee for the quick roles">
+                <option value="">— No employee —</option>
+                @foreach (var actor in Model.Actors)
+                {
+                    <option value="@actor.Id" selected="@(current?.EmployeeId == actor.Id)">@actor.Name</option>
+                }
+            </select>
+            @foreach (var preset in ActorPickerViewModel.Presets.Keys)
+            {
+                <button type="submit" name="preset" value="@preset" class="btn btn-sm btn-outline-secondary">@preset</button>
+            }
+        </form>
+    </div>
+</div>
+
+@if (current is not null)
+{
+    <form method="post" asp-action="Clear" class="mt-3">
+        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+        <button type="submit" class="btn btn-link p-0">Stop choosing: use the stand-in user</button>
+    </form>
+}

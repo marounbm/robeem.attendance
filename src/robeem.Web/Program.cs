@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Tenancy;
 
@@ -8,8 +9,10 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
     options.Filters.Add<TenantSelectionRequiredFilter>();
+    options.Filters.Add<ApiAccessDeniedFilter>();
 });
 builder.Services.AddRobeemApiClients();
+builder.Services.AddScoped<ICurrentActor, CurrentActor>();
 
 var app = builder.Build();
 
@@ -26,7 +29,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapControllerRoute(
         name: "default",
-        pattern: "{controller=Employees}/{action=Index}/{id?}")
+        pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
 await app.RunAsync();

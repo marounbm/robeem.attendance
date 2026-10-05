@@ -1,3 +1,4 @@
+@inject robeem.Web.Actors.ICurrentActor Actor
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,18 +12,28 @@
     <header>
         <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom mb-4">
             <div class="container">
-                <a class="navbar-brand fw-semibold" asp-controller="Employees" asp-action="Index">robeem</a>
+                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index">robeem</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse"
                         aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="Employees" asp-action="Index">Employees</a>
-                        </li>
+                        @foreach (var group in NavigationMenu.For(Actor))
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">@group.Title</a>
+                                <ul class="dropdown-menu">
+                                    @foreach (var item in group.Items)
+                                    {
+                                        <li><a class="dropdown-item" asp-controller="@item.Controller" asp-action="@item.Action">@item.Title</a></li>
+                                    }
+                                </ul>
+                            </li>
+                        }
                     </ul>
                     @await Component.InvokeAsync("CurrentTenant")
+                    @await Component.InvokeAsync("CurrentActor")
                 </div>
             </div>
         </nav>

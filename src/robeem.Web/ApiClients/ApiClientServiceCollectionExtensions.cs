@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using robeem.Web.Actors;
 using robeem.Web.Tenancy;
 
 namespace robeem.Web.ApiClients;
@@ -20,14 +21,25 @@ public static class ApiClientServiceCollectionExtensions
 
         services.AddHttpContextAccessor();
         services.AddTransient<TenantHeaderHandler>();
+        services.AddTransient<ActorHeaderHandler>();
 
-        services.AddHttpClient<IEmployeesApiClient, EmployeesApiClient>(ConfigureBaseAddress)
-            .AddHttpMessageHandler<TenantHeaderHandler>();
-        services.AddHttpClient<ITenantsApiClient, TenantsApiClient>(ConfigureBaseAddress)
-            .AddHttpMessageHandler<TenantHeaderHandler>();
+        AddClient<IEmployeesApiClient, EmployeesApiClient>(services);
+        AddClient<ITenantsApiClient, TenantsApiClient>(services);
+        AddClient<IActorsApiClient, ActorsApiClient>(services);
 
         return services;
     }
+
+    /// <summary>
+    /// Registers one typed client. Every client carries the picked tenant and, in Development, the
+    /// "act as" choice. A new area's client is one line in <see cref="AddRobeemApiClients"/>.
+    /// </summary>
+    private static void AddClient<TClient, TImplementation>(IServiceCollection services)
+        where TClient : class
+        where TImplementation : class, TClient
+        => services.AddHttpClient<TClient, TImplementation>(ConfigureBaseAddress)
+            .AddHttpMessageHandler<TenantHeaderHandler>()
+            .AddHttpMessageHandler<ActorHeaderHandler>();
 
     private static void ConfigureBaseAddress(IServiceProvider services, HttpClient client)
         => client.BaseAddress = services.GetRequiredService<IOptions<RobeemApiOptions>>().Value.BaseUri;
