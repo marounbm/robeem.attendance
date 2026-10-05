@@ -21,6 +21,9 @@ public static class DisplayFormats
 
     public static string DateTime(DateTime? time) => time?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "—";
 
+    /// <summary>Writes an instant in UTC, e.g. <c>2026-10-05 14:03 UTC</c>.</summary>
+    public static string Instant(DateTimeOffset instant) => instant.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+
     /// <summary>Writes a share as a percentage, or a dash when there was nothing to measure.</summary>
     public static string Percent(double? share) => share is { } value ? $"{value * 100:0.#}%" : "—";
 

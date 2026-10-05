@@ -1,0 +1,26 @@
+@model PolicyFormViewModel
+@{
+    ViewData["Title"] = "Add policy";
+}
+
+<h1 class="h3 mb-3">Add policy</h1>
+
+@if (Model.DefaultExists && Model.Schedules.Count == 0)
+{
+    <div class="alert alert-info" role="status">
+        The tenant-wide default exists and every time schedule already has its own policy, so there is nothing to add.
+        <a asp-action="Index">Back to the policies.</a>
+    </div>
+}
+else
+{
+    <form method="post" asp-action="Create">
+        <partial name="_PolicyForm" model="Model" />
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-link" asp-action="Index">Cancel</a>
+    </form>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

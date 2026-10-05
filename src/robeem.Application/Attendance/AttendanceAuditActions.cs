@@ -15,6 +15,9 @@ public static class AttendanceAuditActions
     /// <summary>A pay period was created, closed or reopened.</summary>
     public const string PayPeriodChanged = "PayPeriodChanged";
 
+    /// <summary>An attendance policy was created, changed or deleted.</summary>
+    public const string PolicyChanged = "PolicyChanged";
+
     /// <summary>A sync or reconciliation was started by a person instead of the schedule.</summary>
     public const string IntegrationRunRequested = "IntegrationRunRequested";
 

@@ -1,0 +1,97 @@
+@model AuditIndexViewModel
+@{
+    ViewData["Title"] = "Audit log";
+}
+
+<h1 class="h3 mb-3">Audit log</h1>
+
+<p class="text-muted">
+    Every correction and review decision, exception status change, setup change and read of raw attendance is recorded here, newest first.
+    Entries are never edited or deleted. Times are UTC.
+</p>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" asp-action="Index" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label" for="action">Action</label>
+                <select id="action" name="action" class="form-select">
+                    <option value="">Any action</option>
+                    @foreach (var action in Model.Actions)
+                    {
+                        <option value="@action" selected="@(action == Model.Action)">@DisplayFormats.Words(action)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="entityType">Record type</label>
+                <input id="entityType" name="entityType" class="form-control" value="@Model.EntityType" placeholder="e.g. AttendanceCorrection" autocomplete="off" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="entityId">Record id</label>
+                <input id="entityId" name="entityId" type="number" min="1" class="form-control" value="@Model.EntityId" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="take">Show</label>
+                <select id="take" name="take" class="form-select">
+                    @foreach (var choice in AuditIndexViewModel.TakeChoices)
+                    {
+                        <option value="@choice" selected="@(choice == Model.Take)">Latest @choice</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a class="btn btn-link" asp-action="Index">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Entries.Count == 0)
+    {
+        <div class="card-body text-muted">No entries match.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">Who</th>
+                        <th scope="col">Action</th>
+                        <th scope="col">Record</th>
+                        <th scope="col">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model.Entries)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@DisplayFormats.Instant(entry.Timestamp)</td>
+                            <td class="text-nowrap">@entry.Actor</td>
+                            <td><span class="badge text-bg-light border">@DisplayFormats.Words(entry.Action)</span></td>
+                            <td class="text-nowrap">
+                                @if (entry.EntityId is { } entityId)
+                                {
+                                    <a asp-action="Index" asp-route-entityType="@entry.EntityType" asp-route-entityId="@entityId" title="Show everything recorded for this record">@entry.EntityType #@entityId</a>
+                                }
+                                else
+                                {
+                                    @entry.EntityType
+                                }
+                            </td>
+                            <td class="small">@entry.Details</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.MayHaveMore)
+        {
+            <div class="card-footer text-muted small">Showing the latest @Model.Entries.Count entries; older ones exist. Narrow the filter or show more.</div>
+        }
+    }
+</div>

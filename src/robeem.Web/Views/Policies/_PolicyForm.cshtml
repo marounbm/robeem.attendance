@@ -1,0 +1,112 @@
+@model PolicyFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Name and scope</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.Title" class="form-label"></label>
+            <input asp-for="Input.Title" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.Title" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.TimeScheduleId" class="form-label"></label>
+            @if (Model.Id is null)
+            {
+                <select asp-for="Input.TimeScheduleId" class="form-select">
+                    @if (!Model.DefaultExists)
+                    {
+                        <option value="">The whole tenant (default)</option>
+                    }
+                    @foreach (var schedule in Model.Schedules)
+                    {
+                        <option value="@schedule.Id" selected="@(schedule.Id == Model.Input.TimeScheduleId)">Schedule: @schedule.Title</option>
+                    }
+                </select>
+                <div class="form-text">One default for the tenant, and at most one policy per schedule. A schedule without its own policy follows the default.</div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Input.TimeScheduleId" />
+                <input class="form-control" value="@Model.ScopeName" disabled />
+                <div class="form-text">The scope can't be changed. To move a policy, delete it and create one for the other schedule.</div>
+            }
+            <span asp-validation-for="Input.TimeScheduleId" class="text-danger small"></span>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Worked time</div>
+    <div class="card-body row g-3">
+        <div class="col-md-3">
+            <label asp-for="Input.RoundingRuleMinutes" class="form-label"></label>
+            <input asp-for="Input.RoundingRuleMinutes" type="number" min="0" max="@PolicyInput.MaxRoundingMinutes" class="form-control" />
+            <div class="form-text">Each punch is moved to the nearest multiple of this. 0 keeps punches exactly as they happened.</div>
+            <span asp-validation-for="Input.RoundingRuleMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.LateGraceMinutes" class="form-label"></label>
+            <input asp-for="Input.LateGraceMinutes" type="number" min="0" max="@PolicyInput.MaxGraceMinutes" class="form-control" />
+            <div class="form-text">Minutes after the shift starts that aren't counted as late.</div>
+            <span asp-validation-for="Input.LateGraceMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.EarlyDepartureGraceMinutes" class="form-label"></label>
+            <input asp-for="Input.EarlyDepartureGraceMinutes" type="number" min="0" max="@PolicyInput.MaxGraceMinutes" class="form-control" />
+            <div class="form-text">Minutes before the shift ends that aren't counted as leaving early.</div>
+            <span asp-validation-for="Input.EarlyDepartureGraceMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.OvertimeThresholdMinutes" class="form-label"></label>
+            <input asp-for="Input.OvertimeThresholdMinutes" type="number" min="0" max="@PolicyInput.MaxOvertimeThresholdMinutes" class="form-control" />
+            <div class="form-text">Time beyond the scheduled hours counts as overtime only when it reaches this many minutes.</div>
+            <span asp-validation-for="Input.OvertimeThresholdMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <div class="form-check">
+                <input asp-for="Input.RequiresOvertimePreApproval" class="form-check-input" />
+                <label asp-for="Input.RequiresOvertimePreApproval" class="form-check-label"></label>
+            </div>
+            <div class="form-text">When on, a day with overtime reaches payroll only after a manager or HR approves it on the Reviews screen.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Corrections and unlabeled punches</div>
+    <div class="card-body row g-3">
+        <div class="col-md-4">
+            <label asp-for="Input.CorrectionApprovalWorkflow" class="form-label"></label>
+            <select asp-for="Input.CorrectionApprovalWorkflow" class="form-select">
+                <option value="Manager">The manager</option>
+                <option value="HR">HR</option>
+                <option value="Both">The manager, then HR</option>
+            </select>
+            <div class="form-text">Who must approve a proposed missing punch before it counts.</div>
+            <span asp-validation-for="Input.CorrectionApprovalWorkflow" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.UnlabeledPunchInterpretationMode" class="form-label"></label>
+            <select asp-for="Input.UnlabeledPunchInterpretationMode" class="form-select">
+                <option value="Off">Leave for review (recommended)</option>
+                <option value="Sequential">Alternate check-in / check-out</option>
+            </select>
+            <div class="form-text">For punches the device didn't label. Interpreted ones are marked as inferred; a missing punch is never invented.</div>
+            <span asp-validation-for="Input.UnlabeledPunchInterpretationMode" class="text-danger small"></span>
+        </div>
+        <div class="col-md-2">
+            <label asp-for="Input.DuplicateTimeWindowSeconds" class="form-label"></label>
+            <input asp-for="Input.DuplicateTimeWindowSeconds" type="number" min="1" max="@PolicyInput.MaxDuplicateWindowSeconds" class="form-control" />
+            <div class="form-text">Repeat punches of one person, device and kind within this window count once.</div>
+            <span asp-validation-for="Input.DuplicateTimeWindowSeconds" class="text-danger small"></span>
+        </div>
+        <div class="col-md-2">
+            <label asp-for="Input.MissingPunchGraceMinutes" class="form-label"></label>
+            <input asp-for="Input.MissingPunchGraceMinutes" type="number" min="0" max="@PolicyInput.MaxMissingPunchGraceMinutes" class="form-control" />
+            <div class="form-text">How long after a shift ends an absent punch waits before it becomes an exception.</div>
+            <span asp-validation-for="Input.MissingPunchGraceMinutes" class="text-danger small"></span>
+        </div>
+    </div>
+</div>

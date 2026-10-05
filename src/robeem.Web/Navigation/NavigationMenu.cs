@@ -35,7 +35,11 @@ public static class NavigationMenu
             new NavItem("Pay periods", "PayPeriods", "Index", "Create, close and reopen the pay periods; closing ends payroll extraction of a period.", Payroll),
         ]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, PayrollSection];
+    private static readonly NavSection Settings = new("Settings", [new NavItem("Policies", "Policies", "Index", "Rounding, grace periods, overtime and correction rules: the tenant default and each schedule's own.", Hr)]);
+
+    private static readonly NavSection AuditSection = new("Audit", [new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr)]);
+
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, PayrollSection, Settings, AuditSection];
 
     /// <summary>The sections the actor may open, each with only the items it may open; empty sections are dropped.</summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor) =>
