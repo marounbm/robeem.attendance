@@ -75,15 +75,23 @@ public sealed class AttendanceRecordsController : ControllerBase
     public async Task<ActionResult<ReprocessResponse>> Reprocess(int employeeId, DateTime date, CancellationToken cancellationToken) =>
         await _records.ReprocessAsync(employeeId, date, cancellationToken) is { } result ? result : NotFound();
 
-    private ExceptionViewer? Viewer() =>
-        _user.EmployeeId is { } viewerId
-            ? new ExceptionViewer(
-                viewerId,
-                _user.IsInRole(AttendanceRoles.Employee),
-                _user.IsInRole(AttendanceRoles.Manager),
-                _user.IsInRole(AttendanceRoles.HRAdministrator))
-            : null;
+    /// <summary>
+    /// Who is looking. An Employee's or Manager's scope depends on who they are, so without an
+    /// <c>employee_id</c> there is nobody to scope to. HR sees everyone and needs no employee of their
+    /// own: an HR user without one is a viewer with employee id 0, which no employee has, and with
+    /// only the HR scope.
+    /// </summary>
+    private ExceptionViewer? Viewer()
+    {
+        var isHr = _user.IsInRole(AttendanceRoles.HRAdministrator);
+        if (_user.EmployeeId is { } viewerId)
+        {
+            return new ExceptionViewer(viewerId, _user.IsInRole(AttendanceRoles.Employee), _user.IsInRole(AttendanceRoles.Manager), isHr);
+        }
+
+        return isHr ? new ExceptionViewer(0, false, false, true) : null;
+    }
 
     private ObjectResult NotLinked() =>
-        Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim).");
+        Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim). Only HR can see attendance without one.");
 }

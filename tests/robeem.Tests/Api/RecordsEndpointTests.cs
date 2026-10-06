@@ -71,11 +71,30 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task AnAccountWithoutAnEmployee_IsRefused()
+    public async Task AnAccountWithoutAnEmployee_IsServedOnlyWhenItIsHr_WhoSeeEveryoneAndNeedNoEmployeeOfTheirOwn()
     {
-        var response = await _api.Send(HttpMethod.Get, "api/attendance/records", TestApi.As(null, AttendanceRoles.HRAdministrator));
+        var hr = await _api.Send(HttpMethod.Get, "api/attendance/records", TestApi.As(null, AttendanceRoles.HRAdministrator));
+        var hrViewer = _records.Viewer;
+        var hrDay = await _api.Send(HttpMethod.Get, "api/attendance/records/7/2026-10-05", TestApi.As(null, AttendanceRoles.HRAdministrator));
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // The development stand-in with every role and no employee is HR for this purpose; its other roles add no scope.
+        await _api.Send(HttpMethod.Get, "api/attendance/records", TestApi.As(null, AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK), (hr.StatusCode, hrDay.StatusCode));
+        Assert.Equal(new ExceptionViewer(0, false, false, true), hrViewer);
+        Assert.Equal(new ExceptionViewer(0, false, false, true), _records.Viewer);
+    }
+
+    [Theory]
+    [InlineData(AttendanceRoles.Employee)]
+    [InlineData(AttendanceRoles.Manager)]
+    public async Task AnEmployeeOrManagerWithoutAnEmployee_IsRefused_ForTheirScopeDependsOnWhoTheyAre(string role)
+    {
+        var list = await _api.Send(HttpMethod.Get, "api/attendance/records", TestApi.As(null, role));
+        var day = await _api.Send(HttpMethod.Get, "api/attendance/records/7/2026-10-05", TestApi.As(null, role));
+
+        Assert.Equal((HttpStatusCode.Forbidden, HttpStatusCode.Forbidden), (list.StatusCode, day.StatusCode));
+        Assert.Null(_records.Viewer);
     }
 
     [Fact]
