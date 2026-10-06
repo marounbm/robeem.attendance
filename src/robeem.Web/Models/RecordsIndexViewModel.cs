@@ -16,4 +16,7 @@ public sealed class RecordsIndexViewModel
     public DateTime? To { get; init; }
 
     public bool OnlyWithExceptions { get; init; }
+
+    /// <summary>Gets the one employee shown, or null for everyone the user may see.</summary>
+    public int? EmployeeId { get; init; }
 }

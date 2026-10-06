@@ -4,6 +4,7 @@ using robeem.Api.Security;
 using robeem.Api.Tenancy;
 using robeem.Application;
 using robeem.Application.Attendance;
+using robeem.Application.HR.Seeding;
 using robeem.Infrastructure;
 using robeem.Infrastructure.Persistence;
 
@@ -17,6 +18,7 @@ builder.Services.AddRobeemApplication();
 // After AddRobeemApplication: it replaces the system ICurrentUser with the authenticated user.
 builder.Services.AddRobeemAuthentication(builder.Configuration, builder.Environment);
 builder.Services.Configure<RawPayloadSanitizerOptions>(builder.Configuration.GetSection(RawPayloadSanitizerOptions.SectionName));
+builder.Services.Configure<SampleDataOptions>(builder.Configuration.GetSection(SampleDataOptions.SectionName));
 builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration.GetSection(AttendanceNormalizationOptions.SectionName));
 builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSection(AttendanceSyncOptions.SectionName));
 

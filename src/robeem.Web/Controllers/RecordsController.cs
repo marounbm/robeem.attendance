@@ -25,12 +25,13 @@ public sealed class RecordsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, int? employeeId, CancellationToken cancellationToken)
     {
         var chosen = RecordsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status! : "Any";
         return View(new RecordsIndexViewModel
         {
-            Items = await _records.ListAsync(from, to, null, chosen == "Any" ? null : chosen, onlyWithExceptions, PageSize, cancellationToken),
+            Items = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, PageSize, cancellationToken),
+            EmployeeId = employeeId,
             Status = chosen,
             From = from,
             To = to,

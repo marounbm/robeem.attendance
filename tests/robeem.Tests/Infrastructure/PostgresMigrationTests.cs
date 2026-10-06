@@ -61,7 +61,7 @@ public sealed class PostgresMigrationTests : IAsyncLifetime
         for (var run = 0; run < 2; run++)
         {
             await using var db = _database!.CreateContext("tenant-a");
-            await new SeedDataRunner(db, new ISeedContributor[] { new HrSeedContributor(), new AttendanceSeedContributor() }, NullLogger<SeedDataRunner>.Instance)
+            await new SeedDataRunner(db, new ISeedContributor[] { new HrSeedContributor(), new ProfileSeedContributor(Microsoft.Extensions.Options.Options.Create(new SampleDataOptions { TenantIds = ["tenant-a"] })), new AttendanceSeedContributor() }, NullLogger<SeedDataRunner>.Instance)
                 .RunAsync(CancellationToken.None);
         }
 

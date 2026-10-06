@@ -11,6 +11,93 @@
     <a class="btn btn-link" asp-action="Index">Cancel</a>
 </form>
 
+<!-- Attendance Section -->
+<div class="mt-5">
+    <h2 class="h4 mb-3">Recent Attendance (Last 30 Days)</h2>
+
+    @if (Model.RecentAttendanceRecords.Count == 0)
+    {
+        <div class="alert alert-info">
+            <p class="mb-0">No attendance records found for the last 30 days.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Working Hours</th>
+                            <th scope="col">Overtime Hours</th>
+                            <th scope="col">Break Hours</th>
+                            <th scope="col">Shifts</th>
+                            <th scope="col">Exceptions</th>
+                            <th scope="col">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in Model.RecentAttendanceRecords)
+                        {
+                            <tr>
+                                <td>
+                                    <a href="@Url.Action("Day", "Records", new { date = record.AttendanceDate.ToString("yyyy-MM-dd"), employeeId = record.EmployeeId })" 
+                                       title="View details">
+                                        @record.AttendanceDate.ToString("yyyy-MM-dd (ddd)")
+                                    </a>
+                                </td>
+                                <td>@record.TotalWorkingHours.ToString(@"hh\:mm")</td>
+                                <td>@record.TotalOvertimeHours.ToString(@"hh\:mm")</td>
+                                <td>@record.TotalBreakHours.ToString(@"hh\:mm")</td>
+                                <td>@record.ShiftCount</td>
+                                <td>
+                                    @if (record.ExceptionCount > 0)
+                                    {
+                                        <span class="badge text-bg-warning">@record.ExceptionCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @switch (record.Status)
+                                    {
+                                        case "Calculated":
+                                            <span class="badge text-bg-info">Calculated</span>
+                                            break;
+                                        case "PendingReview":
+                                            <span class="badge text-bg-warning">Pending Review</span>
+                                            break;
+                                        case "Approved":
+                                            <span class="badge text-bg-success">Approved</span>
+                                            break;
+                                        case "Rejected":
+                                            <span class="badge text-bg-danger">Rejected</span>
+                                            break;
+                                        default:
+                                            <span class="badge text-bg-secondary">@record.Status</span>
+                                            break;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <a class="btn btn-outline-secondary" 
+               href="@Url.Action("Index", "Records", new { employeeId = Model.Id })" 
+               title="View all records for this employee">
+                View all records for this employee
+            </a>
+        </div>
+    }
+</div>
+
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 }

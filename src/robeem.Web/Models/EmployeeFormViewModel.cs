@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using robeem.Contracts.Attendance;
 using robeem.Contracts.HR.Employees;
 
 namespace robeem.Web.Models;
@@ -16,4 +17,8 @@ public sealed class EmployeeFormViewModel
 
     [BindNever]
     public IReadOnlyList<ManagerOption> Managers { get; set; } = Array.Empty<ManagerOption>();
+
+    /// <summary>Gets or sets recent attendance records for the employee (last 30 days).</summary>
+    [BindNever]
+    public IReadOnlyList<RecordDayListItem> RecentAttendanceRecords { get; set; } = Array.Empty<RecordDayListItem>();
 }

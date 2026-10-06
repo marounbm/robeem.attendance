@@ -53,13 +53,14 @@ public sealed class RecordsWebTests
         var records = new FakeRecords();
         var controller = Controller(records, ["Employee"]);
 
-        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, CancellationToken.None)).Model!;
+        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, null, CancellationToken.None)).Model!;
         var askedForAny = records.Status;
-        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, CancellationToken.None)).Model!;
+        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, 12, CancellationToken.None)).Model!;
 
         Assert.Equal(("Any", null), (any.Status, askedForAny));
         Assert.Equal("PendingReview", pending.Status);
-        Assert.Equal(("PendingReview", true, new DateTime(2026, 10, 1)), (records.Status, records.OnlyWithExceptions, records.From));
+        Assert.Equal(("PendingReview", true, new DateTime(2026, 10, 1), 12), (records.Status, records.OnlyWithExceptions, records.From, records.EmployeeId));
+        Assert.Equal(12, pending.EmployeeId);
     }
 
     [Fact]
@@ -143,13 +144,15 @@ public sealed class RecordsWebTests
 
         public DateTime? From { get; private set; }
 
+        public int? EmployeeId { get; private set; }
+
         public bool Missing { get; set; }
 
         public ReprocessResponse Result { get; set; } = new();
 
         public Task<IReadOnlyList<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int take, CancellationToken cancellationToken)
         {
-            (From, Status, OnlyWithExceptions) = (from, status, onlyWithExceptions);
+            (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             return Task.FromResult<IReadOnlyList<RecordDayListItem>>([]);
         }
 

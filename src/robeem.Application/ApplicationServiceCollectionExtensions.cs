@@ -17,6 +17,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IIngestionService, IngestionService>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
+        services.AddOptions<SampleDataOptions>();
+        services.AddScoped<ISeedContributor, ProfileSeedContributor>();
         services.AddScoped<ISeedContributor, AttendanceSeedContributor>();
 
         // Pure and stateless. Options are bound by the host (section RawPayloadSanitizerOptions.SectionName).

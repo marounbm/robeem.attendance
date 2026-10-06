@@ -35,19 +35,25 @@ public sealed class SeedDataRunnerTests : IDisposable
     public async Task Contributor_SeedingANonSeedDataEntity_IsRejected()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var runner = new SeedDataRunner(db, new ISeedContributor[] { new ProfileSeeder() }, NullLogger<SeedDataRunner>.Instance);
+        var runner = new SeedDataRunner(db, new ISeedContributor[] { new NonSeedableSeeder() }, NullLogger<SeedDataRunner>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunAsync(CancellationToken.None));
-        Assert.Empty(db.Profiles);
+        Assert.Empty(db.NormalizedAttendanceTransactions);
     }
 
-    private sealed class ProfileSeeder : ISeedContributor
+    private sealed class NonSeedableSeeder : ISeedContributor
     {
         public int Order => 0;
 
         public Task SeedAsync(IRobeemDbContext db, CancellationToken cancellationToken)
         {
-            db.Profiles.Add(new Profile { EmployeeNumber = "X", FirstName = "Not", LastName = "Seedable", Title = "Not Seedable" });
+            // NormalizedAttendanceTransaction does NOT implement ISeedData, so this should be rejected
+            db.NormalizedAttendanceTransactions.Add(new NormalizedAttendanceTransaction
+            {
+                EmployeeId = 1,
+                AttendanceDate = DateTime.Today,
+                EventTimestampUtc = DateTimeOffset.UtcNow,
+            });
             return Task.CompletedTask;
         }
     }

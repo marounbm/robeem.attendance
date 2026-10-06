@@ -10,10 +10,12 @@ public sealed class EmployeesController : Controller
     private const string StatusMessageKey = "StatusMessage";
 
     private readonly IEmployeesApiClient _employees;
+    private readonly IRecordsApiClient _records;
 
-    public EmployeesController(IEmployeesApiClient employees)
+    public EmployeesController(IEmployeesApiClient employees, IRecordsApiClient records)
     {
         _employees = employees;
+        _records = records;
     }
 
     [HttpGet]
@@ -66,12 +68,17 @@ public sealed class EmployeesController : Controller
             return NotFound();
         }
 
+        // Fetch recent attendance records (last 30 days)
+        var from = DateTime.Today.AddDays(-30);
+        var recentRecords = await _records.ListAsync(from, DateTime.Today, id, null, false, 31, cancellationToken);
+
         return View(new EmployeeFormViewModel
         {
             Id = id,
             Input = input,
             Schedules = await _employees.ListSchedulesAsync(cancellationToken),
             Managers = await _employees.ListManagerOptionsAsync(id, cancellationToken),
+            RecentAttendanceRecords = recentRecords.OrderByDescending(r => r.AttendanceDate).ToList(),
         });
     }
 

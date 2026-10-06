@@ -11,7 +11,7 @@ namespace robeem.DataModel
     /// </summary>
     [Serializable]
     [Table(nameof(Profile), Schema = nameof(SmartEnum.Module.HR))]
-    public class Profile : Entity, ITenantScoped
+    public class Profile : Entity, ITenantScoped, ISeedData
     {
         [Required]
         [MaxLength(ITenantScoped.TenantIdMaxLength)]
