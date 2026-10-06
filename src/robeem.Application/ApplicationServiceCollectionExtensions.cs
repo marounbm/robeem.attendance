@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using robeem.Application.Attendance;
 using robeem.Application.Attendance.Seeding;
+using robeem.Application.Common;
 using robeem.Application.HR.Employees;
+using robeem.Application.HR.Schedules;
 using robeem.Application.HR.Seeding;
 using robeem.Application.Security;
 using robeem.Application.Seeding;
@@ -15,6 +17,8 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddRobeemApplication(this IServiceCollection services)
     {
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddScoped<ITimeScheduleService, TimeScheduleService>();
+        services.AddScoped<IChangeAuditTrail, AttendanceChangeAuditTrail>();
         services.AddScoped<IIngestionService, IngestionService>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
         services.AddOptions<SampleDataOptions>();

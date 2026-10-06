@@ -15,7 +15,12 @@ public static class NavigationMenu
     public const string Payroll = "PayrollAdministrator";
     public const string Integration = "IntegrationAdministrator";
 
-    private static readonly NavSection People = new("People", [new NavItem("Employees", "Employees", "Index", "Add and edit employees, their time schedule and their manager.", Hr)]);
+    private static readonly NavSection People = new(
+        "People",
+        [
+            new NavItem("Employees", "Employees", "Index", "Add and edit employees, their time schedule and their manager.", Hr),
+            new NavItem("Time schedules", "TimeSchedules", "Index", "Define the shifts, the weekly pattern and the teams that every day is calculated against.", Hr),
+        ]);
 
     private static readonly NavSection MyWork = new(
         "My work",

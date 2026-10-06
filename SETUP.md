@@ -104,6 +104,7 @@ Open http://localhost:5180.
 
 Do this once per tenant, as a user with the roles shown.
 
+0. **Define the time schedules** (`HRAdministrator`, *People → Time schedules*). Every tenant starts with "Standard Week" (Monday to Friday, 09:00 to 17:00, 13:00 to 14:00 break). To add your own: create the schedule (its name and how long the pattern is: 7 days for a week, or a longer rotation with the date of its day 1), add its **shifts**, then tick the shifts each day of the pattern works in the **roster**. A day with nothing ticked is a day off; two shifts on one day is a split shift. Every day is calculated against the schedule its employee is assigned to, and changes apply to days processed from then on.
 1. **Create employees** (`HRAdministrator`, *Employees*).
    - Give each a unique employee number.
    - Assign a time schedule. The employee joins that schedule's default team. An employee without a schedule gets a "no schedule configured" result rather than a guessed one.

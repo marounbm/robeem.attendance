@@ -18,6 +18,9 @@ public static class AttendanceAuditActions
     /// <summary>An attendance policy was created, changed or deleted.</summary>
     public const string PolicyChanged = "PolicyChanged";
 
+    /// <summary>A time schedule, its shifts, teams or rosters were changed: they decide the hours every day is calculated against.</summary>
+    public const string ScheduleChanged = Common.ChangeAuditActions.ScheduleChanged;
+
     /// <summary>HR ran the processing engine again for one employee's day.</summary>
     public const string DayReprocessed = "DayReprocessed";
 

@@ -1,0 +1,312 @@
+@model TimeScheduleDetailsViewModel
+@{
+    var schedule = Model.Schedule;
+    ViewData["Title"] = schedule.Settings.Title;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
+    <div>
+        <h1 class="h3 mb-1">@schedule.Settings.Title @(schedule.IsSystemSchedule ? Html.Raw("<span class=\"badge text-bg-secondary\">System</span>") : null)</h1>
+        <div class="text-muted">
+            @(Model.IsWeekly ? "Weekly pattern" : $"{Model.CyclePeriod}-day pattern")
+            · @schedule.Shifts.Count shift(s) · @schedule.Teams.Count team(s) · @schedule.Employees.Count employee(s)
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" asp-action="Index">Back to schedules</a>
+        @if (!schedule.IsSystemSchedule)
+        {
+            <form method="post" asp-action="Delete" asp-route-id="@schedule.Id">
+                <button type="submit" class="btn btn-outline-danger"
+                        onclick="return confirm('Delete this time schedule with its shifts, teams and roster? This cannot be undone.');">Delete</button>
+            </form>
+        }
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<div class="alert alert-info" role="note">
+    A change here applies to days calculated from now on. Days already calculated keep their result until HR opens them and chooses
+    <em>Calculate again</em> (Attendance &rarr; Open a day).
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">1. Settings</div>
+    <div class="card-body">
+        <form method="post" asp-action="UpdateSettings" asp-route-id="@schedule.Id">
+            <partial name="_ScheduleSettings" model="schedule.Settings" />
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">Save settings</button>
+            </div>
+        </form>
+        <p class="small text-muted mt-3 mb-0">
+            Changing the length or the first day moves every day of the roster. A shorter pattern can only be saved once the roster has
+            no entries beyond its last day.
+        </p>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">2. Shifts</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            A shift is a start and an end. If it ends earlier than it starts it runs past midnight (22:00 to 06:00). An unpaid break
+            is taken out of the hours worked, and must fall inside the shift.
+        </p>
+
+        @foreach (var shift in schedule.Shifts)
+        {
+            <form method="post" asp-action="UpdateShift" asp-route-id="@schedule.Id" class="row g-2 align-items-end border-bottom pb-2 mb-2">
+                <input type="hidden" name="shiftId" value="@shift.Id" />
+                <div class="col-md-3">
+                    <label class="form-label small mb-0" for="shift-title-@shift.Id">Name</label>
+                    <input id="shift-title-@shift.Id" name="Title" value="@shift.Title" class="form-control form-control-sm" required maxlength="255" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small mb-0" for="shift-start-@shift.Id">Starts</label>
+                    <input id="shift-start-@shift.Id" name="StartTime" value="@shift.StartTime" type="time" class="form-control form-control-sm" required />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small mb-0" for="shift-end-@shift.Id">Ends</label>
+                    <input id="shift-end-@shift.Id" name="EndTime" value="@shift.EndTime" type="time" class="form-control form-control-sm" required />
+                </div>
+                <div class="col-auto">
+                    <div class="form-check">
+                        <input id="shift-break-@shift.Id" type="checkbox" name="BreakTime" value="true" class="form-check-input" checked="@shift.BreakTime" />
+                        <input type="hidden" name="BreakTime" value="false" />
+                        <label class="form-check-label small" for="shift-break-@shift.Id">Break</label>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small mb-0" for="shift-bs-@shift.Id">From</label>
+                    <input id="shift-bs-@shift.Id" name="BreakStartTime" value="@(shift.BreakTime ? shift.BreakStartTime : "13:00")" type="time" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small mb-0" for="shift-be-@shift.Id">To</label>
+                    <input id="shift-be-@shift.Id" name="BreakEndTime" value="@(shift.BreakTime ? shift.BreakEndTime : "14:00")" type="time" class="form-control form-control-sm" />
+                </div>
+                <div class="col-auto">
+                    <div class="form-check">
+                        <input id="shift-ot-@shift.Id" type="checkbox" name="Overtime" value="true" class="form-check-input" checked="@shift.Overtime" />
+                        <input type="hidden" name="Overtime" value="false" />
+                        <label class="form-check-label small" for="shift-ot-@shift.Id">Overtime shift</label>
+                    </div>
+                </div>
+                <div class="col d-flex gap-1 justify-content-end align-items-center">
+                    <span class="small text-muted me-1">
+                        @DisplayFormats.Hours(TimeSpan.FromHours(shift.TotalHours)) h@(shift.IsOvernight ? ", overnight" : string.Empty)@(shift.RosterUses > 0 ? $", on the roster {shift.RosterUses}×" : string.Empty)
+                    </span>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" formaction="@Url.Action("DeleteShift", new { id = schedule.Id })"
+                            onclick="return confirm('Delete this shift?');">Delete</button>
+                </div>
+            </form>
+        }
+
+        <form method="post" asp-action="AddShift" asp-route-id="@schedule.Id" class="row g-2 align-items-end mt-2">
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="new-shift-title">New shift</label>
+                <input id="new-shift-title" name="Title" class="form-control form-control-sm" required maxlength="255" placeholder="e.g. Day shift" />
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small mb-0" for="new-shift-start">Starts</label>
+                <input id="new-shift-start" name="StartTime" value="09:00" type="time" class="form-control form-control-sm" required />
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small mb-0" for="new-shift-end">Ends</label>
+                <input id="new-shift-end" name="EndTime" value="17:00" type="time" class="form-control form-control-sm" required />
+            </div>
+            <div class="col-auto">
+                <div class="form-check">
+                    <input id="new-shift-break" type="checkbox" name="BreakTime" value="true" class="form-check-input" />
+                    <input type="hidden" name="BreakTime" value="false" />
+                    <label class="form-check-label small" for="new-shift-break">Break</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small mb-0" for="new-shift-bs">From</label>
+                <input id="new-shift-bs" name="BreakStartTime" value="13:00" type="time" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small mb-0" for="new-shift-be">To</label>
+                <input id="new-shift-be" name="BreakEndTime" value="14:00" type="time" class="form-control form-control-sm" />
+            </div>
+            <div class="col-auto">
+                <div class="form-check">
+                    <input id="new-shift-ot" type="checkbox" name="Overtime" value="true" class="form-check-input" />
+                    <input type="hidden" name="Overtime" value="false" />
+                    <label class="form-check-label small" for="new-shift-ot">Overtime shift</label>
+                </div>
+            </div>
+            <div class="col">
+                <button type="submit" class="btn btn-sm btn-primary">Add shift</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">3. Teams and roster</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            The roster says which shifts a team works on each day of the pattern; a day with nothing ticked is a day off, and a day
+            with two shifts is a split shift. The <strong>team for everyone</strong> holds every employee on the schedule: its roster is
+            the schedule's main pattern. Add another team only for people who work extra shifts on top of it.
+        </p>
+
+        @if (schedule.Shifts.Count == 0)
+        {
+            <div class="alert alert-warning mb-0">Add at least one shift above before setting a roster.</div>
+        }
+
+        @foreach (var team in schedule.Teams)
+        {
+            <div class="border rounded p-3 mb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <form method="post" asp-action="RenameTeam" asp-route-id="@schedule.Id" class="d-flex gap-2 align-items-center">
+                        <input type="hidden" name="teamId" value="@team.Id" />
+                        <input name="Title" value="@team.Title" class="form-control form-control-sm" required maxlength="255" aria-label="Team name" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Rename</button>
+                        @if (team.AllInclusive)
+                        {
+                            <span class="badge text-bg-info">Everyone on the schedule · @team.EmployeeCount</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-light border">Chosen members · @team.EmployeeCount</span>
+                        }
+                    </form>
+                    @if (!team.AllInclusive)
+                    {
+                        <form method="post" asp-action="DeleteTeam" asp-route-id="@schedule.Id">
+                            <input type="hidden" name="teamId" value="@team.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    onclick="return confirm('Delete this team and its roster? Its members go back to the team for everyone.');">Delete team</button>
+                        </form>
+                    }
+                </div>
+
+                @if (!team.AllInclusive)
+                {
+                    <form method="post" asp-action="SetMembers" asp-route-id="@schedule.Id" class="mb-3">
+                        <input type="hidden" name="teamId" value="@team.Id" />
+                        <div class="small fw-semibold mb-1">Members</div>
+                        @if (schedule.Employees.Count == 0)
+                        {
+                            <div class="small text-muted">No employee is assigned to this schedule yet. Assign them on the <a asp-controller="Employees" asp-action="Index">Employees</a> screen first.</div>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-wrap gap-3">
+                                @foreach (var employee in schedule.Employees)
+                                {
+                                    var otherTeam = schedule.Teams.FirstOrDefault(t => t.Id == employee.TeamId && !t.AllInclusive && t.Id != team.Id);
+                                    <div class="form-check">
+                                        <input id="member-@team.Id-@employee.EmployeeId" type="checkbox" name="employeeId" value="@employee.EmployeeId"
+                                               class="form-check-input" checked="@(employee.TeamId == team.Id)" />
+                                        <label class="form-check-label small" for="member-@team.Id-@employee.EmployeeId">
+                                            @employee.Name <span class="text-muted">@employee.EmployeeNumber</span>@(otherTeam is null ? string.Empty : $" (now in {otherTeam.Title})")
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Save members</button>
+                        }
+                    </form>
+                }
+
+                @if (schedule.Shifts.Count > 0)
+                {
+                    <form method="post" asp-action="SaveRoster" asp-route-id="@schedule.Id">
+                        <input type="hidden" name="teamId" value="@team.Id" />
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-2">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col">Day</th>
+                                        @foreach (var shift in schedule.Shifts)
+                                        {
+                                            <th scope="col" class="text-center">
+                                                @shift.Title
+                                                <div class="small fw-normal text-muted">@shift.StartTime–@shift.EndTime</div>
+                                            </th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var day = 1; day <= Model.CyclePeriod; day++)
+                                    {
+                                        <tr>
+                                            <th scope="row" class="fw-normal">
+                                                @Model.DayLabel(day)
+                                                @if (Model.IsWeekly)
+                                                {
+                                                    <span class="small text-muted">· day @day</span>
+                                                }
+                                            </th>
+                                            @foreach (var shift in schedule.Shifts)
+                                            {
+                                                var ticked = team.Cells.Any(c => c.CycleDay == day && c.ShiftId == shift.Id);
+                                                <td class="text-center">
+                                                    <input type="checkbox" name="cell" value="@day:@shift.Id" class="form-check-input"
+                                                           checked="@ticked" aria-label="@Model.DayLabel(day), @shift.Title" />
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary">Save roster</button>
+                    </form>
+                }
+            </div>
+        }
+
+        <form method="post" asp-action="AddTeam" asp-route-id="@schedule.Id" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="new-team">New team</label>
+                <input id="new-team" name="Title" class="form-control form-control-sm" required maxlength="255" placeholder="e.g. Weekend cover" />
+            </div>
+            <div class="col">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Add team</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">4. Employees on this schedule</div>
+    <div class="card-body">
+        @if (schedule.Employees.Count == 0)
+        {
+            <div class="text-muted">
+                Nobody is assigned yet. Choose this schedule for an employee on the
+                <a asp-controller="Employees" asp-action="Index">Employees</a> screen.
+            </div>
+        }
+        else
+        {
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr><th scope="col">Employee</th><th scope="col">Number</th><th scope="col">Team</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var employee in schedule.Employees)
+                    {
+                        <tr>
+                            <td>@employee.Name</td>
+                            <td>@employee.EmployeeNumber</td>
+                            <td>@(schedule.Teams.FirstOrDefault(t => t.Id == employee.TeamId)?.Title ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,0 +1,47 @@
+@model robeem.Contracts.HR.Schedules.TimeScheduleInput
+@* The fields of a schedule's settings, used by the create page and by the settings card of the details page. *@
+<div class="row g-3">
+    <div class="col-md-6">
+        <label asp-for="Title" class="form-label"></label>
+        <input asp-for="Title" class="form-control" maxlength="255" />
+        <span asp-validation-for="Title" class="text-danger small"></span>
+    </div>
+    <div class="col-md-6">
+        <label asp-for="Description" class="form-label"></label>
+        <input asp-for="Description" class="form-control" maxlength="1000" />
+        <span asp-validation-for="Description" class="text-danger small"></span>
+    </div>
+    <div class="col-md-3">
+        <label asp-for="CyclePeriod" class="form-label"></label>
+        <input asp-for="CyclePeriod" class="form-control" type="number" min="1" max="56" data-pattern-length />
+        <div class="form-text">7 for a weekly pattern. Use 14 for a two-week rotation, or any length up to 56 days.</div>
+        <span asp-validation-for="CyclePeriod" class="text-danger small"></span>
+    </div>
+    <div class="col-md-3" data-weekly>
+        <label asp-for="FirstCycleDay" class="form-label"></label>
+        <select asp-for="FirstCycleDay" class="form-select" asp-items="@(new SelectList(TimeScheduleFormViewModel.Weekdays))"></select>
+        <div class="form-text">Used for a weekly pattern: the weekday its first day falls on.</div>
+        <span asp-validation-for="FirstCycleDay" class="text-danger small"></span>
+    </div>
+    <div class="col-md-3" data-not-weekly>
+        <label asp-for="CycleStartDate" class="form-label"></label>
+        <input asp-for="CycleStartDate" class="form-control" type="date" value="@Model.CycleStartDate?.ToString("yyyy-MM-dd")" />
+        <div class="form-text">Used for any other length: the date that is day 1 of the pattern. The pattern repeats from it.</div>
+        <span asp-validation-for="CycleStartDate" class="text-danger small"></span>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var length = document.currentScript.parentElement.querySelector('[data-pattern-length]');
+        var weekly = document.currentScript.parentElement.querySelector('[data-weekly]');
+        var other = document.currentScript.parentElement.querySelector('[data-not-weekly]');
+        function show() {
+            var isWeekly = parseInt(length.value, 10) === 7;
+            weekly.style.display = isWeekly ? '' : 'none';
+            other.style.display = isWeekly ? 'none' : '';
+        }
+        length.addEventListener('input', show);
+        show();
+    })();
+</script>
