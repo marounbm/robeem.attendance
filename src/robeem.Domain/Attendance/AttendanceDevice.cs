@@ -33,6 +33,18 @@ namespace robeem.DataModel
 
         public AttendanceDeviceType DeviceType { get; set; }
 
+        /// <summary>Gets or sets the machine model, e.g. <c>U350</c>. Empty when not recorded.</summary>
+        [MaxLength(100)]
+        public string Model { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the version of the vendor's attendance software that collects from the device. Empty when not recorded.</summary>
+        [MaxLength(100)]
+        public string SoftwareVersion { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the version of the vendor SDK that software uses to talk to the device. Empty when not recorded.</summary>
+        [MaxLength(50)]
+        public string SdkVersion { get; set; } = string.Empty;
+
         /// <summary>Gets or sets the IANA time zone the device's local punch times are in, e.g. <c>Asia/Beirut</c>.</summary>
         [Required]
         [MaxLength(64)]

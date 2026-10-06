@@ -24,7 +24,7 @@ public sealed class AttendanceSeedContributor : ISeedContributor
     [
         new(CsvProviderKey, "Generic CSV upload", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true),
         new("generic-webhook", "Generic webhook (adapter not available yet)", AttendanceTransport.Webhook, SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
-        new("zkteco", "ZKTeco-style biometric devices (adapter not available yet)", AttendanceTransport.DeviceSdk, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: false),
+        new("zkteco", "ZKTeco-style biometric devices (adapter not available yet)", AttendanceTransport.DeviceSdk, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: false, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
         new("suprema-biostar", "Suprema BioStar (adapter not available yet)", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: false),
     ];
 
@@ -44,7 +44,30 @@ public sealed class AttendanceSeedContributor : ISeedContributor
                 SupportsWebhooks = provider.SupportsWebhooks,
                 SupportsIncrementalSync = provider.SupportsIncrementalSync,
                 IsActive = provider.IsActive,
+                Manufacturer = provider.Manufacturer,
+                WebsiteUrl = provider.WebsiteUrl,
             });
+        }
+
+        // Rows seeded before the vendor details existed get them, but only into empty fields: what an
+        // administrator typed is never replaced.
+        var vendors = Providers.Where(p => p.Manufacturer.Length > 0 && existing.Contains(p.Key, StringComparer.Ordinal)).ToList();
+        if (vendors.Count > 0)
+        {
+            var keys = vendors.Select(v => v.Key).ToList();
+            foreach (var row in await db.AttendanceProviders.Where(p => keys.Contains(p.ProviderKey)).ToListAsync(cancellationToken))
+            {
+                var vendor = vendors.Single(v => v.Key == row.ProviderKey);
+                if (row.Manufacturer.Length == 0)
+                {
+                    row.Manufacturer = vendor.Manufacturer;
+                }
+
+                if (row.WebsiteUrl.Length == 0)
+                {
+                    row.WebsiteUrl = vendor.WebsiteUrl;
+                }
+            }
         }
 
         // The MVP defaults of study §20.1: no inference of unlabeled punches, no overtime
@@ -61,5 +84,5 @@ public sealed class AttendanceSeedContributor : ISeedContributor
         }
     }
 
-    private sealed record SeedProvider(string Key, string DisplayName, AttendanceTransport Transport, bool SupportsWebhooks, bool SupportsIncrementalSync, bool IsActive);
+    private sealed record SeedProvider(string Key, string DisplayName, AttendanceTransport Transport, bool SupportsWebhooks, bool SupportsIncrementalSync, bool IsActive, string Manufacturer = "", string WebsiteUrl = "");
 }

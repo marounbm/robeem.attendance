@@ -49,7 +49,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             .AsNoTracking()
             .OrderByDescending(p => p.IsActive)
             .ThenBy(p => p.DisplayName)
-            .Select(p => new ProviderOption { Id = p.Id, Key = p.ProviderKey, DisplayName = p.DisplayName, IsActive = p.IsActive })
+            .Select(p => new ProviderOption { Id = p.Id, Key = p.ProviderKey, DisplayName = p.DisplayName, Manufacturer = p.Manufacturer, WebsiteUrl = p.WebsiteUrl, IsActive = p.IsActive })
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
@@ -132,7 +132,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             .OrderBy(d => d.Name)
             .ToListAsync(cancellationToken);
         return devices
-            .Select(d => new DeviceItem { Id = d.Id, ExternalDeviceId = d.ExternalDeviceId, Name = d.Name, DeviceType = d.DeviceType.ToString(), TimeZoneId = d.TimeZoneId, LastSeenAt = d.LastSeenAt })
+            .Select(d => new DeviceItem { Id = d.Id, ExternalDeviceId = d.ExternalDeviceId, Name = d.Name, DeviceType = d.DeviceType.ToString(), Model = d.Model, SoftwareVersion = d.SoftwareVersion, SdkVersion = d.SdkVersion, TimeZoneId = d.TimeZoneId, LastSeenAt = d.LastSeenAt })
             .ToList();
     }
 
@@ -318,6 +318,9 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         device.ExternalDeviceId = input.ExternalDeviceId.Trim();
         device.Name = input.Name.Trim();
         device.DeviceType = Enum.Parse<AttendanceDeviceType>(input.DeviceType, ignoreCase: true);
+        device.Model = (input.Model ?? string.Empty).Trim();
+        device.SoftwareVersion = (input.SoftwareVersion ?? string.Empty).Trim();
+        device.SdkVersion = (input.SdkVersion ?? string.Empty).Trim();
         device.TimeZoneId = input.TimeZoneId.Trim();
     }
 
@@ -380,6 +383,21 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         if (!Enum.TryParse<AttendanceDeviceType>(input.DeviceType, ignoreCase: true, out var type) || !Enum.IsDefined(type))
         {
             errors[nameof(DeviceInput.DeviceType)] = $"The type must be one of: {string.Join(", ", Enum.GetNames<AttendanceDeviceType>())}.";
+        }
+
+        if ((input.Model ?? string.Empty).Trim().Length > 100)
+        {
+            errors[nameof(DeviceInput.Model)] = "The model can be at most 100 characters.";
+        }
+
+        if ((input.SoftwareVersion ?? string.Empty).Trim().Length > 100)
+        {
+            errors[nameof(DeviceInput.SoftwareVersion)] = "The software version can be at most 100 characters.";
+        }
+
+        if ((input.SdkVersion ?? string.Empty).Trim().Length > 50)
+        {
+            errors[nameof(DeviceInput.SdkVersion)] = "The SDK version can be at most 50 characters.";
         }
 
         var zone = (input.TimeZoneId ?? string.Empty).Trim();

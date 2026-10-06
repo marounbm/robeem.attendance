@@ -26,6 +26,14 @@ namespace robeem.DataModel
         [MaxLength(255)]
         public string DisplayName { get; set; } = string.Empty;
 
+        /// <summary>Gets or sets the company that makes the devices, e.g. <c>ZKTeco</c>. Empty when not recorded.</summary>
+        [MaxLength(255)]
+        public string Manufacturer { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets the manufacturer's website, e.g. <c>https://www.zkteco.com</c>. Empty when not recorded.</summary>
+        [MaxLength(255)]
+        public string WebsiteUrl { get; set; } = string.Empty;
+
         /// <summary>
         /// Gets or sets the transports the provider supports: a comma-separated list of
         /// <see cref="AttendanceTransport"/> member names, e.g. <c>FileUpload,RestApi</c>.

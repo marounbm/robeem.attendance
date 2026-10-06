@@ -75,7 +75,8 @@
     <div class="card-body">
         <p class="small text-muted">
             The vendor's device ids and the time zone each device's clock runs in: a punch without a UTC offset is read in
-            its device's zone. A device with punches on record can't be deleted.
+            its device's zone. The model and the software and SDK versions are for your records (for example U350, 4.8.7,
+            6.2.5.5). A device with punches on record can't be deleted.
         </p>
         <datalist id="time-zones">
             @foreach (var zone in IntegrationDetailsViewModel.CommonTimeZones)
@@ -109,6 +110,18 @@
                     <label class="form-label small mb-0" for="dev-zone-@device.Id">Time zone</label>
                     <input id="dev-zone-@device.Id" name="TimeZoneId" value="@device.TimeZoneId" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-0" for="dev-model-@device.Id">Model</label>
+                    <input id="dev-model-@device.Id" name="Model" value="@device.Model" class="form-control form-control-sm" maxlength="100" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small mb-0" for="dev-software-@device.Id">Software version</label>
+                    <input id="dev-software-@device.Id" name="SoftwareVersion" value="@device.SoftwareVersion" class="form-control form-control-sm" maxlength="100" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0" for="dev-sdk-@device.Id">SDK version</label>
+                    <input id="dev-sdk-@device.Id" name="SdkVersion" value="@device.SdkVersion" class="form-control form-control-sm" maxlength="50" />
+                </div>
                 <div class="col-md-3 d-flex gap-1 justify-content-end">
                     <span class="small text-muted align-self-center me-1">Last seen @DisplayFormats.DateTime(device.LastSeenAt)</span>
                     <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
@@ -139,6 +152,18 @@
             <div class="col-md-2">
                 <label class="form-label small mb-0" for="new-dev-zone">Time zone</label>
                 <input id="new-dev-zone" name="TimeZoneId" value="UTC" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="new-dev-model">Model</label>
+                <input id="new-dev-model" name="Model" class="form-control form-control-sm" maxlength="100" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="new-dev-software">Software version</label>
+                <input id="new-dev-software" name="SoftwareVersion" class="form-control form-control-sm" maxlength="100" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="new-dev-sdk">SDK version</label>
+                <input id="new-dev-sdk" name="SdkVersion" class="form-control form-control-sm" maxlength="50" />
             </div>
             <div class="col-md-3">
                 <button type="submit" class="btn btn-sm btn-primary">Add device</button>

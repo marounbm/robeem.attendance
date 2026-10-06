@@ -17,6 +17,18 @@ public sealed class DeviceInput
     [Display(Name = "Type")]
     public string DeviceType { get; set; } = "Biometric";
 
+    [StringLength(100)]
+    [Display(Name = "Model")]
+    public string Model { get; set; } = string.Empty;
+
+    [StringLength(100)]
+    [Display(Name = "Software version")]
+    public string SoftwareVersion { get; set; } = string.Empty;
+
+    [StringLength(50)]
+    [Display(Name = "SDK version")]
+    public string SdkVersion { get; set; } = string.Empty;
+
     /// <summary>Gets or sets the IANA time zone of the device's clock: wall-clock punches are read in it.</summary>
     [Required]
     [StringLength(64)]

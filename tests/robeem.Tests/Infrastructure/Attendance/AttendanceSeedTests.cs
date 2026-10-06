@@ -64,6 +64,29 @@ public sealed class AttendanceSeedTests : IDisposable
     }
 
     [Fact]
+    public async Task Seed_RecordsTheVendorOfZkteco_FillsOnlyEmptyFields_AndKeepsAnAdministratorsText()
+    {
+        await SeedAsync(TestDatabase.TenantA);
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var zk = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+            Assert.Equal(("ZKTeco", "https://www.zkteco.com"), (zk.Manufacturer, zk.WebsiteUrl));
+            Assert.All(db.AttendanceProviders.Where(p => p.ProviderKey != "zkteco"), p => Assert.Equal(string.Empty, p.Manufacturer));
+
+            // A row from before the details existed, and one an administrator filled in themselves.
+            zk.Manufacturer = string.Empty;
+            zk.WebsiteUrl = "https://zk.example.test";
+            db.SaveChanges();
+        }
+
+        await SeedAsync(TestDatabase.TenantA);
+
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var after = check.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+        Assert.Equal(("ZKTeco", "https://zk.example.test"), (after.Manufacturer, after.WebsiteUrl));
+    }
+
+    [Fact]
     public async Task Seed_FillsEachTenantOnItsOwn()
     {
         await SeedAsync(TestDatabase.TenantA);

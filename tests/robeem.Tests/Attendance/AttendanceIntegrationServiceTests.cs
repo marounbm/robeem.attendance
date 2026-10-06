@@ -234,6 +234,32 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ADevicesModelAndVersions_AreKeptTrimmed_Listed_AndLengthChecked()
+    {
+        var integrationId = (await CreateAsync(Input())).Id!.Value;
+        var u350 = Device("SN-U350-1", name: "Front door");
+        u350.Model = " U350 ";
+        u350.SoftwareVersion = " Fingerprint Attendance System 4.8.7 ";
+        u350.SdkVersion = " 6.2.5.5 ";
+
+        Assert.True((await AddDeviceAsync(integrationId, u350)).Succeeded);
+        Assert.True((await AddDeviceAsync(integrationId, Device("DEV-2", name: "Back door"))).Succeeded);
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var listed = (await CreateService(db).ListDevicesAsync(integrationId, CancellationToken.None))!;
+        var front = listed.Single(d => d.ExternalDeviceId == "SN-U350-1");
+        Assert.Equal(("U350", "Fingerprint Attendance System 4.8.7", "6.2.5.5"), (front.Model, front.SoftwareVersion, front.SdkVersion));
+        Assert.Equal(string.Empty, listed.Single(d => d.ExternalDeviceId == "DEV-2").Model);
+
+        var tooLong = Device("DEV-3");
+        tooLong.Model = new string('m', 101);
+        tooLong.SoftwareVersion = new string('s', 101);
+        tooLong.SdkVersion = new string('k', 51);
+        var refused = await AddDeviceAsync(integrationId, tooLong);
+        Assert.Equal([nameof(DeviceInput.Model), nameof(DeviceInput.SdkVersion), nameof(DeviceInput.SoftwareVersion)], refused.Errors.Keys.Order());
+    }
+
+    [Fact]
     public async Task ADeviceId_IsUniqueWithinAnIntegration_NotAcrossThem()
     {
         var first = (await CreateAsync(Input(name: "One"))).Id!.Value;

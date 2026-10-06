@@ -23,6 +23,10 @@
                     }
                 </select>
                 <div class="form-text">Only a provider with an adapter can be chosen.</div>
+                @foreach (var vendor in Model.Providers.Where(p => p.Manufacturer.Length > 0))
+                {
+                    <div class="form-text">@vendor.DisplayName: made by @vendor.Manufacturer@(vendor.WebsiteUrl.Length > 0 ? " (" + vendor.WebsiteUrl + ")" : string.Empty).</div>
+                }
             }
             else
             {
