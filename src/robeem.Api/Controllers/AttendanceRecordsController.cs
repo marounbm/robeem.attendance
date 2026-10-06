@@ -36,7 +36,7 @@ public sealed class AttendanceRecordsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
     public async Task<ActionResult<IReadOnlyList<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int take, CancellationToken cancellationToken)
     {
-        if (Viewer() is not { } viewer)
+        if (AttendanceViewers.For(_user) is not { } viewer)
         {
             return NotLinked();
         }
@@ -61,7 +61,7 @@ public sealed class AttendanceRecordsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
     public async Task<ActionResult<RecordDayDetail>> Get(int employeeId, DateTime date, CancellationToken cancellationToken)
     {
-        if (Viewer() is not { } viewer)
+        if (AttendanceViewers.For(_user) is not { } viewer)
         {
             return NotLinked();
         }
@@ -74,23 +74,6 @@ public sealed class AttendanceRecordsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.HRAdministrator)]
     public async Task<ActionResult<ReprocessResponse>> Reprocess(int employeeId, DateTime date, CancellationToken cancellationToken) =>
         await _records.ReprocessAsync(employeeId, date, cancellationToken) is { } result ? result : NotFound();
-
-    /// <summary>
-    /// Who is looking. An Employee's or Manager's scope depends on who they are, so without an
-    /// <c>employee_id</c> there is nobody to scope to. HR sees everyone and needs no employee of their
-    /// own: an HR user without one is a viewer with employee id 0, which no employee has, and with
-    /// only the HR scope.
-    /// </summary>
-    private ExceptionViewer? Viewer()
-    {
-        var isHr = _user.IsInRole(AttendanceRoles.HRAdministrator);
-        if (_user.EmployeeId is { } viewerId)
-        {
-            return new ExceptionViewer(viewerId, _user.IsInRole(AttendanceRoles.Employee), _user.IsInRole(AttendanceRoles.Manager), isHr);
-        }
-
-        return isHr ? new ExceptionViewer(0, false, false, true) : null;
-    }
 
     private ObjectResult NotLinked() =>
         Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim). Only HR can see attendance without one.");

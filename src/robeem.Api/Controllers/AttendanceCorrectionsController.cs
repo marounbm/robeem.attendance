@@ -59,12 +59,14 @@ public sealed class AttendanceCorrectionsController : ControllerBase
             return Forbid();
         }
 
-        if (_user.EmployeeId is not { } approverId)
+        // The Manager queue is the user's direct reports', so it needs to know who they are. The HR queue
+        // is nobody's own, so HR can look at it with no employee of their own (id 0 matches no employee).
+        if (_user.EmployeeId is null && awaiting == CorrectionApprover.Manager)
         {
             return NoEmployeeIdentity();
         }
 
-        return Ok(await _corrections.ListPendingAsync(awaiting, approverId, cancellationToken));
+        return Ok(await _corrections.ListPendingAsync(awaiting, _user.EmployeeId ?? 0, cancellationToken));
     }
 
     /// <summary>A manager or HR user approves or rejects a pending correction.</summary>

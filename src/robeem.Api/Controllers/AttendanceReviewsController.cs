@@ -31,12 +31,15 @@ public sealed class AttendanceReviewsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.Approvers)]
     public async Task<ActionResult<IReadOnlyList<ReviewListItem>>> ListPending(CancellationToken cancellationToken)
     {
-        if (_user.EmployeeId is not { } approverId)
+        // A manager's queue is their direct reports', so it needs to know who they are. HR's is everyone's,
+        // and HR can look at it with no employee of their own (id 0 matches no employee).
+        var isHr = _user.IsInRole(AttendanceRoles.HRAdministrator);
+        if (_user.EmployeeId is null && !isHr)
         {
             return NoEmployeeIdentity();
         }
 
-        return Ok(await _reviews.ListPendingAsync(approverId, _user.IsInRole(AttendanceRoles.HRAdministrator), cancellationToken));
+        return Ok(await _reviews.ListPendingAsync(_user.EmployeeId ?? 0, isHr, cancellationToken));
     }
 
     /// <summary>A manager or HR user approves or rejects a record waiting for review.</summary>

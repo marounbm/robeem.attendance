@@ -34,9 +34,9 @@ public sealed class AttendanceExceptionsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
     public async Task<ActionResult<IReadOnlyList<ExceptionListItem>>> List(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken)
     {
-        if (_user.EmployeeId is not { } viewerId)
+        if (AttendanceViewers.For(_user) is not { } viewer)
         {
-            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim).");
+            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim). Only HR can see exceptions without one.");
         }
 
         var parsed = ExceptionStatusFilter.Active;
@@ -46,11 +46,6 @@ public sealed class AttendanceExceptionsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var viewer = new ExceptionViewer(
-            viewerId,
-            _user.IsInRole(AttendanceRoles.Employee),
-            _user.IsInRole(AttendanceRoles.Manager),
-            _user.IsInRole(AttendanceRoles.HRAdministrator));
         return Ok(await _exceptions.ListAsync(new ExceptionFilter(parsed, from, to, employeeId, take == 0 ? 100 : take), viewer, cancellationToken));
     }
 }

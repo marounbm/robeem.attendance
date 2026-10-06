@@ -147,6 +147,25 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task HrWithoutAnEmployeeIdentity_CanLookAtTheHrQueues_ButNotDecide_NorLookAtAManagersQueue()
+    {
+        // The Development stand-in user (every role, no employee) is in this position until someone is chosen in "act as".
+        var hr = As(null, AttendanceRoles.HRAdministrator);
+        var standIn = As(null, AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator);
+
+        Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=HR", hr)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", hr)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=Manager", standIn)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await DecideAsync(hr)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/reviews/5/decision", hr, new { approved = true })).StatusCode);
+
+        Assert.Equal([(CorrectionApprover.HR, 0)], _corrections.Lists);
+        Assert.Equal([(0, true)], _reviews.Lists);
+        Assert.Empty(_corrections.Decisions);
+        Assert.Empty(_reviews.Decisions);
+    }
+
+    [Fact]
     public async Task AnApproverWithoutAnEmployeeIdentity_CanNotListAQueue()
     {
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/corrections/pending?awaiting=Manager", As(null, AttendanceRoles.Manager))).StatusCode);
@@ -168,6 +187,20 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             ],
             _exceptions.Calls.Select(c => (c.Viewer, c.Filter.EmployeeId, c.Filter.Status)));
         Assert.Equal(20, _exceptions.Calls[2].Filter.Take);
+    }
+
+    [Fact]
+    public async Task Exceptions_AreListedForHrWithoutAnEmployeeLink_ButNotForAnEmployeeOrManagerWithout()
+    {
+        // The Development stand-in user (every role, no employee) is HR for this purpose; its other roles add no scope.
+        var hr = await Send(HttpMethod.Get, "api/attendance/exceptions", As(null, AttendanceRoles.HRAdministrator));
+        var standIn = await Send(HttpMethod.Get, "api/attendance/exceptions", As(null, AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator));
+        var manager = await Send(HttpMethod.Get, "api/attendance/exceptions", As(null, AttendanceRoles.Manager));
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.Forbidden), (hr.StatusCode, standIn.StatusCode, manager.StatusCode));
+        Assert.Equal(
+            [new ExceptionViewer(0, false, false, true), new ExceptionViewer(0, false, false, true)],
+            _exceptions.Calls.Select(c => c.Viewer));
     }
 
     [Fact]
