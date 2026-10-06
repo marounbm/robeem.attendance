@@ -15,6 +15,7 @@ public static class AuditActionCatalog
         "IntegrationRunRequested",
         "PayPeriodChanged",
         "PolicyChanged",
+        "DayReprocessed",
         "AttendanceDataRead",
     ];
 }

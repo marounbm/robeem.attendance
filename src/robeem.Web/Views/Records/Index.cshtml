@@ -1,0 +1,88 @@
+@model RecordsIndexViewModel
+@{
+    ViewData["Title"] = "Attendance";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Attendance</h1>
+</div>
+
+<p class="text-muted">
+    One line per employee and day, newest first: the hours worked out from the punches and the schedule. You see your own
+    days; a manager also sees their reports'; HR sees everyone's. Open a day to see how it was calculated.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="status">Status</label>
+        <select id="status" name="status" class="form-select">
+            @foreach (var status in RecordsIndexViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@DisplayFormats.Words(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <div class="form-check">
+            <input id="onlyWithExceptions" type="checkbox" name="onlyWithExceptions" value="true" class="form-check-input" checked="@Model.OnlyWithExceptions" />
+            <label class="form-check-label" for="onlyWithExceptions">Only days with an open exception</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Items.Count == 0)
+    {
+        <div class="card-body text-muted">No days match.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Date</th>
+                        <th scope="col">Employee</th>
+                        <th scope="col" class="text-end">Worked</th>
+                        <th scope="col" class="text-end">Overtime</th>
+                        <th scope="col" class="text-end">Break</th>
+                        <th scope="col" class="text-end">Exceptions</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td>@item.EmployeeName <span class="small text-muted">@item.EmployeeNumber</span></td>
+                            <td class="text-end">@DisplayFormats.Hours(item.TotalWorkingHours)</td>
+                            <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
+                            <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
+                            <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
+                            <td><span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span></td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-primary" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
+                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">Open</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

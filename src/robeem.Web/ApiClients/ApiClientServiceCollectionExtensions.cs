@@ -34,6 +34,7 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IPayrollApiClient, PayrollApiClient>(services);
         AddClient<IPoliciesApiClient, PoliciesApiClient>(services);
         AddClient<IAuditApiClient, AuditApiClient>(services);
+        AddClient<IRecordsApiClient, RecordsApiClient>(services);
 
         return services;
     }

@@ -18,6 +18,9 @@ public static class AttendanceAuditActions
     /// <summary>An attendance policy was created, changed or deleted.</summary>
     public const string PolicyChanged = "PolicyChanged";
 
+    /// <summary>HR ran the processing engine again for one employee's day.</summary>
+    public const string DayReprocessed = "DayReprocessed";
+
     /// <summary>A sync or reconciliation was started by a person instead of the schedule.</summary>
     public const string IntegrationRunRequested = "IntegrationRunRequested";
 

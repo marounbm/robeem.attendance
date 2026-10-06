@@ -17,7 +17,12 @@ public static class NavigationMenu
 
     private static readonly NavSection People = new("People", [new NavItem("Employees", "Employees", "Index", "Add and edit employees, their time schedule and their manager.", Hr)]);
 
-    private static readonly NavSection MyWork = new("My work", [new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr)]);
+    private static readonly NavSection MyWork = new(
+        "My work",
+        [
+            new NavItem("Attendance", "Records", "Index", "Calculated days: hours worked, overtime, status and how each was worked out.", Employee, Manager, Hr),
+            new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr),
+        ]);
 
     private static readonly NavSection Approvals = new(
         "Approvals",

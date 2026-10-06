@@ -1,0 +1,228 @@
+@model RecordDayViewModel
+@{
+    var day = Model.Day;
+    ViewData["Title"] = $"{day.EmployeeName} - {DisplayFormats.Date(day.AttendanceDate)}";
+
+    // The source of a punch the calculation used: only a punch that was not vendor-labeled is worth a word.
+    string Source(string? source) => source is null or "Normalized" ? string.Empty : DisplayFormats.Words(source).ToLowerInvariant();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-0">@day.EmployeeName <span class="small text-muted">@day.EmployeeNumber</span></h1>
+        <div class="text-muted">@DisplayFormats.Date(day.AttendanceDate)</div>
+    </div>
+    <div>
+        <a asp-action="Index" class="btn btn-outline-secondary">Back to attendance</a>
+        @if (Model.CanReprocess)
+        {
+            <form method="post" asp-action="Reprocess" class="d-inline">
+                <input type="hidden" name="employeeId" value="@day.EmployeeId" />
+                <input type="hidden" name="date" value="@day.AttendanceDate.ToString("yyyy-MM-dd")" />
+                <button type="submit" class="btn btn-outline-primary">Calculate again</button>
+            </form>
+        }
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+@if (!day.Processed)
+{
+    <div class="alert alert-info">
+        This day has not been calculated yet@(Model.CanReprocess ? ": use Calculate again once its punches have arrived." : ".")
+    </div>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body d-flex flex-wrap gap-4">
+            <div><div class="small text-muted">Worked</div><div class="fs-5">@DisplayFormats.Hours(day.TotalWorkingHours)</div></div>
+            <div><div class="small text-muted">Overtime</div><div class="fs-5">@DisplayFormats.Hours(day.TotalOvertimeHours)</div></div>
+            <div><div class="small text-muted">Break</div><div class="fs-5">@DisplayFormats.Hours(day.TotalBreakHours)</div></div>
+            <div><div class="small text-muted">Open exceptions</div><div class="fs-5">@day.ExceptionCount</div></div>
+            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.Badge(day.Status)">@DisplayFormats.Words(day.Status)</span></div></div>
+        </div>
+    </div>
+
+    <h2 class="h5">Calculated shifts</h2>
+    <p class="small text-muted">
+        When a recalculation changes a result it is saved as a new version and the old one is kept, greyed out, so you can see what changed.
+    </p>
+    <div class="card mb-4">
+        @if (day.Versions.Count == 0)
+        {
+            <div class="card-body text-muted">No shift was calculated for this day.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Shift</th>
+                            <th scope="col">Scheduled</th>
+                            <th scope="col">In</th>
+                            <th scope="col">Break</th>
+                            <th scope="col">Out</th>
+                            <th scope="col" class="text-end">Worked</th>
+                            <th scope="col" class="text-end">Late</th>
+                            <th scope="col" class="text-end">Early out</th>
+                            <th scope="col" class="text-end">Overtime</th>
+                            <th scope="col">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in day.Versions)
+                        {
+                            <tr class="@(v.IsCurrent ? null : "text-muted")">
+                                <td>
+                                    @(v.ShiftTitle ?? "Unscheduled work")
+                                    <div class="small">Version @v.Version@(v.IsCurrent ? " (current)" : " (replaced)")</div>
+                                </td>
+                                <td class="text-nowrap">@DisplayFormats.Time(v.ScheduledStart) – @DisplayFormats.Time(v.ScheduledEnd)</td>
+                                <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckIn) <span class="small">@Source(v.ActualCheckInSource)</span></td>
+                                <td class="text-nowrap">@DisplayFormats.Time(v.ActualBreakOut) – @DisplayFormats.Time(v.ActualBreakIn) <span class="small">@Source(v.ActualBreakOutSource ?? v.ActualBreakInSource)</span></td>
+                                <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckOut) <span class="small">@Source(v.ActualCheckOutSource)</span></td>
+                                <td class="text-end">@DisplayFormats.Hours(v.WorkingHours)</td>
+                                <td class="text-end">@(v.LateMinutes == 0 ? "—" : DisplayFormats.Minutes(v.LateMinutes))</td>
+                                <td class="text-end">@(v.EarlyDepartureMinutes == 0 ? "—" : DisplayFormats.Minutes(v.EarlyDepartureMinutes))</td>
+                                <td class="text-end">@(v.OvertimeMinutes == 0 ? "—" : DisplayFormats.Minutes(v.OvertimeMinutes))</td>
+                                <td><span class="badge text-bg-@DisplayFormats.Badge(v.Status)">@DisplayFormats.Words(v.Status)</span></td>
+                            </tr>
+                            @foreach (var review in v.Reviews)
+                            {
+                                <tr class="@(v.IsCurrent ? null : "text-muted")">
+                                    <td colspan="10" class="small border-top-0 pt-0">
+                                        <span class="badge text-bg-@DisplayFormats.Badge(review.Outcome)">@DisplayFormats.Words(review.Outcome)</span>
+                                        by @review.DecidedByName (@DisplayFormats.Words(review.DecidedByRole).ToLowerInvariant()) on @DisplayFormats.DateTime(review.DecidedAt)
+                                        @if (review.OvertimeMinutes > 0)
+                                        {
+                                            <span>, covering @DisplayFormats.Minutes(review.OvertimeMinutes) of overtime</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(review.Reason))
+                                        {
+                                            <span>: @review.Reason</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+<h2 class="h5">Exceptions</h2>
+<div class="card mb-4">
+    @if (day.Exceptions.Count == 0)
+    {
+        <div class="card-body text-muted">None.</div>
+    }
+    else
+    {
+        <ul class="list-group list-group-flush">
+            @foreach (var e in day.Exceptions)
+            {
+                <li class="list-group-item">
+                    <span class="badge text-bg-@DisplayFormats.Badge(e.Status)">@DisplayFormats.Words(e.Status)</span>
+                    @if (e.MissingEventType is not null)
+                    {
+                        <span>Missing @DisplayFormats.Words(e.MissingEventType).ToLowerInvariant()</span>
+                    }
+                    else
+                    {
+                        <span>Wrong order</span>
+                    }
+                    @if (e.ShiftTitle is not null)
+                    {
+                        <span class="text-muted"> · @e.ShiftTitle</span>
+                    }
+                    <div class="small text-muted">@e.Description</div>
+                    @if (e.ResolutionMethod is not null)
+                    {
+                        <div class="small text-muted">Settled: @DisplayFormats.Words(e.ResolutionMethod).ToLowerInvariant()@(e.ResolvedAt is { } at ? $" on {DisplayFormats.DateTime(at)}" : string.Empty)</div>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<h2 class="h5">Corrections</h2>
+<div class="card mb-4">
+    @if (day.Corrections.Count == 0)
+    {
+        <div class="card-body text-muted">None.</div>
+    }
+    else
+    {
+        <ul class="list-group list-group-flush">
+            @foreach (var c in day.Corrections)
+            {
+                <li class="list-group-item">
+                    <span class="badge text-bg-@DisplayFormats.Badge(c.Status)">@DisplayFormats.Words(c.Status)</span>
+                    @DisplayFormats.Words(c.CorrectedEventType) at @DisplayFormats.Time(c.ProposedValue)
+                    <span class="text-muted"> · proposed by @c.RequestedByName on @DisplayFormats.DateTime(c.RequestedAt)</span>
+                    <div class="small">@c.Justification</div>
+                    <div class="small text-muted">
+                        Approver: @DisplayFormats.Words(c.ApprovalWorkflow).ToLowerInvariant().
+                        @if (c.ManagerDecision is not null)
+                        {
+                            <span>Manager: @DisplayFormats.Words(c.ManagerDecision).ToLowerInvariant() (@c.ManagerDecidedByName). </span>
+                        }
+                        @if (c.HrDecision is not null)
+                        {
+                            <span>HR: @DisplayFormats.Words(c.HrDecision).ToLowerInvariant() (@c.HrDecidedByName). </span>
+                        }
+                        @if (c.AppliedAt is { } applied)
+                        {
+                            <span>Applied on @DisplayFormats.DateTime(applied).</span>
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<h2 class="h5">Punches</h2>
+<p class="small text-muted">What the time clocks reported, as normalized. This list is written to the audit log each time it is opened.</p>
+<div class="card mb-4">
+    @if (day.Punches.Count == 0)
+    {
+        <div class="card-body text-muted">No punches.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Time</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Clock's label</th>
+                        <th scope="col">Device</th>
+                        <th scope="col">Certainty</th>
+                        <th scope="col">Repeat?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in day.Punches)
+                    {
+                        <tr class="@(p.DuplicateStatus == "Unique" ? null : "text-muted")">
+                            <td class="text-nowrap">@DisplayFormats.DateTime(p.LocalTime) <span class="small text-muted">@p.TimeZoneId</span></td>
+                            <td>@DisplayFormats.Words(p.EventType)</td>
+                            <td>@(p.OriginalEventType ?? "—")</td>
+                            <td>@(p.DeviceName ?? "—")</td>
+                            <td>@DisplayFormats.Words(p.Confidence)</td>
+                            <td>@(p.DuplicateStatus == "Unique" ? "—" : DisplayFormats.Words(p.DuplicateStatus))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

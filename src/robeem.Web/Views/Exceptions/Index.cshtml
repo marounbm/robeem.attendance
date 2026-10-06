@@ -62,7 +62,10 @@
                     @foreach (var item in Model.Items)
                     {
                         <tr>
-                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td class="text-nowrap">
+                                <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
+                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@DisplayFormats.Date(item.AttendanceDate)</a>
+                            </td>
                             <td>@item.EmployeeName</td>
                             <td>@(item.ShiftTitle ?? "—")</td>
                             <td>
