@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Web.ApiClients;
 
 namespace robeem.Web.Actors;
@@ -16,13 +14,8 @@ public sealed class ApiAccessDeniedFilter : IExceptionFilter
     {
         switch (context.Exception)
         {
-            case ApiAccessDeniedException:
-                context.Result = new ViewResult
-                {
-                    ViewName = "AccessDenied",
-                    StatusCode = StatusCodes.Status403Forbidden,
-                    ViewData = new ViewDataDictionary(new EmptyModelMetadataProvider(), context.ModelState),
-                };
+            case ApiAccessDeniedException denied:
+                context.Result = AccessDeniedPage.Create(context.ModelState, denied.Reason is null ? null : $"robeem.Api refused this: {denied.Reason}");
                 context.ExceptionHandled = true;
                 break;
 

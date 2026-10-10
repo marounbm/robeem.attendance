@@ -11,6 +11,7 @@ namespace robeem.Web.Controllers;
 /// A day opens to show how its hours were worked out, from the punches to the review decisions;
 /// HR can run a day through the processing engine again.
 /// </summary>
+[RequiresEmployee(HrExempt = true)]
 public sealed class RecordsController : Controller
 {
     private const int PageSize = 200;

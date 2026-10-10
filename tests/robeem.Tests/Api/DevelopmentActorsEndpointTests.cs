@@ -36,6 +36,22 @@ public sealed class DevelopmentActorsEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, (await api.Send(HttpMethod.Get, "api/development/actors", TestApi.As(7, AttendanceRoles.HRAdministrator))).StatusCode);
     }
 
+    [Fact]
+    public async Task TheStandInUser_IsReportedWithItsEmployeeAndRoles_AndIsA404WhenOff()
+    {
+        await using var on = Start(enabled: true);
+        await using var off = Start(enabled: false);
+
+        var response = await on.Send(HttpMethod.Get, "api/development/actors/stand-in", null);
+        var gone = await off.Send(HttpMethod.Get, "api/development/actors/stand-in", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var standIn = await response.Content.ReadFromJsonAsync<StandInActor>();
+        Assert.Null(standIn!.EmployeeId);
+        Assert.Equal(AttendanceRoles.All.Order(), standIn.Roles.Order());
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+    }
+
     private static TestApi Start(bool enabled) => TestApi.Start(services =>
     {
         services.AddSingleton<IEmployeeService>(new FakeEmployees());

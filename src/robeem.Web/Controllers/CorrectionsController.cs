@@ -24,15 +24,22 @@ public sealed class CorrectionsController : Controller
     }
 
     [HttpGet]
+    [RequiresEmployee(HrExempt = true)]
     public async Task<IActionResult> Index(CorrectionApprover? awaiting, CancellationToken cancellationToken)
     {
-        var canManager = _actor.IsInRole(NavigationMenu.Manager);
+        // The Manager queue is the actor's direct reports', so the Api refuses it to one with no employee of
+        // their own (the ActorAccessFilter has already turned away one who is not HR either). The HR queue
+        // needs none. The actor is the "act as" choice or else the Api's stand-in user; if the Api could not
+        // say who that is, the Api decides.
+        var known = _actor.Effective;
+        var canManager = _actor.IsInRole(NavigationMenu.Manager) && (known is null || known.EmployeeId is not null);
         var canHr = _actor.IsInRole(NavigationMenu.Hr);
 
-        // The tab asked for, if the acting roles allow it; otherwise the first they do.
+        // The tab asked for, if the acting roles allow it; otherwise the first they do. When it is not known
+        // whether they have an employee, the HR queue is the safer default for one holding both.
         var tab = awaiting is { } asked && ((asked == CorrectionApprover.Manager && canManager) || (asked == CorrectionApprover.HR && canHr))
             ? asked
-            : canManager ? CorrectionApprover.Manager : CorrectionApprover.HR;
+            : canManager && (known is not null || !canHr) ? CorrectionApprover.Manager : CorrectionApprover.HR;
 
         return View(new CorrectionsQueueViewModel
         {
@@ -44,6 +51,7 @@ public sealed class CorrectionsController : Controller
     }
 
     [HttpPost]
+    [RequiresEmployee]
     public async Task<IActionResult> Decide(int id, bool approved, CorrectionApprover awaiting, CancellationToken cancellationToken)
     {
         var result = await _corrections.DecideAsync(

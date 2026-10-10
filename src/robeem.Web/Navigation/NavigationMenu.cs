@@ -25,15 +25,15 @@ public static class NavigationMenu
     private static readonly NavSection MyWork = new(
         "My work",
         [
-            new NavItem("Attendance", "Records", "Index", "Calculated days: hours worked, overtime, status and how each was worked out.", Employee, Manager, Hr),
-            new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr),
+            new NavItem("Attendance", "Records", "Index", "Calculated days: hours worked, overtime, status and how each was worked out.", Employee, Manager, Hr) { NeedsEmployee = true },
+            new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr) { NeedsEmployee = true },
         ]);
 
     private static readonly NavSection Approvals = new(
         "Approvals",
         [
-            new NavItem("Corrections", "Corrections", "Index", "Decide the corrections employees proposed for missing punches.", Manager, Hr),
-            new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr),
+            new NavItem("Corrections", "Corrections", "Index", "Decide the corrections employees proposed for missing punches.", Manager, Hr) { NeedsEmployee = true },
+            new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr) { NeedsEmployee = true },
         ]);
 
     private static readonly NavSection Integrations = new("Integrations", [new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health, uploads and sync.", Integration)]);
@@ -51,10 +51,34 @@ public static class NavigationMenu
 
     public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, PayrollSection, Settings, AuditSection];
 
-    /// <summary>The sections the actor may open, each with only the items it may open; empty sections are dropped.</summary>
+    /// <summary>
+    /// The sections the actor may open, each with only the items it may open; empty sections are dropped.
+    /// The menu and the start page both read this, so a screen the actor cannot open is shown nowhere.
+    /// </summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor) =>
         Sections
-            .Select(group => group with { Items = group.Items.Where(item => item.Roles.Length == 0 || actor.IsInAnyRole(item.Roles)).ToList() })
+            .Select(group => group with { Items = group.Items.Where(item => AccessTo(actor, item) == NavAccess.Allowed).ToList() })
             .Where(group => group.Items.Count > 0)
             .ToList();
+
+    /// <summary>Gets the screen of a controller, or null for one that is not in the menu (the tenant picker, the start page).</summary>
+    public static NavItem? Find(string? controller) =>
+        Sections.SelectMany(section => section.Items).FirstOrDefault(i => string.Equals(i.Controller, controller, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Whether the actor may open the screen. The same rule decides what the menu shows and what
+    /// <see cref="ActorAccessFilter"/> lets through, so the two cannot disagree. While who the actor is
+    /// stays unknown (the Api could not be asked, or production), everything is allowed and the Api decides.
+    /// </summary>
+    public static NavAccess AccessTo(ICurrentActor actor, NavItem item)
+    {
+        if (item.Roles.Length > 0 && !actor.IsInAnyRole(item.Roles))
+        {
+            return NavAccess.MissingRole;
+        }
+
+        return item.NeedsEmployee && actor.Effective is { EmployeeId: null } && !actor.IsInRole(Hr)
+            ? NavAccess.NeedsEmployee
+            : NavAccess.Allowed;
+    }
 }

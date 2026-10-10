@@ -7,7 +7,7 @@
 
 <h1 class="h3 mb-2">Not allowed</h1>
 <p>
-    robeem.Api refused this: the roles you hold do not allow it.
+    @(ViewData[AccessDeniedPage.ReasonKey] as string ?? "robeem.Api refused this: the roles you hold do not allow it.")
     @if (Actor.Choice is { } choice)
     {
         <span>You are acting as <strong>@choice.Name</strong> with @(choice.Roles.Count == 0 ? "no roles" : string.Join(", ", choice.Roles)).</span>

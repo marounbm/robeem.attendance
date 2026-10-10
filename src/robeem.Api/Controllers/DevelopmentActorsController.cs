@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using robeem.Api.Security;
+using robeem.Api.Tenancy;
 using robeem.Application.HR.Employees;
 using robeem.Contracts.Security;
 
@@ -36,5 +37,21 @@ public sealed class DevelopmentActorsController : ControllerBase
 
         var employees = await _employees.ListManagerOptionsAsync(null, cancellationToken);
         return Ok(employees.Select(e => new ActorOption { Id = e.Id, Name = e.Name }).ToList());
+    }
+
+    /// <summary>
+    /// The stand-in user the Api answers as when no one is chosen in "act as": its employee and roles.
+    /// The Web needs them to know which screens that user can open. Needs no tenant, as it reads configuration only.
+    /// </summary>
+    [HttpGet("stand-in")]
+    [AllowWithoutTenant]
+    public ActionResult<StandInActor> GetStandIn()
+    {
+        if (!_options.DevelopmentUser.Enabled)
+        {
+            return NotFound();
+        }
+
+        return Ok(new StandInActor { EmployeeId = _options.DevelopmentUser.EmployeeId, Roles = _options.DevelopmentUser.Roles });
     }
 }

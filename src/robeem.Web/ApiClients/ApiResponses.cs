@@ -26,7 +26,7 @@ internal static class ApiResponses
         await ThrowIfTenantRejectedAsync(response, cancellationToken);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            throw new ApiAccessDeniedException(response.StatusCode);
+            throw new ApiAccessDeniedException(response.StatusCode, await ReadRefusalReasonAsync(response, cancellationToken));
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -127,6 +127,13 @@ internal static class ApiResponses
         }
 
         return errors;
+    }
+
+    // The Api's problem title says why, e.g. "Your account is not linked to an employee"; a bare "Forbidden"/"Unauthorized" says nothing more than the status.
+    private static async Task<string?> ReadRefusalReasonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var title = (await ReadJsonOrDefaultAsync<ValidationProblem>(response, cancellationToken))?.Title;
+        return string.IsNullOrWhiteSpace(title) || title is "Forbidden" or "Unauthorized" ? null : title.Trim();
     }
 
     private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)

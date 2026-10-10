@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using robeem.Contracts.Attendance;
+using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
 
@@ -9,6 +10,7 @@ namespace robeem.Web.Controllers;
 /// Attendance exceptions of the acting user: their own (and, for a manager, their reports'; for
 /// HR, everyone's). The exception's own employee proposes the missing punch from here.
 /// </summary>
+[RequiresEmployee(HrExempt = true)]
 public sealed class ExceptionsController : Controller
 {
     private const int PageSize = 200;
@@ -36,6 +38,7 @@ public sealed class ExceptionsController : Controller
     }
 
     [HttpPost]
+    [RequiresEmployee]
     public async Task<IActionResult> Propose(int exceptionId, DateTime proposedValue, string? justification, CancellationToken cancellationToken)
     {
         var result = await _corrections.ProposeAsync(

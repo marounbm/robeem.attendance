@@ -8,8 +8,12 @@ namespace robeem.Web.ApiClients;
 /// </summary>
 public sealed class ApiAccessDeniedException : HttpRequestException
 {
-    public ApiAccessDeniedException(HttpStatusCode statusCode)
-        : base($"robeem.Api refused the request ({(int)statusCode}).", null, statusCode)
+    public ApiAccessDeniedException(HttpStatusCode statusCode, string? reason = null)
+        : base($"robeem.Api refused the request ({(int)statusCode}){(reason is null ? string.Empty : ": " + reason.TrimEnd('.'))}.", null, statusCode)
     {
+        Reason = reason;
     }
+
+    /// <summary>Gets the Api's own explanation (its problem title), when it gave one beyond the status text.</summary>
+    public string? Reason { get; }
 }

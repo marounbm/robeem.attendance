@@ -12,6 +12,7 @@ namespace robeem.Web.Controllers;
 /// shift, an incomplete day. A manager reviews their direct reports; HR anyone. Only an approved
 /// record (and, for overtime under a pre-approval policy, an approving decision) reaches payroll.
 /// </summary>
+[RequiresEmployee(HrExempt = true)]
 public sealed class ReviewsController : Controller
 {
     private readonly IReviewsApiClient _reviews;
@@ -28,6 +29,7 @@ public sealed class ReviewsController : Controller
         => View(new ReviewsQueueViewModel { Items = await _reviews.ListPendingAsync(cancellationToken) });
 
     [HttpPost]
+    [RequiresEmployee]
     public async Task<IActionResult> Decide(int recordId, bool approved, string? reason, CancellationToken cancellationToken)
     {
         // A user who is both manager and HR reviews as HR, who may review anyone.
