@@ -8,6 +8,7 @@ using robeem.Application.Attendance;
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
+using robeem.DataModel;
 
 namespace robeem.Tests.Api;
 
@@ -47,6 +48,8 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         ["POST", "api/attendance/integrations/1/sync", null!],
         ["POST", "api/attendance/integrations/1/reconcile", null!],
         ["GET", "api/attendance/integrations/1/health", null!],
+        ["GET", "api/attendance/integrations/1/raw-mapping", null!],
+        ["GET", "api/attendance/integrations/1/raw-mapping/guide", null!],
     ];
 
     public async ValueTask DisposeAsync() => await _api.DisposeAsync();
@@ -109,7 +112,7 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     {
         _integrations.Exists = false;
 
-        foreach (var url in new[] { "api/attendance/integrations/9", "api/attendance/integrations/9/input", "api/attendance/integrations/9/devices", "api/attendance/integrations/9/mappings", "api/attendance/integrations/9/health" })
+        foreach (var url in new[] { "api/attendance/integrations/9", "api/attendance/integrations/9/input", "api/attendance/integrations/9/devices", "api/attendance/integrations/9/mappings", "api/attendance/integrations/9/health", "api/attendance/integrations/9/raw-mapping", "api/attendance/integrations/9/raw-mapping/guide" })
         {
             Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", url, Admin, null)).StatusCode);
         }
@@ -130,6 +133,18 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         Assert.Equal("vendor is down", (await sync.Content.ReadFromJsonAsync<SyncOutcomeResponse>())!.Message);
         Assert.Equal(HttpStatusCode.OK, reconcile.StatusCode);
         Assert.Equal([("run", false), ("run", true)], _integrations.Runs);
+    }
+
+    [Fact]
+    public async Task RawMapping_PassesTheFilterOn_AndRefusesAnUnknownStatus()
+    {
+        var ok = await Send("GET", "api/attendance/integrations/1/raw-mapping?batchId=7&status=failed&take=20", Admin, null);
+        var refused = await Send("GET", "api/attendance/integrations/1/raw-mapping?status=Bogus", Admin, null);
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal(new RawNormalizedFilter(7, RawTransactionProcessingStatus.Failed, 20), _integrations.LastRawFilter);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("Pending, Normalized, Failed, Skipped", await refused.Content.ReadAsStringAsync());
     }
 
     private Task<HttpResponseMessage> Send(string method, string url, string? user, string? body)
@@ -157,6 +172,8 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         public SaveResult Result { get; set; } = SaveResult.Success(1);
 
         public bool Exists { get; set; } = true;
+
+        public RawNormalizedFilter? LastRawFilter { get; private set; }
 
         public SyncOutcomeResponse Outcome { get; set; } = new() { Status = "Succeeded" };
 
@@ -187,6 +204,15 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         public Task<SaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping", Result);
 
         public Task<SaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping", Result);
+
+        public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
+        {
+            LastRawFilter = filter;
+            return Record<IReadOnlyList<RawNormalizedMappingItem>?>("rawMapping", Exists ? [] : null);
+        }
+
+        public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+            Record<ProviderMappingGuide?>("rawMappingGuide", Exists ? new ProviderMappingGuide { ProviderKey = "x" } : null);
 
         public Task<SyncOutcomeResponse?> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken)
         {

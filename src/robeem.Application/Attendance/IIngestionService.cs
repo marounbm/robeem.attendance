@@ -11,4 +11,10 @@ public interface IIngestionService
     /// marked Failed and counted in <see cref="AttendanceIngestionResult.RecordsFailed"/>.
     /// </summary>
     Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same for a body a webhook delivered (already authenticated by the caller), in a new
+    /// Webhook batch. A body the adapter cannot read marks the batch Failed and stores no row.
+    /// </summary>
+    Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken);
 }

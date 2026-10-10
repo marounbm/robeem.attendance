@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
@@ -444,7 +445,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>
-        new(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System));
+        new(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
 
     private sealed class FakeSync : IIntegrationSyncService
     {

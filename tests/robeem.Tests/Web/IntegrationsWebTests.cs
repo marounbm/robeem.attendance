@@ -212,6 +212,37 @@ public sealed class IntegrationsWebTests
         Assert.Contains("Could not read the file.", (string)controller.TempData["ErrorMessage"]!);
     }
 
+    [Fact]
+    public async Task TheClient_AsksForTheRawMappingWithItsFilter_AndMapsA404ToNull()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"rawId":4,"rawStatus":"Failed","processingError":"Unparseable timestamp 'x'","payload":"{}"}]""");
+        var missing = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
+
+        var rows = await new IntegrationsApiClient(handler.CreateClient()).ListRawMappingAsync(5, 7, "Failed", 50, CancellationToken.None);
+
+        Assert.Equal("/api/attendance/integrations/5/raw-mapping?take=50&batchId=7&status=Failed", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal(("Failed", "Unparseable timestamp 'x'"), (rows![0].RawStatus, rows[0].ProcessingError));
+        Assert.Null(rows[0].NormalizedId);
+        Assert.Null(await missing.ListRawMappingAsync(9, null, null, 100, CancellationToken.None));
+        Assert.Null(await missing.GetRawMappingGuideAsync(9, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheRawMappingPage_ClampsHowManyRowsItAsksFor_AndAnUnknownIntegrationIsNotFound()
+    {
+        var integrations = new FakeIntegrations();
+        var controller = WithTempData(new IntegrationsController(integrations));
+
+        var page = await controller.RawMapping(5, null, null, 100000, CancellationToken.None);
+        await controller.RawMapping(5, null, null, 0, CancellationToken.None);
+
+        Assert.IsType<ViewResult>(page);
+        Assert.Equal([500, 100], integrations.RawMappingTakes);
+
+        integrations.Save = ApiSaveResult.Missing();
+        Assert.IsType<NotFoundResult>(await controller.RawMapping(9, null, null, 100, CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(0.9512, "95.1%")]
     [InlineData(0.0, "0%")]
@@ -265,6 +296,8 @@ public sealed class IntegrationsWebTests
 
         public List<string> Uploads { get; } = [];
 
+        public List<int> RawMappingTakes { get; } = [];
+
         public Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IntegrationListItem>>([]);
 
         public Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken) => Task.FromResult<IntegrationListItem?>(Save.NotFound ? null : new IntegrationListItem { Id = id });
@@ -294,6 +327,15 @@ public sealed class IntegrationsWebTests
         public Task<ApiSaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping");
 
         public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping");
+
+        public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken)
+        {
+            RawMappingTakes.Add(take);
+            return Task.FromResult<IReadOnlyList<RawNormalizedMappingItem>?>(Save.NotFound ? null : []);
+        }
+
+        public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+            Task.FromResult<ProviderMappingGuide?>(Save.NotFound ? null : new ProviderMappingGuide { ProviderKey = "zkteco" });
 
         public Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken) => Task.FromResult(Outcome);
 

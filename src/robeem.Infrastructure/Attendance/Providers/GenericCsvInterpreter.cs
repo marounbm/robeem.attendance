@@ -41,6 +41,12 @@ public sealed class GenericCsvInterpreter : IAttendanceEventInterpreter
         ["BREAKEND"] = NormalizedEventType.BreakIn,
     };
 
+    /// <summary>Gets the timestamp patterns accepted, each with an optional <c>Z</c> or <c>+hh:mm</c> offset after it.</summary>
+    internal static IReadOnlyList<string> TimestampFormats => WallClockFormats;
+
+    /// <summary>Gets the event labels recognized, as normalized keys (upper case, letters and digits only).</summary>
+    internal static IReadOnlyDictionary<string, NormalizedEventType> RecognizedEventTypes => EventTypes;
+
     public VendorTimestamp? ParseTimestamp(string transactionTimestampRaw)
     {
         var text = transactionTimestampRaw.Trim();

@@ -107,6 +107,25 @@ public sealed class IntegrationsController : Controller
         });
     }
 
+    /// <summary>
+    /// Each raw punch of the integration beside the normalized punch it produced, with the provider's
+    /// mapping rules. A page of its own, not part of Details: every open of it is a read of raw
+    /// attendance that the Api writes to the audit log.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> RawMapping(int id, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    {
+        take = take <= 0 ? 100 : Math.Min(take, 500);
+        if (await _integrations.GetAsync(id, cancellationToken) is not { } integration
+            || await _integrations.GetRawMappingGuideAsync(id, cancellationToken) is not { } guide
+            || await _integrations.ListRawMappingAsync(id, batchId, status, take, cancellationToken) is not { } rows)
+        {
+            return NotFound();
+        }
+
+        return View(new IntegrationRawMappingViewModel { Integration = integration, Guide = guide, Rows = rows, BatchId = batchId, Status = status, Take = take });
+    }
+
     [HttpPost]
     public async Task<IActionResult> AddDevice(int id, DeviceInput input, CancellationToken cancellationToken)
     {

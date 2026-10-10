@@ -20,6 +20,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ITimeScheduleService, TimeScheduleService>();
         services.AddScoped<IChangeAuditTrail, AttendanceChangeAuditTrail>();
         services.AddScoped<IIngestionService, IngestionService>();
+        services.AddScoped<IWebhookReceiver, WebhookReceiver>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
         services.AddOptions<SampleDataOptions>();
         services.AddScoped<ISeedContributor, ProfileSeedContributor>();

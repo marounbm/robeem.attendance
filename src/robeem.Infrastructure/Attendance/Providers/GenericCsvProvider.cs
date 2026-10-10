@@ -1,7 +1,7 @@
-using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using robeem.Application.Attendance;
+using robeem.Contracts.Attendance;
 
 namespace robeem.Infrastructure.Attendance.Providers;
 
@@ -25,7 +25,7 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// <para>Timestamp and event-type formats are described on <see cref="GenericCsvInterpreter"/>.
 /// Without an offset, a timestamp is a wall-clock time at the device.</para>
 /// </remarks>
-public sealed class GenericCsvProvider : IAttendanceProvider
+public sealed class GenericCsvProvider : IAttendanceProvider, IAttendanceMappingGuide
 {
     public const string ProviderKey = "generic-csv";
 
@@ -57,25 +57,40 @@ public sealed class GenericCsvProvider : IAttendanceProvider
     {
         var path = config.UploadFilePath ?? throw new ArgumentException("The generic CSV provider reads uploaded files only; no file was given.", nameof(config));
 
-        string content;
-        using (var reader = new StreamReader(path, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
-        {
-            content = await reader.ReadToEndAsync(cancellationToken);
-        }
-
-        var rows = ParseCsv(content);
+        var rows = CsvDocument.Parse(await CsvDocument.ReadFileAsync(path, cancellationToken));
         if (rows.Count == 0)
         {
             return new AttendanceBatchResult([]);
         }
 
-        var headers = UniqueHeaders(rows[0]);
+        var headers = CsvDocument.UniqueHeaders(rows[0]);
         var transactions = rows.Skip(1).Select(row => ToTransaction(headers, row)).ToList();
         return new AttendanceBatchResult(transactions);
     }
 
     public Task<AttendanceBatchResult> GetTransactionChangesAsync(AttendanceIntegrationConfig config, SyncCursor? cursor, CancellationToken cancellationToken)
         => throw new NotSupportedException("The generic CSV provider is manual-upload only; it has no incremental sync.");
+
+    public ProviderMappingGuide DescribeMapping() => new()
+    {
+        ProviderKey = ProviderKey,
+        Summary = "A CSV file with a header row, uploaded by hand. Columns are matched by name, ignoring case, spaces and punctuation. Every column is kept in the payload; biometric-looking ones are removed by the shared sanitizer.",
+        Fields =
+        [
+            Rule(EmployeeColumns, "ExternalEmployeeId"),
+            Rule(TimestampColumns, "TransactionTimestampRaw", "Parsed by the interpreter; without an offset the device's time zone gives the instant."),
+            Rule(TypeColumns, "TransactionTypeRaw", "Tried before the direction column."),
+            Rule(DirectionColumns, "DirectionRaw"),
+            Rule(DeviceColumns, "DeviceExternalId", "Must match a registered device's external id."),
+            Rule(TransactionIdColumns, "ExternalTransactionId"),
+        ],
+        TimestampFormats = GenericCsvInterpreter.TimestampFormats.Select(f => f.Replace("'", string.Empty)).ToList(),
+        EventCodes = GenericCsvInterpreter.RecognizedEventTypes.Select(e => new EventCodeRule { Code = e.Key, EventType = e.Value.ToString() }).ToList(),
+        NotStored = ["columns whose name contains: template, biometric, fingerprint, faceprint"],
+    };
+
+    private static FieldMappingRule Rule(string[] columns, string target, string? note = null) =>
+        new() { Source = string.Join(" / ", columns), Target = target, Note = note };
 
     private static ExternalAttendanceTransaction ToTransaction(IReadOnlyList<string> headers, IReadOnlyList<string> row)
     {
@@ -88,7 +103,7 @@ public sealed class GenericCsvProvider : IAttendanceProvider
 
         string? Field(string[] names)
         {
-            var header = headers.FirstOrDefault(h => names.Contains(Normalize(h)));
+            var header = headers.FirstOrDefault(h => names.Contains(CsvDocument.NormalizeHeader(h)));
             return header is not null && payload.TryGetValue(header, out var value) && value.Length > 0 ? value : null;
         }
 
@@ -102,104 +117,5 @@ public sealed class GenericCsvProvider : IAttendanceProvider
             DeviceExternalId = Field(DeviceColumns),
             ExternalTransactionId = Field(TransactionIdColumns),
         };
-    }
-
-    private static string Normalize(string header) =>
-        new string(header.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
-
-    private static List<string> UniqueHeaders(IReadOnlyList<string> header)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var result = new List<string>(header.Count);
-        for (var i = 0; i < header.Count; i++)
-        {
-            var name = header[i].Trim();
-            if (name.Length == 0 || !seen.Add(name))
-            {
-                name = $"column{i + 1}";
-                seen.Add(name);
-            }
-
-            result.Add(name);
-        }
-
-        return result;
-    }
-
-    /// <summary>RFC 4180: comma-separated, double-quoted fields may hold commas, quotes ("") and line breaks. Blank lines are skipped.</summary>
-    private static List<List<string>> ParseCsv(string content)
-    {
-        var rows = new List<List<string>>();
-        var row = new List<string>();
-        var field = new StringBuilder();
-        var inQuotes = false;
-        var rowHasContent = false;
-
-        void EndField()
-        {
-            row.Add(field.ToString());
-            field.Clear();
-        }
-
-        void EndRow()
-        {
-            EndField();
-            if (rowHasContent || row.Count > 1 || row[0].Length > 0)
-            {
-                rows.Add(row);
-            }
-
-            row = [];
-            rowHasContent = false;
-        }
-
-        for (var i = 0; i < content.Length; i++)
-        {
-            var c = content[i];
-            if (inQuotes)
-            {
-                if (c == '"' && i + 1 < content.Length && content[i + 1] == '"')
-                {
-                    field.Append('"');
-                    i++;
-                }
-                else if (c == '"')
-                {
-                    inQuotes = false;
-                }
-                else
-                {
-                    field.Append(c);
-                }
-
-                continue;
-            }
-
-            switch (c)
-            {
-                case '"':
-                    inQuotes = true;
-                    rowHasContent = true;
-                    break;
-                case ',':
-                    EndField();
-                    break;
-                case '\r':
-                    break;
-                case '\n':
-                    EndRow();
-                    break;
-                default:
-                    field.Append(c);
-                    break;
-            }
-        }
-
-        if (field.Length > 0 || row.Count > 0 || rowHasContent)
-        {
-            EndRow();
-        }
-
-        return rows;
     }
 }

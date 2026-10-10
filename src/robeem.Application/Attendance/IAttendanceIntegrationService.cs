@@ -1,5 +1,6 @@
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
+using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
 
@@ -45,6 +46,16 @@ public interface IAttendanceIntegrationService
     Task<SaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken);
 
     Task<SaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists the integration's raw punches, newest first, each with the normalized punch it produced
+    /// (empty for a row that is waiting, failed or was skipped). Read only. Audited, because it is a
+    /// direct read of raw and normalized attendance (CLAUDE.md §2.8). Null when the integration does not exist.
+    /// </summary>
+    Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken);
+
+    /// <summary>Describes how the integration's provider maps raw data. Null when the integration does not exist.</summary>
+    Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Runs a sync, or a reconciliation, now instead of at the integration's next scheduled time.

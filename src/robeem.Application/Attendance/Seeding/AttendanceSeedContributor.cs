@@ -11,7 +11,7 @@ namespace robeem.Application.Attendance.Seeding;
 /// tenant default, so edits made by an administrator are never overwritten.
 /// </summary>
 /// <remarks>
-/// A provider is seeded active only when its adapter exists: <c>generic-csv</c> today. The others
+/// A provider is seeded active only when its adapter exists: <c>generic-csv</c>, <c>zkteco</c> and <c>suprema-biostar</c> today. The others
 /// are listed so an integration can be planned, and are switched on when their adapter is added
 /// (CLAUDE.md §1.9). <see cref="CsvProviderKey"/> must equal <c>GenericCsvProvider.ProviderKey</c>;
 /// a test checks that, since Application cannot reference Infrastructure.
@@ -24,8 +24,8 @@ public sealed class AttendanceSeedContributor : ISeedContributor
     [
         new(CsvProviderKey, "Generic CSV upload", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true),
         new("generic-webhook", "Generic webhook (adapter not available yet)", AttendanceTransport.Webhook, SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
-        new("zkteco", "ZKTeco-style biometric devices (adapter not available yet)", AttendanceTransport.DeviceSdk, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: false, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
-        new("suprema-biostar", "Suprema BioStar (adapter not available yet)", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: false),
+        new("zkteco", "ZKTeco attendance export (CSV upload)", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
+        new("suprema-biostar", "Suprema BioStar 2 (REST API)", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
     ];
 
     /// <summary>Gets the run order; after the HR seed.</summary>

@@ -10,5 +10,6 @@ namespace robeem.DataModel
         Reprocess,
         ManualUpload,
         Reconciliation,
+        Webhook,
     }
 }

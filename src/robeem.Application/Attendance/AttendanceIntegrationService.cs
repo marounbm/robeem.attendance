@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -9,18 +10,22 @@ namespace robeem.Application.Attendance;
 
 public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 {
+    private const int MaxRawMappingTake = 500;
+
     // A reference is a name, like "acme-clock-api" or "kv:acme/clock": not a connection string or a key.
     private static readonly Regex ReferencePattern = new(@"^[A-Za-z0-9][A-Za-z0-9._:/\-]*$", RegexOptions.CultureInvariant);
 
     private readonly IRobeemDbContext _db;
     private readonly IIntegrationSyncService _sync;
     private readonly IAttendanceAuditTrail _audit;
+    private readonly IServiceProvider _services;
 
-    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit)
+    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit, IServiceProvider services)
     {
         _db = db;
         _sync = sync;
         _audit = audit;
+        _services = services;
     }
 
     public async Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken) =>
@@ -286,6 +291,114 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             ? await _sync.ReconcileAsync(integrationId, cancellationToken)
             : await _sync.SyncAsync(integrationId, cancellationToken);
         return new SyncOutcomeResponse { Status = outcome.Status.ToString(), BatchId = outcome.BatchId, RecordsIngested = outcome.RecordsIngested, Message = outcome.Message };
+    }
+
+    public async Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
+    {
+        var integration = await _db.AttendanceIntegrations.AsNoTracking()
+            .Where(i => i.Id == integrationId)
+            .Select(i => new { i.DisplayName, ProviderKey = i.Provider!.ProviderKey })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (integration is null)
+        {
+            return null;
+        }
+
+        var take = Math.Clamp(filter.Take <= 0 ? 100 : filter.Take, 1, MaxRawMappingTake);
+
+        // A direct read of raw and normalized attendance outside the engine: audited, and saved
+        // before the read, so the read is on record even if it then fails.
+        _audit.Record(
+            AttendanceAuditActions.AttendanceDataRead,
+            $"{nameof(RawAttendanceTransaction)},{nameof(NormalizedAttendanceTransaction)}",
+            integrationId,
+            $"Raw to normalized mapping of integration {integrationId} (batch {filter.BatchId?.ToString() ?? "any"}, status {filter.Status?.ToString() ?? "any"}, first {take}).");
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var raws = _db.RawAttendanceTransactions.AsNoTracking().Where(r => r.IntegrationId == integrationId);
+        if (filter.BatchId is { } batchId)
+        {
+            raws = raws.Where(r => r.ImportBatchId == batchId);
+        }
+
+        if (filter.Status is { } status)
+        {
+            raws = raws.Where(r => r.ProcessingStatus == status);
+        }
+
+        // A left join, so a raw row that was not normalized (waiting, failed or skipped) still shows. Newest first.
+        var rows = await (
+            from r in raws
+            join n in _db.NormalizedAttendanceTransactions.AsNoTracking() on r.Id equals n.RawTransactionId into normalized
+            from n in normalized.DefaultIfEmpty()
+            orderby r.Id descending
+            select new { Raw = r, Normalized = n })
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        var employeeIds = rows.Where(x => x.Normalized?.EmployeeId != null).Select(x => x.Normalized!.EmployeeId!.Value).Distinct().ToList();
+        var employees = employeeIds.Count == 0
+            ? []
+            : await _db.Profiles.AsNoTracking()
+                .Where(p => employeeIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.EmployeeNumber, p.FirstName, p.LastName })
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+        var deviceIds = rows.Where(x => x.Normalized?.DeviceId != null).Select(x => x.Normalized!.DeviceId!.Value).Distinct().ToList();
+        var devices = deviceIds.Count == 0
+            ? []
+            : await _db.AttendanceDevices.AsNoTracking()
+                .Where(d => deviceIds.Contains(d.Id))
+                .Select(d => new { d.Id, d.Title })
+                .ToDictionaryAsync(d => d.Id, d => d.Title, cancellationToken);
+
+        return rows.Select(x =>
+        {
+            var n = x.Normalized;
+            var employee = n?.EmployeeId is { } employeeId && employees.TryGetValue(employeeId, out var e) ? e : null;
+            return new RawNormalizedMappingItem
+            {
+                ProviderKey = integration.ProviderKey,
+                IntegrationId = integrationId,
+                IntegrationName = integration.DisplayName,
+                BatchId = x.Raw.ImportBatchId,
+                RawId = x.Raw.Id,
+                ExternalTransactionId = x.Raw.ExternalTransactionId,
+                ExternalEmployeeId = x.Raw.ExternalEmployeeId,
+                DeviceExternalId = x.Raw.DeviceExternalId,
+                TimestampRaw = x.Raw.TransactionTimestampRaw,
+                TypeRaw = x.Raw.TransactionTypeRaw,
+                DirectionRaw = x.Raw.DirectionRaw,
+                RawStatus = x.Raw.ProcessingStatus.ToString(),
+                ProcessingError = x.Raw.ProcessingError,
+                Payload = x.Raw.RawPayload,
+                NormalizedId = n?.Id,
+                EmployeeNumber = employee?.EmployeeNumber,
+                EmployeeName = employee is null ? null : $"{employee.FirstName} {employee.LastName}",
+                DeviceName = n?.DeviceId is { } deviceId && devices.TryGetValue(deviceId, out var deviceName) ? deviceName : null,
+                LocalTime = n?.EventTimestampLocal,
+                TimeZoneId = n?.TimeZoneId,
+                EventType = n?.NormalizedEventType.ToString(),
+                Confidence = n?.ConfidenceStatus.ToString(),
+                DuplicateStatus = n?.DuplicateStatus.ToString(),
+                ExceptionStatus = n?.ExceptionStatus.ToString(),
+            };
+        }).ToList();
+    }
+
+    public async Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken)
+    {
+        var providerKey = await _db.AttendanceIntegrations.AsNoTracking()
+            .Where(i => i.Id == integrationId)
+            .Select(i => i.Provider!.ProviderKey)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (providerKey is null)
+        {
+            return null;
+        }
+
+        return (_services.GetKeyedService<IAttendanceProvider>(providerKey) as IAttendanceMappingGuide)?.DescribeMapping()
+            ?? new ProviderMappingGuide { ProviderKey = providerKey, Summary = "This provider's adapter does not describe its mapping." };
     }
 
     private static IQueryable<IntegrationListItem> Items(IRobeemDbContext db, IQueryable<AttendanceIntegration> integrations) =>

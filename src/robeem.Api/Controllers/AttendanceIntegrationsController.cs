@@ -5,6 +5,7 @@ using robeem.Application.Attendance;
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
+using robeem.DataModel;
 
 namespace robeem.Api.Controllers;
 
@@ -115,6 +116,36 @@ public sealed class AttendanceIntegrationsController : ControllerBase
     [HttpPost("{id:int}/reconcile")]
     public async Task<ActionResult<SyncOutcomeResponse>> Reconcile(int id, CancellationToken cancellationToken) =>
         await _integrations.RunAsync(id, reconcile: true, cancellationToken) is { } outcome ? outcome : NotFound();
+
+    /// <summary>
+    /// The integration's raw punches, newest first, each beside the normalized punch it produced.
+    /// Every call is written to the audit log. <paramref name="take"/> is at most 500 (default 100).
+    /// </summary>
+    /// <param name="batchId">Only the rows of this batch.</param>
+    /// <param name="status">Only raw rows with this status: Pending, Normalized, Failed or Skipped.</param>
+    /// <param name="take">How many rows, newest first.</param>
+    [HttpGet("{id:int}/raw-mapping")]
+    public async Task<ActionResult<IReadOnlyList<RawNormalizedMappingItem>>> RawMapping(int id, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    {
+        RawTransactionProcessingStatus? parsed = null;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<RawTransactionProcessingStatus>(status, ignoreCase: true, out var value))
+            {
+                ModelState.AddModelError(nameof(status), $"The status must be one of: {string.Join(", ", Enum.GetNames<RawTransactionProcessingStatus>())}.");
+                return ValidationProblem(ModelState);
+            }
+
+            parsed = value;
+        }
+
+        return await _integrations.ListRawToNormalizedAsync(id, new RawNormalizedFilter(batchId, parsed, take), cancellationToken) is { } rows ? Ok(rows) : NotFound();
+    }
+
+    /// <summary>How this integration's provider maps raw data: its fields, timestamp formats, event codes, and what is never stored.</summary>
+    [HttpGet("{id:int}/raw-mapping/guide")]
+    public async Task<ActionResult<ProviderMappingGuide>> RawMappingGuide(int id, CancellationToken cancellationToken) =>
+        await _integrations.GetRawMappingGuideAsync(id, cancellationToken) is { } guide ? guide : NotFound();
 
     /// <summary>The integration's stored health, its circuit breaker and the KPIs of the last day.</summary>
     [HttpGet("{id:int}/health")]

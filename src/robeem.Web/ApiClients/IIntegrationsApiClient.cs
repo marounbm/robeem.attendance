@@ -38,6 +38,15 @@ public interface IIntegrationsApiClient
 
     Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Lists the integration's raw punches, newest first, each beside the normalized punch it produced;
+    /// null when the integration does not exist. Each call is audited by the Api.
+    /// </summary>
+    Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken);
+
+    /// <summary>Describes how the integration's provider maps raw data; null when the integration does not exist.</summary>
+    Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
+
     /// <summary>Runs a sync now (or, with <paramref name="reconcile"/>, the wider reconciliation).</summary>
     Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken);
 

@@ -19,7 +19,22 @@ public sealed class IngestionService : IIngestionService
         _services = services;
     }
 
-    public async Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken)
+    public Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
+        IngestFileAsync(integrationId, filePath, AttendanceBatchType.ManualUpload, cancellationToken);
+
+    public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
+        IngestFileAsync(integrationId, filePath, AttendanceBatchType.Webhook, cancellationToken);
+
+    private static AttendanceIngestionResult ToResult(AttendanceProcessingBatch batch) => new()
+    {
+        BatchId = batch.Id,
+        Status = batch.Status.ToString(),
+        RecordsIngested = batch.RecordsIngested,
+        RecordsFailed = batch.RecordsFailed,
+        ErrorSummary = batch.ErrorSummary,
+    };
+
+    private async Task<AttendanceIngestionResult?> IngestFileAsync(int integrationId, string filePath, AttendanceBatchType batchType, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations
             .Include(i => i.Provider)
@@ -30,7 +45,7 @@ public sealed class IngestionService : IIngestionService
         }
 
         // The batch is saved first, so a run that dies half-way is still visible.
-        var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = AttendanceBatchType.ManualUpload };
+        var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = batchType };
         _db.AttendanceProcessingBatches.Add(batch);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -60,15 +75,6 @@ public sealed class IngestionService : IIngestionService
             return ToResult(failed);
         }
     }
-
-    private static AttendanceIngestionResult ToResult(AttendanceProcessingBatch batch) => new()
-    {
-        BatchId = batch.Id,
-        Status = batch.Status.ToString(),
-        RecordsIngested = batch.RecordsIngested,
-        RecordsFailed = batch.RecordsFailed,
-        ErrorSummary = batch.ErrorSummary,
-    };
 
     private async Task<AttendanceProcessingBatch> MarkFailedAsync(int batchId, string error)
     {

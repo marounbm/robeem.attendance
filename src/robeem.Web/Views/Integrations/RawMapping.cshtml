@@ -1,0 +1,169 @@
+@model IntegrationRawMappingViewModel
+@{
+    var integration = Model.Integration;
+    var guide = Model.Guide;
+    ViewData["Title"] = $"{integration.DisplayName}: raw to normalized";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
+    <div>
+        <h1 class="h3 mb-1">Raw → normalized</h1>
+        <div class="text-muted">
+            <a asp-action="Details" asp-route-id="@integration.Id">@integration.DisplayName</a>
+            · @integration.ProviderName (<code>@guide.ProviderKey</code>)
+        </div>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-3">
+    <div class="card-header">How @guide.ProviderKey maps its data</div>
+    <div class="card-body">
+        <p>@guide.Summary</p>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <h2 class="h6">Fields</h2>
+                @if (guide.Fields.Count == 0)
+                {
+                    <p class="text-muted small mb-0">Not described.</p>
+                }
+                else
+                {
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Vendor field</th><th>Becomes</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var field in guide.Fields)
+                            {
+                                <tr><td><code>@field.Source</code></td><td><code>@field.Target</code></td><td class="text-muted">@field.Note</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="col-lg-3">
+                <h2 class="h6">Event labels</h2>
+                @if (guide.EventCodes.Count == 0)
+                {
+                    <p class="text-muted small mb-0">Not described.</p>
+                }
+                else
+                {
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Label</th><th>Event</th></tr></thead>
+                        <tbody>
+                            @foreach (var code in guide.EventCodes)
+                            {
+                                <tr><td><code>@code.Code</code></td><td>@code.EventType</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    <p class="small text-muted mt-1 mb-0">Any other label fails the row; nothing is guessed.</p>
+                }
+            </div>
+            <div class="col-lg-3">
+                <h2 class="h6">Timestamp formats</h2>
+                <ul class="small mb-2">
+                    @foreach (var format in guide.TimestampFormats)
+                    {
+                        <li><code>@format</code></li>
+                    }
+                </ul>
+                @if (guide.NotStored.Count > 0)
+                {
+                    <h2 class="h6">Never stored</h2>
+                    <ul class="small mb-0">
+                        @foreach (var item in guide.NotStored)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="get" asp-action="RawMapping" asp-route-id="@integration.Id" class="row g-2 align-items-end mb-3">
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="batchId">Batch</label>
+        <input id="batchId" name="batchId" type="number" min="1" value="@Model.BatchId" class="form-control form-control-sm" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="status">Raw status</label>
+        <select id="status" name="status" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var status in IntegrationRawMappingViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@status</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="take">Rows</label>
+        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" />
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-sm btn-primary">Show</button>
+    </div>
+</form>
+
+<p class="small text-muted">
+    Newest raw punch first. The left side is what the vendor sent; the right side is the normalized punch it became.
+    A row that is waiting, failed or was skipped has no normalized side: its error says why. Opening this page is
+    written to the audit log.
+</p>
+
+<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th colspan="6" class="text-center border-end">Raw (as received)</th>
+                <th colspan="7" class="text-center">Normalized</th>
+            </tr>
+            <tr>
+                <th>#</th><th>Batch</th><th>Employee id</th><th>Device id</th><th>Timestamp</th><th class="border-end">Label · status</th>
+                <th>Employee</th><th>Device</th><th>Local time</th><th>Event</th><th>Certainty</th><th>Repeat?</th><th>Flag</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                <tr class="@(row.RawStatus == "Failed" ? "table-danger" : null)">
+                    <td>
+                        <details>
+                            <summary>@row.RawId</summary>
+                            <pre class="small mb-0">@row.Payload</pre>
+                        </details>
+                    </td>
+                    <td>@row.BatchId</td>
+                    <td>@(row.ExternalEmployeeId ?? "—")</td>
+                    <td>@(row.DeviceExternalId ?? "—")</td>
+                    <td><code>@row.TimestampRaw</code></td>
+                    <td class="border-end">
+                        @(string.Join(" · ", new[] { row.TypeRaw, row.DirectionRaw }.Where(v => !string.IsNullOrEmpty(v))) is { Length: > 0 } label ? label : "—")
+                        <span class="badge text-bg-@DisplayFormats.Badge(row.RawStatus)">@row.RawStatus</span>
+                    </td>
+                    @if (row.NormalizedId is null)
+                    {
+                        <td colspan="7" class="@(row.ProcessingError is null ? "text-muted" : "text-danger") small">@(row.ProcessingError ?? "Not normalized yet.")</td>
+                    }
+                    else
+                    {
+                        <td>@(row.EmployeeName is null ? "—" : $"{row.EmployeeName} ({row.EmployeeNumber})")</td>
+                        <td>@(row.DeviceName ?? "—")</td>
+                        <td>@DisplayFormats.DateTime(row.LocalTime) <span class="text-muted small">@row.TimeZoneId</span></td>
+                        <td>@DisplayFormats.Words(row.EventType)</td>
+                        <td>@DisplayFormats.Words(row.Confidence)</td>
+                        <td>@(row.DuplicateStatus == "Unique" ? "—" : DisplayFormats.Words(row.DuplicateStatus))</td>
+                        <td>@(row.ExceptionStatus == "None" ? "—" : DisplayFormats.Words(row.ExceptionStatus))</td>
+                    }
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="13" class="text-muted">No raw punches match.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

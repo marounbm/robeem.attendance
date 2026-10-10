@@ -115,6 +115,9 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
 
         public bool Throw { get; set; }
 
+        public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public async Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken)
         {
             Calls.Add((integrationId, filePath, await File.ReadAllTextAsync(filePath, cancellationToken)));

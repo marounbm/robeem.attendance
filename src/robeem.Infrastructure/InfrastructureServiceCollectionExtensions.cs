@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using robeem.Application.Attendance;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
@@ -45,6 +46,19 @@ public static class InfrastructureServiceCollectionExtensions
         // A new vendor is an adapter plus an event interpreter, registered under the same key.
         services.AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey);
         services.AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey);
+
+        // BioStar is pulled over HTTPS. The second client is for a server with a self-signed certificate and is
+        // used only when the integration's secret says allowUntrustedCertificate: certificates are verified otherwise.
+        services.AddHttpClient(SupremaBiostarProvider.HttpClientName);
+        services.AddHttpClient(SupremaBiostarProvider.UntrustedHttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator });
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddKeyedSingleton<IAttendanceProvider, SupremaBiostarProvider>(SupremaBiostarProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceEventInterpreter, SupremaBiostarInterpreter>(SupremaBiostarProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceProvider, GenericWebhookProvider>(GenericWebhookProvider.ProviderKey);
+        services.AddKeyedSingleton<IAttendanceEventInterpreter, GenericWebhookInterpreter>(GenericWebhookProvider.ProviderKey);
 
         return services;
     }

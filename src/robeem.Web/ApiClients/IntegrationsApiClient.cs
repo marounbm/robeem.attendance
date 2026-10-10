@@ -98,6 +98,25 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.SaveAsync<MappingInput>(response, mappingId, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    {
+        var query = new List<string> { $"take={Number(take)}" };
+        if (batchId is { } batch)
+        {
+            query.Add($"batchId={Number(batch)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query.Add($"status={Uri.EscapeDataString(status.Trim())}");
+        }
+
+        return await GetOrNullAsync<List<RawNormalizedMappingItem>>($"{IntegrationPath(integrationId)}/raw-mapping?{string.Join('&', query)}", cancellationToken);
+    }
+
+    public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+        GetOrNullAsync<ProviderMappingGuide>($"{IntegrationPath(integrationId)}/raw-mapping/guide", cancellationToken);
+
     public async Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsync($"{IntegrationPath(integrationId)}/{(reconcile ? "reconcile" : "sync")}", null, cancellationToken);
