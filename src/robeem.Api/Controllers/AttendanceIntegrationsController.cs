@@ -117,6 +117,16 @@ public sealed class AttendanceIntegrationsController : ControllerBase
     public async Task<ActionResult<SyncOutcomeResponse>> Reconcile(int id, CancellationToken cancellationToken) =>
         await _integrations.RunAsync(id, reconcile: true, cancellationToken) is { } outcome ? outcome : NotFound();
 
+    /// <summary>Queues the punches that failed for want of a time zone to be normalized again (after the integration's time zone or a device was set).</summary>
+    [HttpPost("{id:int}/retry-failed")]
+    public async Task<ActionResult<RetryFailedResponse>> RetryFailed(int id, CancellationToken cancellationToken) =>
+        await _integrations.RetryFailedAsync(id, cancellationToken) is { } requeued ? new RetryFailedResponse { Requeued = requeued } : NotFound();
+
+    /// <summary>Takes the punches flagged for an unrecognized device out of the calculation and queues them to be normalized again, now that the integration's device for uploaded files (or a registered device) can resolve them.</summary>
+    [HttpPost("{id:int}/renormalize-flagged")]
+    public async Task<ActionResult<RenormalizeFlaggedResponse>> RenormalizeFlagged(int id, CancellationToken cancellationToken) =>
+        await _integrations.RenormalizeFlaggedAsync(id, cancellationToken) is { } outcome ? outcome : NotFound();
+
     /// <summary>
     /// The integration's raw punches, newest first, each beside the normalized punch it produced.
     /// Every call is written to the audit log. <paramref name="take"/> is at most 500 (default 100).

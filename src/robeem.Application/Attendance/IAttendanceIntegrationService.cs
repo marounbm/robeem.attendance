@@ -62,4 +62,19 @@ public interface IAttendanceIntegrationService
     /// Audited. Null when the integration does not exist; a provider failure is the outcome, not an error.
     /// </summary>
     Task<SyncOutcomeResponse?> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets the integration's raw punches that failed for want of a time zone back to Pending, so the
+    /// normalization job reads them again (after the integration's time zone, or a device, was set).
+    /// Returns how many were queued; null when the integration does not exist. Audited.
+    /// </summary>
+    Task<int?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes the integration's punches that were normalized with the "unrecognized device" flag out of the
+    /// calculation (status Excluded: the punch itself is never edited) and queues their raw rows to be normalized again,
+    /// once their device can be resolved (the integration's device for uploaded files, or a device registered since).
+    /// Says how many were queued and how many could not be resolved yet; null when the integration does not exist. Audited.
+    /// </summary>
+    Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken);
 }

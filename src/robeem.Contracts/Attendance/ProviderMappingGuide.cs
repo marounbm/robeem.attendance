@@ -8,6 +8,9 @@ public sealed class ProviderMappingGuide
     /// <summary>Gets a one-paragraph description of the source and how it is read.</summary>
     public string Summary { get; init; } = string.Empty;
 
+    /// <summary>Gets the file extensions, with the dot, that the adapter reads from an upload. Empty for a provider that reads no files.</summary>
+    public IReadOnlyList<string> FileFormats { get; init; } = [];
+
     /// <summary>Gets where each vendor field goes.</summary>
     public IReadOnlyList<FieldMappingRule> Fields { get; init; } = [];
 

@@ -60,6 +60,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddKeyedSingleton<IAttendanceProvider, GenericWebhookProvider>(GenericWebhookProvider.ProviderKey);
         services.AddKeyedSingleton<IAttendanceEventInterpreter, GenericWebhookInterpreter>(GenericWebhookProvider.ProviderKey);
 
+        // Custom file formats: an administrator's own layout, read and interpreted without a vendor adapter.
+        services.AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>();
+        services.AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>();
+
         return services;
     }
 }

@@ -36,7 +36,21 @@ public static class NavigationMenu
             new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr) { NeedsEmployee = true },
         ]);
 
-    private static readonly NavSection Integrations = new("Integrations", [new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health, uploads and sync.", Integration)]);
+    private static readonly NavSection Integrations = new(
+        "Integrations",
+        [
+            new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health and sync.", Integration),
+            new NavItem("File formats", "FileFormats", "Index", "Define the layout of a file an integration reads on manual upload: columns, date patterns and type labels.", Integration),
+            new NavItem("Background jobs", "Jobs", "Index", "When the jobs that normalize punches, calculate days and sync integrations run next, how each run ended, and run one now.", Integration, Hr),
+        ]);
+
+    private static readonly NavSection Import = new(
+        "Import",
+        [
+            new NavItem("Upload attendance", "Uploads", "Index", "Upload a file exported from the time clock, in the format and layout of its integration.", Hr),
+            new NavItem("Raw transactions", "RawTransactions", "Index", "Every punch exactly as the time clock or file sent it, with its status and the normalized punch it became.", Integration, Hr),
+            new NavItem("Normalized transactions", "NormalizedTransactions", "Index", "Every punch after normalization: employee, device, event type, certainty, duplicates and flags.", Integration, Hr),
+        ]);
 
     private static readonly NavSection PayrollSection = new(
         "Payroll",
@@ -49,7 +63,7 @@ public static class NavigationMenu
 
     private static readonly NavSection AuditSection = new("Audit", [new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr)]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, PayrollSection, Settings, AuditSection];
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Import, Integrations, PayrollSection, Settings, AuditSection];
 
     /// <summary>
     /// The sections the actor may open, each with only the items it may open; empty sections are dropped.

@@ -2,6 +2,11 @@
 
 <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
+@{
+    // Each provider's transports, so the choice offers only what the chosen provider can do.
+    var supportedByProvider = Model.Providers.ToDictionary(p => p.Id.ToString(), p => p.SupportedTransports);
+}
+
 <div class="card mb-3">
     <div class="card-header">Connection</div>
     <div class="card-body row g-3">
@@ -18,7 +23,7 @@
                     @foreach (var provider in Model.Providers)
                     {
                         <option value="@provider.Id" disabled="@(!provider.IsActive)" selected="@(provider.Id == Model.Input.ProviderId)">
-                            @provider.DisplayName@(provider.IsActive ? string.Empty : " (no adapter yet)")
+                            @provider.DisplayName
                         </option>
                     }
                 </select>
@@ -37,6 +42,51 @@
             <span asp-validation-for="Input.ProviderId" class="text-danger small"></span>
         </div>
         <div class="col-md-6">
+            <label asp-for="Input.Transport" class="form-label"></label>
+            <select asp-for="Input.Transport" class="form-select" id="integration-transport">
+                @foreach (var transport in new[] { "FileUpload", "Webhook", "RestApi", "DeviceSdk", "Sftp", "Database" })
+                {
+                    <option value="@transport" selected="@(transport == Model.Input.Transport)">@DisplayFormats.Transport(transport)</option>
+                }
+            </select>
+            <div class="form-text">
+                <strong>Manual file upload</strong>: HR uploads the exported file on the <em>Upload attendance</em> screen; only such
+                integrations are listed there. It is available for every provider. The other choices are listed only as far as the
+                chosen provider supports them.
+            </div>
+            <span asp-validation-for="Input.Transport" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6" id="integration-file-format">
+            <label asp-for="Input.FileFormatId" class="form-label"></label>
+            <select asp-for="Input.FileFormatId" class="form-select">
+                <option value="">The provider's own layout</option>
+                @foreach (var format in Model.FileFormats)
+                {
+                    <option value="@format.Id" selected="@(format.Id == Model.Input.FileFormatId)">@format.Name</option>
+                }
+            </select>
+            <div class="form-text">
+                How the uploaded file is read. A provider with no file layout of its own reads the generic CSV / Excel layout.
+                <a asp-controller="FileFormats" asp-action="Index">Define your own file format.</a>
+            </div>
+            <span asp-validation-for="Input.FileFormatId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6" id="integration-default-device">
+            <label asp-for="Input.DefaultDeviceId" class="form-label"></label>
+            <select asp-for="Input.DefaultDeviceId" class="form-select" disabled="@(Model.Id is null)">
+                <option value="">None: look up the device id in the file</option>
+                @foreach (var device in Model.Devices)
+                {
+                    <option value="@device.Id" selected="@(device.Id == Model.Input.DefaultDeviceId)">@device.Name (@device.ExternalDeviceId, @device.TimeZoneId)</option>
+                }
+            </select>
+            <div class="form-text">
+                An uploaded file has no physical device: every punch of it is attributed to this device, ignoring the device
+                id in the file, and read in its time zone. @(Model.Id is null ? "Create the integration and add its device first, then choose it here." : "Add the device under Devices on the integration page if it is not listed.")
+            </div>
+            <span asp-validation-for="Input.DefaultDeviceId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
             <label asp-for="Input.ConnectionConfigRef" class="form-label"></label>
             <input asp-for="Input.ConnectionConfigRef" class="form-control" autocomplete="off" placeholder="e.g. acme-clock-api" />
             <div class="form-text">
@@ -45,7 +95,22 @@
             </div>
             <span asp-validation-for="Input.ConnectionConfigRef" class="text-danger small"></span>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
+            <label asp-for="Input.TimeZoneId" class="form-label"></label>
+            <input asp-for="Input.TimeZoneId" class="form-control" autocomplete="off" list="integration-time-zones" placeholder="e.g. Asia/Beirut" maxlength="64" />
+            <datalist id="integration-time-zones">
+                @foreach (var zone in IntegrationDetailsViewModel.CommonTimeZones)
+                {
+                    <option value="@zone"></option>
+                }
+            </datalist>
+            <div class="form-text">
+                The zone a punch with no UTC offset is read in when its device is not registered. A registered device's own zone
+                always wins. Leave empty to require a registered device.
+            </div>
+            <span asp-validation-for="Input.TimeZoneId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3" id="integration-schedule">
             <label asp-for="Input.PollingScheduleCron" class="form-label"></label>
             <input asp-for="Input.PollingScheduleCron" class="form-control" autocomplete="off" placeholder="*/5 * * * *" list="cron-examples" />
             <datalist id="cron-examples">
@@ -68,3 +133,34 @@
         </div>
     </div>
 </div>
+
+<script>
+    (function () {
+        var supported = @Json.Serialize(supportedByProvider);
+        var pulling = ['Sftp', 'RestApi', 'Database', 'DeviceSdk'];
+        var provider = document.querySelector('[name="Input.ProviderId"]');
+        var transport = document.getElementById('integration-transport');
+        var schedule = document.getElementById('integration-schedule');
+        var fileFormat = document.getElementById('integration-file-format');
+        var defaultDevice = document.getElementById('integration-default-device');
+
+        function refresh() {
+            var allowed = supported[provider.value] || [];
+            Array.prototype.forEach.call(transport.options, function (option) {
+                var ok = allowed.indexOf(option.value) >= 0;
+                option.hidden = !ok;
+                option.disabled = !ok;
+            });
+            if (allowed.length > 0 && allowed.indexOf(transport.value) < 0) {
+                transport.value = allowed[0];
+            }
+            schedule.hidden = pulling.indexOf(transport.value) < 0;
+            fileFormat.hidden = transport.value !== 'FileUpload';
+            defaultDevice.hidden = transport.value !== 'FileUpload';
+        }
+
+        provider.addEventListener('change', refresh);
+        transport.addEventListener('change', refresh);
+        refresh();
+    })();
+</script>

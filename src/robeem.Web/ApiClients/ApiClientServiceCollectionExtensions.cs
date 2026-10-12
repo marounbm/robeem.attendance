@@ -31,12 +31,16 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<ICorrectionsApiClient, CorrectionsApiClient>(services);
         AddClient<IReviewsApiClient, ReviewsApiClient>(services);
         AddClient<IIntegrationsApiClient, IntegrationsApiClient>(services);
+        AddClient<IUploadsApiClient, UploadsApiClient>(services);
+        AddClient<IJobsApiClient, JobsApiClient>(services);
+        AddClient<IFileFormatsApiClient, FileFormatsApiClient>(services);
         AddClient<IPayPeriodsApiClient, PayPeriodsApiClient>(services);
         AddClient<IPayrollApiClient, PayrollApiClient>(services);
         AddClient<IPoliciesApiClient, PoliciesApiClient>(services);
         AddClient<IAuditApiClient, AuditApiClient>(services);
         AddClient<IRecordsApiClient, RecordsApiClient>(services);
         AddClient<ITimeSchedulesApiClient, TimeSchedulesApiClient>(services);
+        AddClient<ITransactionsApiClient, TransactionsApiClient>(services);
 
         return services;
     }

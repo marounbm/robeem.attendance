@@ -18,7 +18,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     public AttendanceIntegrationServiceTests()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var csv = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV", IsActive = true };
+        var csv = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV", SupportedTransports = "FileUpload,Webhook,RestApi", IsActive = true };
         var zk = new AttendanceProvider { ProviderKey = "zkteco", DisplayName = "ZKTeco", IsActive = false };
         var ada = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         db.AddRange(csv, zk, ada);
@@ -31,7 +31,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     [Fact]
     public async Task AnIntegration_IsCreated_Trimmed_AndAudited()
     {
-        var result = await CreateAsync(Input(name: "  HQ clock  ", reference: " hq-clock ", cron: " */5 * * * * "));
+        var result = await CreateAsync(Input(name: "  HQ clock  ", reference: " hq-clock ", cron: " */5 * * * * ", transport: "RestApi"));
 
         Assert.True(result.Succeeded);
         using var db = _database.CreateContext(TestDatabase.TenantA);
@@ -50,6 +50,45 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.True(result.Succeeded);
         using var db = _database.CreateContext(TestDatabase.TenantA);
         Assert.Equal((string.Empty, null), (db.AttendanceIntegrations.Single().ConnectionConfigRef, db.AttendanceIntegrations.Single().PollingScheduleCron));
+    }
+
+    [Fact]
+    public async Task TheTransport_MustBeOneTheProviderSupports()
+    {
+        var refused = await CreateAsync(Input(transport: "Sftp"));
+        var unknown = await CreateAsync(Input(transport: "Carrier pigeon"));
+        var accepted = await CreateAsync(Input(transport: "Webhook"));
+
+        Assert.Contains("can't receive attendance by Sftp", refused.Errors[nameof(IntegrationInput.Transport)]);
+        Assert.Contains("Choose how", unknown.Errors[nameof(IntegrationInput.Transport)]);
+        Assert.True(accepted.Succeeded);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(AttendanceTransport.Webhook, db.AttendanceIntegrations.Single().Transport);
+    }
+
+    [Fact]
+    public async Task ThePollingSchedule_IsKeptOnlyForAnIntegrationThatPulls()
+    {
+        var upload = await CreateAsync(Input(name: "Upload", cron: "0 * * * *", transport: "FileUpload"));
+        var pull = await CreateAsync(Input(name: "Pull", cron: "0 * * * *", transport: "RestApi"));
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Null(db.AttendanceIntegrations.Single(i => i.Id == upload.Id).PollingScheduleCron);
+        Assert.Equal("0 * * * *", db.AttendanceIntegrations.Single(i => i.Id == pull.Id).PollingScheduleCron);
+    }
+
+    [Fact]
+    public async Task TheTransport_CanBeChangedWithinWhatTheProviderSupports()
+    {
+        var id = (await CreateAsync(Input())).Id!.Value;
+
+        var refused = await UpdateAsync(id, Input(transport: "Database"));
+        var changed = await UpdateAsync(id, Input(transport: "Webhook"));
+
+        Assert.Contains("can't receive attendance by Database", refused.Errors[nameof(IntegrationInput.Transport)]);
+        Assert.True(changed.Succeeded);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal("Webhook", (await CreateService(db).GetInputAsync(id, CancellationToken.None))!.Transport);
     }
 
     [Theory]
@@ -152,7 +191,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     [Fact]
     public async Task TheList_ShowsCounts_Provider_AndHealth_AndTheInputRoundTrips()
     {
-        var id = (await CreateAsync(Input(name: "B clock", reference: "b-ref", cron: "0 * * * *"))).Id!.Value;
+        var id = (await CreateAsync(Input(name: "B clock", reference: "b-ref", cron: "0 * * * *", transport: "RestApi"))).Id!.Value;
         await CreateAsync(Input(name: "A clock"));
         await AddDeviceAsync(id, Device("DEV-1"));
         await AddDeviceAsync(id, Device("DEV-2"));
@@ -383,13 +422,110 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.Empty(await CreateService(other).ListAsync(CancellationToken.None));
     }
 
-    private static IntegrationInput Input(int providerId = 0, string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active") => new()
+    [Fact]
+    public async Task TheIntegrationsTimeZone_IsKeptTrimmed_ClearedWhenBlank_AndAuditedOnChange()
     {
+        var id = (await CreateAsync(Input(zone: " Asia/Beirut "))).Id!.Value;
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal("Asia/Beirut", db.AttendanceIntegrations.Single().TimeZoneId);
+            Assert.Equal("Asia/Beirut", (await CreateService(db).GetInputAsync(id, CancellationToken.None))!.TimeZoneId);
+            Assert.Equal("Asia/Beirut", (await CreateService(db).GetAsync(id, CancellationToken.None))!.TimeZoneId);
+        }
+
+        Assert.True((await UpdateAsync(id, Input(zone: "Europe/London"))).Succeeded);
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var change = db.AttendanceAuditLogs.OrderByDescending(a => a.Id).First().Details!;
+            Assert.Contains("zone 'Asia/Beirut'", change);
+            Assert.Contains("zone 'Europe/London'", change);
+        }
+
+        Assert.True((await UpdateAsync(id, Input(zone: "  "))).Succeeded);
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Null(db.AttendanceIntegrations.Single().TimeZoneId);
+        }
+    }
+
+    [Theory]
+    [InlineData("Not/AZone")]
+    [InlineData("Mars")]
+    public async Task AnUnknownTimeZone_IsRefused(string zone)
+    {
+        var result = await CreateAsync(Input(zone: zone));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(nameof(IntegrationInput.TimeZoneId), result.Errors.Keys);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(db.AttendanceIntegrations);
+    }
+
+    [Fact]
+    public async Task AZoneLongerThan64Characters_IsRefused()
+    {
+        var result = await CreateAsync(Input(zone: new string('a', 65)));
+
+        Assert.Contains(nameof(IntegrationInput.TimeZoneId), result.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task TheDeviceForUploads_MustBeAnOwnDeviceOfTheIntegration_RoundTrips_AndCanNotBeDeletedWhileChosen()
+    {
+        var id = (await CreateAsync(Input())).Id!.Value;
+        var otherId = (await CreateAsync(Input(name: "Other clock"))).Id!.Value;
+        var device = (await AddDeviceAsync(id, Device("U350", name: "U350"))).Id!.Value;
+        var foreign = (await AddDeviceAsync(otherId, Device("X1"))).Id!.Value;
+
+        Assert.Contains(nameof(IntegrationInput.DefaultDeviceId), (await UpdateAsync(id, Input(defaultDeviceId: foreign))).Errors.Keys);
+        Assert.Contains(nameof(IntegrationInput.DefaultDeviceId), (await UpdateAsync(id, Input(defaultDeviceId: 99999))).Errors.Keys);
+        Assert.True((await UpdateAsync(id, Input(defaultDeviceId: device))).Succeeded);
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var service = CreateService(db);
+            Assert.Equal(device, (await service.GetInputAsync(id, CancellationToken.None))!.DefaultDeviceId);
+            var item = (await service.GetAsync(id, CancellationToken.None))!;
+            Assert.Equal((device, "U350"), (item.DefaultDeviceId, item.DefaultDeviceName));
+            Assert.Contains($"device {device}", db.AttendanceAuditLogs.OrderByDescending(a => a.Id).First().Details);
+        }
+
+        var refused = await DeleteDeviceAsync(id, device);
+        Assert.False(refused.Succeeded);
+        Assert.Contains("device for uploaded files", refused.Errors["id"]);
+
+        Assert.True((await UpdateAsync(id, Input())).Succeeded);
+        Assert.True((await DeleteDeviceAsync(id, device)).Succeeded);
+    }
+
+    [Fact]
+    public async Task TheDeviceForUploads_CanNotBeChosenWhileCreating_AndIsDroppedForAnIntegrationThatDoesNotReceiveFiles()
+    {
+        var refused = await CreateAsync(Input(defaultDeviceId: 5));
+        Assert.Contains(nameof(IntegrationInput.DefaultDeviceId), refused.Errors.Keys);
+
+        // For another transport it is not an error, only not kept (like a file format).
+        Assert.True((await CreateAsync(Input(transport: "RestApi", defaultDeviceId: 5))).Succeeded);
+        var id = (await CreateAsync(Input(name: "Second"))).Id!.Value;
+        var device = (await AddDeviceAsync(id, Device("U350"))).Id!.Value;
+        Assert.True((await UpdateAsync(id, Input(name: "Second", defaultDeviceId: device))).Succeeded);
+
+        Assert.True((await UpdateAsync(id, Input(name: "Second", transport: "RestApi", defaultDeviceId: device))).Succeeded);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Null(db.AttendanceIntegrations.Single(i => i.Id == id).DefaultDeviceId);
+    }
+
+    private static IntegrationInput Input(int providerId = 0, string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active", string transport = "FileUpload", string? zone = null, int? defaultDeviceId = null) => new()
+    {
+        DefaultDeviceId = defaultDeviceId,
+        TimeZoneId = zone,
         ProviderId = providerId,
         DisplayName = name,
         ConnectionConfigRef = reference,
         PollingScheduleCron = cron,
         Status = status,
+        Transport = transport,
     };
 
     private static DeviceInput Device(string external, string name = "Front door", string zone = "UTC", string type = "Biometric") => new()

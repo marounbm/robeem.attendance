@@ -11,7 +11,17 @@
         <div class="text-muted">
             @integration.ProviderName
             · <span class="badge text-bg-@(integration.Status == "Active" ? "success" : integration.Status == "Failed" ? "danger" : "secondary")">@integration.Status</span>
-            · schedule <code>@(integration.PollingScheduleCron ?? "uploads only")</code>
+            · <span class="badge text-bg-light border">@DisplayFormats.Transport(integration.Transport)</span>
+            @if (integration.FileFormatName is not null)
+            {
+                <span>· file format <strong>@integration.FileFormatName</strong></span>
+            }
+            @if (integration.DefaultDeviceName is not null)
+            {
+                <span>· device for uploads <strong>@integration.DefaultDeviceName</strong></span>
+            }
+            · time zone <code>@(integration.TimeZoneId ?? "none")</code>
+            · schedule <code>@(integration.PollingScheduleCron ?? "none")</code>
             @if (!string.IsNullOrEmpty(integration.ConnectionConfigRef))
             {
                 <span>· secret reference <code>@integration.ConnectionConfigRef</code></span>
@@ -21,6 +31,12 @@
     <div class="d-flex gap-2">
         <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@integration.Id">Edit</a>
         <a class="btn btn-outline-secondary" asp-action="RawMapping" asp-route-id="@integration.Id" title="Each raw punch beside the normalized punch it produced. Opening it is written to the audit log.">Raw → normalized</a>
+        <form method="post" asp-action="RetryFailed" asp-route-id="@integration.Id">
+            <button type="submit" class="btn btn-outline-secondary" title="Normalize again the punches that failed for want of a time zone, after setting the integration's time zone or registering the device. Other failures are not retried.">Retry failed punches</button>
+        </form>
+        <form method="post" asp-action="RenormalizeFlagged" asp-route-id="@integration.Id">
+            <button type="submit" class="btn btn-outline-secondary" title="Punches flagged for an unrecognized device are left out of the attendance days. After choosing the device for uploaded files (or registering the device), this reads them again; the old flagged punches stay as history, marked Replaced.">Re-normalize flagged punches</button>
+        </form>
         <form method="post" asp-action="Run" asp-route-id="@integration.Id">
             <input type="hidden" name="reconcile" value="false" />
             <button type="submit" class="btn btn-outline-primary">Sync now</button>
@@ -152,7 +168,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-0" for="new-dev-zone">Time zone</label>
-                <input id="new-dev-zone" name="TimeZoneId" value="UTC" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
+                <input id="new-dev-zone" name="TimeZoneId" value="@(integration.TimeZoneId ?? "UTC")" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
             </div>
             <div class="col-md-3">
                 <label class="form-label small mb-0" for="new-dev-model">Model</label>
@@ -221,26 +237,6 @@
             </div>
             <div class="col-md-3">
                 <button type="submit" class="btn btn-sm btn-primary">Add mapping</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-header">Upload a file</div>
-    <div class="card-body">
-        <p class="small text-muted">
-            A CSV export from the clock (the generic format: <code>transaction_id, employee_id, timestamp, type, device_id</code>).
-            Every row is stored as received, including unusable ones; a row's problem is counted, not dropped. Biometric
-            columns are never stored.
-        </p>
-        <form method="post" asp-action="Upload" asp-route-id="@integration.Id" enctype="multipart/form-data" class="row g-2 align-items-end">
-            <div class="col-md-6">
-                <label class="form-label small mb-0" for="file">File (up to 10 MB)</label>
-                <input id="file" type="file" name="file" accept=".csv,text/csv" class="form-control form-control-sm" required />
-            </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
             </div>
         </form>
     </div>

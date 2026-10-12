@@ -89,10 +89,12 @@ public sealed class NormalizationService : INormalizationService
             ? mapped
             : null;
 
-        // b. Device: resolved at ingestion when it was already known, otherwise by its external id.
-        var device = raw.DeviceId is { } knownDeviceId
-            ? integration.Devices.Values.FirstOrDefault(d => d.Id == knownDeviceId)
-            : raw.DeviceExternalId is { } externalDeviceId && integration.Devices.TryGetValue(externalDeviceId, out var found) ? found : null;
+        // b. Device: an uploaded file has no physical device, so the integration's own device takes every
+        // punch of it; otherwise resolved at ingestion when it was already known, else by its external id.
+        var device = integration.DefaultDevice
+            ?? (raw.DeviceId is { } knownDeviceId
+                ? integration.Devices.Values.FirstOrDefault(d => d.Id == knownDeviceId)
+                : raw.DeviceExternalId is { } externalDeviceId && integration.Devices.TryGetValue(externalDeviceId, out var found) ? found : null);
 
         // e. Timestamp: a structurally unusable one fails the raw row; no normalized row is made.
         var timestamp = integration.Interpreter.ParseTimestamp(raw.TransactionTimestampRaw);
@@ -102,12 +104,17 @@ public sealed class NormalizationService : INormalizationService
             return;
         }
 
-        var utc = raw.TransactionTimestampParsed ?? timestamp.Value.ToUtc(device?.TimeZoneId);
+        // The zone a wall-clock time is read in: its device's, else the integration's.
+        var zoneId = !string.IsNullOrWhiteSpace(device?.TimeZoneId) ? device!.TimeZoneId
+            : !string.IsNullOrWhiteSpace(integration.TimeZoneId) ? integration.TimeZoneId
+            : null;
+
+        var utc = raw.TransactionTimestampParsed ?? timestamp.Value.ToUtc(zoneId);
         if (utc is null)
         {
-            var reason = device is null
-                ? $"The timestamp has no UTC offset and device '{raw.DeviceExternalId}' is unknown, so its time zone is too. Register the device, then reprocess."
-                : $"The timestamp does not exist in device time zone '{device.TimeZoneId}' (daylight-saving gap).";
+            var reason = zoneId is null
+                ? $"{NormalizationFailures.NoTimeZonePrefix} and device '{raw.DeviceExternalId}' is unknown, so its time zone is too, and the integration has no time zone. Set the integration's time zone (or register the device), then retry the failed punches."
+                : $"The timestamp does not exist in {(device is null ? "integration" : "device")} time zone '{zoneId}' (daylight-saving gap).";
             await FailAsync(raw, reason, run, cancellationToken);
             return;
         }
@@ -139,9 +146,9 @@ public sealed class NormalizationService : INormalizationService
             return;
         }
 
-        // Local time in the device's zone; UTC when the device (and so its zone) is unknown. Of
+        // Local time in the device's zone, else the integration's; UTC when neither is known. Of
         // unspecified kind: local columns are `timestamp without time zone`, which refuse a UTC kind.
-        var timeZone = device is not null && TimeZoneInfo.TryFindSystemTimeZoneById(device.TimeZoneId, out var deviceZone) ? deviceZone : null;
+        var timeZone = zoneId is not null && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var foundZone) ? foundZone : null;
         var local = DateTime.SpecifyKind(
             timeZone is null ? utc.Value.UtcDateTime : TimeZoneInfo.ConvertTime(utc.Value, timeZone).DateTime,
             DateTimeKind.Unspecified);
@@ -156,7 +163,7 @@ public sealed class NormalizationService : INormalizationService
             AttendanceDate = local.Date,
             EventTimestampUtc = utc.Value,
             EventTimestampLocal = local,
-            TimeZoneId = timeZone is null ? UtcTimeZoneId : device!.TimeZoneId,
+            TimeZoneId = timeZone is null ? UtcTimeZoneId : zoneId!,
             NormalizedEventType = eventType,
             OriginalEventType = OriginalEventType(raw),
             EventSource = AttendanceEventSource.Device,
@@ -195,11 +202,23 @@ public sealed class NormalizationService : INormalizationService
             return cached;
         }
 
-        var providerKey = await _db.AttendanceIntegrations
+        var integration = await _db.AttendanceIntegrations
             .Where(i => i.Id == integrationId)
-            .Select(i => i.Provider!.ProviderKey)
+            .Select(i => new { i.Provider!.ProviderKey, i.FileFormatId, i.TimeZoneId, i.Transport, i.DefaultDeviceId })
             .SingleAsync(cancellationToken);
-        var interpreter = _services.GetKeyedService<IAttendanceEventInterpreter>(providerKey) ?? throw new MissingInterpreterException(providerKey);
+        var providerKey = integration.ProviderKey;
+
+        // An integration that reads its uploads by a custom format is interpreted by that format's own patterns and labels.
+        IAttendanceEventInterpreter interpreter;
+        if (integration.FileFormatId is { } formatId)
+        {
+            var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+            interpreter = _services.GetRequiredService<ICustomFormatInterpreterFactory>().Create(format);
+        }
+        else
+        {
+            interpreter = _services.GetKeyedService<IAttendanceEventInterpreter>(providerKey) ?? throw new MissingInterpreterException(providerKey);
+        }
 
         var devices = await _db.AttendanceDevices
             .AsNoTracking()
@@ -209,7 +228,12 @@ public sealed class NormalizationService : INormalizationService
             .Where(m => m.IntegrationId == integrationId)
             .ToDictionaryAsync(m => m.ExternalEmployeeId, m => m.EmployeeId, StringComparer.Ordinal, cancellationToken);
 
-        return run.Integrations[integrationId] = new IntegrationLookups(providerKey, interpreter, devices, employees);
+        // Only a manual upload has a device of its own for the file; any other transport reports its devices itself.
+        var defaultDevice = integration.Transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is { } defaultDeviceId
+            ? devices.Values.FirstOrDefault(d => d.Id == defaultDeviceId)
+            : null;
+
+        return run.Integrations[integrationId] = new IntegrationLookups(providerKey, interpreter, devices, employees, integration.TimeZoneId, defaultDevice);
     }
 
     private async Task<AttendancePolicy> GetPolicyAsync(int? employeeId, Run run, CancellationToken cancellationToken)
@@ -228,7 +252,9 @@ public sealed class NormalizationService : INormalizationService
         string ProviderKey,
         IAttendanceEventInterpreter Interpreter,
         IReadOnlyDictionary<string, AttendanceDevice> Devices,
-        IReadOnlyDictionary<string, int> Employees);
+        IReadOnlyDictionary<string, int> Employees,
+        string? TimeZoneId,
+        AttendanceDevice? DefaultDevice);
 
     /// <summary>Per-run state: counters and lookups loaded once per batch.</summary>
     private sealed class Run

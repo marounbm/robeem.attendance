@@ -147,7 +147,8 @@ public sealed class ScheduledJobsHostedServiceTests
 
         public static async Task<Host> StartAsync(params FakeJob[] jobs)
         {
-            var service = new ScheduledJobsHostedService(jobs, TimeProvider.System, NullLogger<ScheduledJobsHostedService>.Instance);
+            var coordinator = new JobCoordinator(jobs, new FakeTenantRegistry("t"), new InMemoryRecorder(), TimeProvider.System, new FakeLifetime(), NullLogger<JobCoordinator>.Instance);
+            var service = new ScheduledJobsHostedService(coordinator, TimeProvider.System, NullLogger<ScheduledJobsHostedService>.Instance);
             await service.StartAsync(CancellationToken.None);
             return new Host(service);
         }
@@ -184,6 +185,10 @@ public sealed class ScheduledJobsHostedServiceTests
 
         public string Name { get; }
 
+        public string DisplayName => Name;
+
+        public string Description => "A fake job.";
+
         public bool Enabled { get; init; } = true;
 
         public JobSchedule Schedule { get; }
@@ -197,7 +202,10 @@ public sealed class ScheduledJobsHostedServiceTests
 
         public bool Cancelled => Volatile.Read(ref _cancelled) > 0;
 
-        public async Task RunAsync(CancellationToken cancellationToken)
+        /// <summary>Gets or sets how much a run reports having done.</summary>
+        public int WorkItems { get; init; }
+
+        public async Task<JobRunResult> RunForTenantAsync(string tenantId, CancellationToken cancellationToken)
         {
             var run = Interlocked.Increment(ref _runs);
             var concurrent = Interlocked.Increment(ref _concurrent);
@@ -205,6 +213,7 @@ public sealed class ScheduledJobsHostedServiceTests
             try
             {
                 await Body(run, cancellationToken);
+                return new JobRunResult(WorkItems, WorkItems == 0 ? null : "did work");
             }
             catch (OperationCanceledException)
             {

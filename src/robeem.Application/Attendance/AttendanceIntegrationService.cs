@@ -44,18 +44,23 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
                 ProviderId = integration.ProviderId,
                 DisplayName = integration.DisplayName,
                 ConnectionConfigRef = integration.ConnectionConfigRef,
+                Transport = integration.Transport.ToString(),
+                FileFormatId = integration.FileFormatId,
+                DefaultDeviceId = integration.DefaultDeviceId,
+                TimeZoneId = integration.TimeZoneId,
                 PollingScheduleCron = integration.PollingScheduleCron,
                 Status = integration.Status.ToString(),
             };
     }
 
     public async Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken) =>
-        await _db.AttendanceProviders
+        (await _db.AttendanceProviders
             .AsNoTracking()
             .OrderByDescending(p => p.IsActive)
             .ThenBy(p => p.DisplayName)
-            .Select(p => new ProviderOption { Id = p.Id, Key = p.ProviderKey, DisplayName = p.DisplayName, Manufacturer = p.Manufacturer, WebsiteUrl = p.WebsiteUrl, IsActive = p.IsActive })
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken))
+        .Select(p => new ProviderOption { Id = p.Id, Key = p.ProviderKey, DisplayName = p.DisplayName, Manufacturer = p.Manufacturer, WebsiteUrl = p.WebsiteUrl, SupportedTransports = SupportedTransportsOf(p), IsActive = p.IsActive })
+        .ToList();
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
     {
@@ -83,6 +88,13 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             errors[nameof(IntegrationInput.ProviderId)] = "This provider has no adapter yet, so it can't be used.";
         }
 
+        if (provider is not null)
+        {
+            ValidateTransport(input, provider, errors);
+        }
+
+        await ValidateFileFormatAsync(input, null, errors, cancellationToken);
+        await ValidateDefaultDeviceAsync(input, null, errors, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
@@ -93,7 +105,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         _db.AttendanceIntegrations.Add(integration);
         await _db.SaveChangesAsync(cancellationToken);
 
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Created '{integration.DisplayName}' ({provider!.ProviderKey}).");
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Created '{integration.DisplayName}' ({provider!.ProviderKey}, {integration.Transport}).");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(integration.Id);
     }
@@ -111,15 +123,22 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         {
             errors[nameof(IntegrationInput.ProviderId)] = "The provider can't be changed: its devices and punches belong to that adapter. Create a new integration instead.";
         }
+        else
+        {
+            var provider = await _db.AttendanceProviders.AsNoTracking().SingleAsync(p => p.Id == integration.ProviderId, cancellationToken);
+            ValidateTransport(input, provider, errors);
+        }
 
+        await ValidateFileFormatAsync(input, integration.FileFormatId, errors, cancellationToken);
+        await ValidateDefaultDeviceAsync(input, integration.Id, errors, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
         }
 
-        var before = $"{integration.DisplayName}; {integration.Status}; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'";
+        var before = $"{integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'";
         Apply(input, integration);
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Changed. Before: {before}. After: {integration.DisplayName}; {integration.Status}; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'.");
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Changed. Before: {before}. After: {integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(integration.Id);
     }
@@ -191,6 +210,11 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         if (device is null)
         {
             return SaveResult.Missing();
+        }
+
+        if (await _db.AttendanceIntegrations.AnyAsync(i => i.Id == integrationId && i.DefaultDeviceId == deviceId, cancellationToken))
+        {
+            return SaveResult.Invalid("id", "This is the integration's device for uploaded files. Choose another device for uploaded files first, then delete it.");
         }
 
         _db.AttendanceDevices.Remove(device);
@@ -293,6 +317,82 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         return new SyncOutcomeResponse { Status = outcome.Status.ToString(), BatchId = outcome.BatchId, RecordsIngested = outcome.RecordsIngested, Message = outcome.Message };
     }
 
+    public async Task<int?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken)
+    {
+        if (!await _db.AttendanceIntegrations.AnyAsync(i => i.Id == integrationId, cancellationToken))
+        {
+            return null;
+        }
+
+        // Only a punch that failed for want of a time zone: one rejected at ingestion (an unparseable
+        // timestamp, a payload the sanitizer refused) would fail again. Status and error are the only
+        // columns of a raw row that may change (invariant 2); the normalization job picks the rows up.
+        var failed = await _db.RawAttendanceTransactions
+            .Where(r => r.IntegrationId == integrationId
+                && r.ProcessingStatus == RawTransactionProcessingStatus.Failed
+                && r.ProcessingError != null
+                && r.ProcessingError.StartsWith(NormalizationFailures.NoTimeZonePrefix))
+            .ToListAsync(cancellationToken);
+        foreach (var raw in failed)
+        {
+            raw.ProcessingStatus = RawTransactionProcessingStatus.Pending;
+            raw.ProcessingError = null;
+        }
+
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integrationId, $"{failed.Count} punch(es) that failed for want of a time zone were queued to be normalized again.");
+        await _db.SaveChangesAsync(cancellationToken);
+        return failed.Count;
+    }
+
+    public async Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken)
+    {
+        var integration = await _db.AttendanceIntegrations.AsNoTracking()
+            .Where(i => i.Id == integrationId)
+            .Select(i => new { i.Transport, i.DefaultDeviceId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (integration is null)
+        {
+            return null;
+        }
+
+        var defaultDeviceInForce = integration.Transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is not null;
+        var registered = (await _db.AttendanceDevices.AsNoTracking()
+            .Where(d => d.IntegrationId == integrationId)
+            .Select(d => d.ExternalDeviceId)
+            .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+
+        // A punch is taken up again only when its device can be resolved now (by the integration's device for
+        // uploaded files, or by a device registered since); otherwise it would be flagged again.
+        var flagged = await _db.NormalizedAttendanceTransactions
+            .Include(n => n.RawTransaction)
+            .Where(n => n.IntegrationId == integrationId
+                && n.ExceptionStatus == TransactionExceptionStatus.FlaggedUnrecognizedDevice
+                && n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded)
+            .ToListAsync(cancellationToken);
+        var resolvable = flagged
+            .Where(n => defaultDeviceInForce || (n.RawTransaction!.DeviceExternalId is { } externalId && registered.Contains(externalId)))
+            .ToList();
+
+        // Nothing is rewritten: the old punch is only taken out of the calculation (Excluded, which stays
+        // as history), and its raw row goes back to Pending so normalization writes a new punch (invariants 2 and 7).
+        foreach (var punch in resolvable)
+        {
+            punch.ProcessingStatus = NormalizedTransactionProcessingStatus.Excluded;
+            punch.RawTransaction!.ProcessingStatus = RawTransactionProcessingStatus.Pending;
+            punch.RawTransaction.ProcessingError = null;
+        }
+
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integrationId, $"{resolvable.Count} punch(es) flagged for an unrecognized device were queued to be normalized again.");
+        await _db.SaveChangesAsync(cancellationToken);
+        return new RenormalizeFlaggedResponse
+        {
+            Requeued = resolvable.Count,
+            Unresolved = flagged.Count - resolvable.Count,
+            HasDeviceForUploads = defaultDeviceInForce,
+            Transport = integration.Transport.ToString(),
+        };
+    }
+
     public async Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
@@ -329,7 +429,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         // A left join, so a raw row that was not normalized (waiting, failed or skipped) still shows. Newest first.
         var rows = await (
             from r in raws
-            join n in _db.NormalizedAttendanceTransactions.AsNoTracking() on r.Id equals n.RawTransactionId into normalized
+            join n in _db.NormalizedAttendanceTransactions.AsNoTracking().Where(x => x.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded) on r.Id equals n.RawTransactionId into normalized
             from n in normalized.DefaultIfEmpty()
             orderby r.Id descending
             select new { Raw = r, Normalized = n })
@@ -409,6 +509,12 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             ProviderId = i.ProviderId,
             ProviderKey = i.Provider!.ProviderKey,
             ProviderName = i.Provider.DisplayName,
+            Transport = i.Transport.ToString(),
+            FileFormatId = i.FileFormatId,
+            FileFormatName = i.FileFormat!.Name,
+            DefaultDeviceId = i.DefaultDeviceId,
+            DefaultDeviceName = i.DefaultDevice!.Name,
+            TimeZoneId = i.TimeZoneId,
             Status = i.Status.ToString(),
             HealthStatus = i.HealthStatus.ToString(),
             ConnectionConfigRef = i.ConnectionConfigRef,
@@ -422,7 +528,13 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     {
         integration.DisplayName = input.DisplayName.Trim();
         integration.ConnectionConfigRef = (input.ConnectionConfigRef ?? string.Empty).Trim();
-        integration.PollingScheduleCron = string.IsNullOrWhiteSpace(input.PollingScheduleCron) ? null : input.PollingScheduleCron.Trim();
+        integration.Transport = Enum.Parse<AttendanceTransport>(input.Transport, ignoreCase: true);
+        integration.FileFormatId = integration.Transport == AttendanceTransport.FileUpload ? input.FileFormatId : null;
+        integration.DefaultDeviceId = integration.Transport == AttendanceTransport.FileUpload ? input.DefaultDeviceId : null;
+        integration.TimeZoneId = string.IsNullOrWhiteSpace(input.TimeZoneId) ? null : input.TimeZoneId.Trim();
+
+        // Only an integration that pulls has a schedule; an upload or a webhook is pushed to robeem.
+        integration.PollingScheduleCron = string.IsNullOrWhiteSpace(input.PollingScheduleCron) || !IsPull(integration.Transport) ? null : input.PollingScheduleCron.Trim();
         integration.Status = Enum.Parse<AttendanceIntegrationStatus>(input.Status, ignoreCase: true);
     }
 
@@ -435,6 +547,34 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         device.SoftwareVersion = (input.SoftwareVersion ?? string.Empty).Trim();
         device.SdkVersion = (input.SdkVersion ?? string.Empty).Trim();
         device.TimeZoneId = input.TimeZoneId.Trim();
+    }
+
+    private static bool IsPull(AttendanceTransport transport) =>
+        transport is AttendanceTransport.Sftp or AttendanceTransport.RestApi or AttendanceTransport.Database or AttendanceTransport.DeviceSdk;
+
+    /// <summary>The provider's own transports first, then manual file upload, which any provider can be given (the file is read by a custom format, or the generic layout).</summary>
+    private static IReadOnlyList<string> SupportedTransportsOf(AttendanceProvider provider)
+    {
+        var transports = Enum.GetValues<AttendanceTransport>().Where(provider.SupportsTransport).Select(t => t.ToString()).ToList();
+        if (!transports.Contains(nameof(AttendanceTransport.FileUpload)))
+        {
+            transports.Add(nameof(AttendanceTransport.FileUpload));
+        }
+
+        return transports;
+    }
+
+    private static void ValidateTransport(IntegrationInput input, AttendanceProvider provider, Dictionary<string, string> errors)
+    {
+        if (!Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport) || !Enum.IsDefined(transport))
+        {
+            errors[nameof(IntegrationInput.Transport)] = $"Choose how the integration receives attendance: {string.Join(", ", Enum.GetNames<AttendanceTransport>())}.";
+        }
+        else if (!SupportedTransportsOf(provider).Contains(transport.ToString()))
+        {
+            var supported = SupportedTransportsOf(provider);
+            errors[nameof(IntegrationInput.Transport)] = $"{provider.DisplayName} can't receive attendance by {transport}. It supports: {(supported.Count == 0 ? "nothing yet" : string.Join(", ", supported))}.";
+        }
     }
 
     private static Dictionary<string, string> Validate(IntegrationInput input)
@@ -463,6 +603,12 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             errors[nameof(IntegrationInput.PollingScheduleCron)] = "Not a valid cron expression: five fields (minute hour day month weekday), or six with seconds first.";
         }
 
+        var zone = (input.TimeZoneId ?? string.Empty).Trim();
+        if (zone.Length > 64 || (zone.Length > 0 && !TimeZoneInfo.TryFindSystemTimeZoneById(zone, out _)))
+        {
+            errors[nameof(IntegrationInput.TimeZoneId)] = "An IANA time zone such as Asia/Beirut or Europe/London, or empty.";
+        }
+
         // Failed is the system's to set (and a person clears it by choosing Active).
         if (!Enum.TryParse<AttendanceIntegrationStatus>(input.Status, ignoreCase: true, out var status)
             || status is not (AttendanceIntegrationStatus.Active or AttendanceIntegrationStatus.Paused))
@@ -471,6 +617,44 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         return errors;
+    }
+
+    private async Task ValidateFileFormatAsync(IntegrationInput input, int? currentFormatId, Dictionary<string, string> errors, CancellationToken cancellationToken)
+    {
+        // A format only applies to manual uploads; for any other transport it is dropped, not refused.
+        if (input.FileFormatId is not { } formatId
+            || !Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport)
+            || transport != AttendanceTransport.FileUpload)
+        {
+            return;
+        }
+
+        // An integration may keep a format that has since been retired; a new choice must be an active one.
+        var usable = await _db.AttendanceFileFormats.AnyAsync(f => f.Id == formatId && (f.IsActive || f.Id == currentFormatId), cancellationToken);
+        if (!usable)
+        {
+            errors[nameof(IntegrationInput.FileFormatId)] = "The selected file format does not exist or is not active.";
+        }
+    }
+
+    private async Task ValidateDefaultDeviceAsync(IntegrationInput input, int? integrationId, Dictionary<string, string> errors, CancellationToken cancellationToken)
+    {
+        // Like a file format, the device only applies to manual uploads; for any other transport it is dropped, not refused.
+        if (input.DefaultDeviceId is not { } deviceId
+            || !Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport)
+            || transport != AttendanceTransport.FileUpload)
+        {
+            return;
+        }
+
+        if (integrationId is null)
+        {
+            errors[nameof(IntegrationInput.DefaultDeviceId)] = "Create the integration first, add its device, then choose it here.";
+        }
+        else if (!await _db.AttendanceDevices.AnyAsync(d => d.Id == deviceId && d.IntegrationId == integrationId, cancellationToken))
+        {
+            errors[nameof(IntegrationInput.DefaultDeviceId)] = "Choose one of this integration's own devices.";
+        }
     }
 
     private async Task<Dictionary<string, string>> ValidateDeviceAsync(int integrationId, int? existingId, DeviceInput input, CancellationToken cancellationToken)

@@ -87,6 +87,28 @@ public sealed class AttendanceSeedTests : IDisposable
     }
 
     [Fact]
+    public async Task Seed_SwitchesOnAProviderSeededBeforeItsAdapterExisted_ButNeverOneWithoutAnAdapter()
+    {
+        await SeedAsync(TestDatabase.TenantA);
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            // As an older seed left them: ZKTeco disabled with no transports, the webhook one disabled too.
+            var zk = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+            zk.IsActive = false;
+            zk.SupportedTransports = string.Empty;
+            db.SaveChanges();
+        }
+
+        await SeedAsync(TestDatabase.TenantA);
+
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var after = check.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+        Assert.True(after.IsActive);
+        Assert.True(after.SupportsTransport(AttendanceTransport.FileUpload));
+        Assert.False(check.AttendanceProviders.Single(p => p.ProviderKey == "generic-webhook").IsActive);
+    }
+
+    [Fact]
     public async Task Seed_FillsEachTenantOnItsOwn()
     {
         await SeedAsync(TestDatabase.TenantA);

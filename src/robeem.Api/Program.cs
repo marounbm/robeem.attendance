@@ -26,6 +26,9 @@ builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSecti
 builder.Services.AddSingleton<IScheduledJob, NormalizationJob>();
 builder.Services.AddSingleton<IScheduledJob, IntegrationSyncJob>();
 builder.Services.AddSingleton<IScheduledJob, ReconciliationJob>();
+builder.Services.AddSingleton<IJobRunRecorder, JobRunRecorder>();
+builder.Services.AddSingleton<JobCoordinator>();
+builder.Services.AddSingleton<IJobCoordinator>(services => services.GetRequiredService<JobCoordinator>());
 builder.Services.AddHostedService<ScheduledJobsHostedService>();
 builder.Services.AddScoped<TenantResolutionMiddleware>();
 

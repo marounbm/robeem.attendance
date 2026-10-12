@@ -39,8 +39,8 @@ internal static class CsvDocument
         return result;
     }
 
-    /// <summary>RFC 4180: comma-separated, double-quoted fields may hold commas, quotes ("") and line breaks. Blank lines are skipped.</summary>
-    public static List<List<string>> Parse(string content)
+    /// <summary>RFC 4180: comma-separated (or by <paramref name="delimiter"/>), double-quoted fields may hold the delimiter, quotes ("") and line breaks. Blank lines are skipped.</summary>
+    public static List<List<string>> Parse(string content, char delimiter = ',')
     {
         var rows = new List<List<string>>();
         var row = new List<string>();
@@ -88,14 +88,17 @@ internal static class CsvDocument
                 continue;
             }
 
+            if (c == delimiter)
+            {
+                EndField();
+                continue;
+            }
+
             switch (c)
             {
                 case '"':
                     inQuotes = true;
                     rowHasContent = true;
-                    break;
-                case ',':
-                    EndField();
                     break;
                 case '\r':
                     break;

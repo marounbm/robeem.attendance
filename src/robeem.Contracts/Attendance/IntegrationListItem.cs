@@ -13,6 +13,14 @@ public sealed class IntegrationListItem
 
     public string ProviderName { get; init; } = string.Empty;
 
+    /// <summary>Gets how the integration receives attendance: an AttendanceTransport name such as FileUpload.</summary>
+    public string Transport { get; init; } = string.Empty;
+
+    /// <summary>Gets the custom file format uploads are read by; null for the provider's own layout.</summary>
+    public int? FileFormatId { get; init; }
+
+    public string? FileFormatName { get; init; }
+
     /// <summary>Gets the configured status: Active, Paused or Failed.</summary>
     public string Status { get; init; } = string.Empty;
 
@@ -21,6 +29,14 @@ public sealed class IntegrationListItem
 
     /// <summary>Gets the reference to the connection secret (never the secret itself).</summary>
     public string ConnectionConfigRef { get; init; } = string.Empty;
+
+    /// <summary>Gets the device every punch of an uploaded file is attributed to; null for none.</summary>
+    public int? DefaultDeviceId { get; init; }
+
+    public string? DefaultDeviceName { get; init; }
+
+    /// <summary>Gets the IANA time zone used for punches with no UTC offset whose device is not registered; null for none.</summary>
+    public string? TimeZoneId { get; init; }
 
     public string? PollingScheduleCron { get; init; }
 

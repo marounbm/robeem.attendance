@@ -17,6 +17,14 @@ public static class DisplayFormats
 
     public static string Date(DateTime date) => date.ToString("ddd yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    /// <summary>Writes a short duration the way a job run needs it: <c>&lt;1 s</c>, <c>12 s</c>, <c>3 min 05 s</c>.</summary>
+    public static string Duration(TimeSpan duration) => duration.TotalSeconds < 1
+        ? "<1 s"
+        : duration.TotalSeconds < 60 ? $"{(int)duration.TotalSeconds} s" : $"{(int)duration.TotalMinutes} min {duration.Seconds:00} s";
+
+    /// <summary>Writes a time with seconds, for jobs that wake every few seconds.</summary>
+    public static string DateTimeSeconds(DateTime? time) => time?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "—";
+
     public static string Time(DateTime? time) => time?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "—";
 
     public static string DateTime(DateTime? time) => time?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "—";
@@ -48,13 +56,28 @@ public static class DisplayFormats
         return char.ToUpperInvariant(text[0]) + text[1..];
     }
 
+    /// <summary>Writes how an integration receives attendance (an AttendanceTransport name) for a person.</summary>
+    public static string Transport(string? transport) => transport switch
+    {
+        "FileUpload" => "Manual file upload",
+        "Sftp" => "SFTP drop",
+        "RestApi" => "REST API",
+        "Webhook" => "Webhook",
+        "Database" => "Database",
+        "DeviceSdk" => "Device SDK / agent",
+        _ => Words(transport),
+    };
+
+    /// <summary>Whether the integration pulls from the vendor (so it has a schedule) rather than being pushed to.</summary>
+    public static bool PullsOnSchedule(string? transport) => transport is "Sftp" or "RestApi" or "Database" or "DeviceSdk";
+
     /// <summary>The Bootstrap badge colour of a status name.</summary>
     public static string Badge(string? status) => status switch
     {
         "Approved" or "Applied" or "Closed" or "Healthy" or "Succeeded" or "Active" => "success",
         "Rejected" or "Failed" or "Unhealthy" => "danger",
-        "Open" or "PendingReview" or "Pending" or "Degraded" => "warning",
-        "PendingCorrection" => "info",
+        "Open" or "PendingReview" or "Pending" or "Degraded" or "Missed" => "warning",
+        "PendingCorrection" or "Running" => "info",
         _ => "secondary",
     };
 }

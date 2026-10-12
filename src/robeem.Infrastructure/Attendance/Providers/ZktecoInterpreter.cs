@@ -19,6 +19,9 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// </remarks>
 public sealed class ZktecoInterpreter : IAttendanceEventInterpreter
 {
+    /// <summary>The format the clock's software writes, as in <c>01-Apr-26 08:33:25</c>; the one the layout shown to users lists.</summary>
+    public const string ExportTimestampFormat = "dd-MMM-yy HH:mm:ss";
+
     /// <summary>The formats accepted, in the order they are tried.</summary>
     public static readonly IReadOnlyList<string> TimestampFormats =
     [
@@ -44,6 +47,9 @@ public sealed class ZktecoInterpreter : IAttendanceEventInterpreter
         ("OT In", NormalizedEventType.Other),
         ("OT Out", NormalizedEventType.Other),
     ];
+
+    /// <summary>The labels the shared export contains (the others in <see cref="EventCodes"/> are read when a clock writes them).</summary>
+    public static readonly IReadOnlyList<string> ExportEventCodes = ["C/In", "C/Out"];
 
     private static readonly Dictionary<string, NormalizedEventType> EventTypes =
         EventCodes.ToDictionary(c => Key(c.Code), c => c.Type, StringComparer.Ordinal);

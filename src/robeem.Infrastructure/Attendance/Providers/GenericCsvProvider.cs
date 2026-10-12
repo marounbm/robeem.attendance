@@ -6,7 +6,8 @@ using robeem.Contracts.Attendance;
 namespace robeem.Infrastructure.Attendance.Providers;
 
 /// <summary>
-/// Reads punches from an uploaded CSV file. **Manual upload only**: there is no connection to
+/// Reads punches from an uploaded CSV file, or an Excel sheet read through <see cref="TabularFile"/>
+/// (the rest of this description says CSV, and applies to the sheet's rows). **Manual upload only**: there is no connection to
 /// validate or authenticate, no device or employee list, and no incremental sync
 /// (<see cref="GetTransactionChangesAsync"/> throws).
 /// </summary>
@@ -25,7 +26,7 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// <para>Timestamp and event-type formats are described on <see cref="GenericCsvInterpreter"/>.
 /// Without an offset, a timestamp is a wall-clock time at the device.</para>
 /// </remarks>
-public sealed class GenericCsvProvider : IAttendanceProvider, IAttendanceMappingGuide
+public sealed class GenericCsvProvider : IAttendanceProvider, IAttendanceMappingGuide, IAttendanceFileReader
 {
     public const string ProviderKey = "generic-csv";
 
@@ -57,7 +58,7 @@ public sealed class GenericCsvProvider : IAttendanceProvider, IAttendanceMapping
     {
         var path = config.UploadFilePath ?? throw new ArgumentException("The generic CSV provider reads uploaded files only; no file was given.", nameof(config));
 
-        var rows = CsvDocument.Parse(await CsvDocument.ReadFileAsync(path, cancellationToken));
+        var rows = await TabularFile.ReadRowsAsync(path, cancellationToken);
         if (rows.Count == 0)
         {
             return new AttendanceBatchResult([]);
@@ -74,7 +75,8 @@ public sealed class GenericCsvProvider : IAttendanceProvider, IAttendanceMapping
     public ProviderMappingGuide DescribeMapping() => new()
     {
         ProviderKey = ProviderKey,
-        Summary = "A CSV file with a header row, uploaded by hand. Columns are matched by name, ignoring case, spaces and punctuation. Every column is kept in the payload; biometric-looking ones are removed by the shared sanitizer.",
+        FileFormats = [".csv", ".xls", ".xlsx"],
+        Summary = "A CSV file, or an Excel sheet (XLS or XLSX, first sheet), with a header row, uploaded by hand. Columns are matched by name, ignoring case, spaces and punctuation. Every column is kept in the payload; biometric-looking ones are removed by the shared sanitizer.",
         Fields =
         [
             Rule(EmployeeColumns, "ExternalEmployeeId"),

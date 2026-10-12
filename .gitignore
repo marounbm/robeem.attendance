@@ -11,6 +11,9 @@
 # Test results
 TestResults/
 
+# Screenshots taken by tools/capture-screen.ps1
+.screenshots/
+
 # OS cruft
 .DS_Store
 Thumbs.db

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Jobs;
 using robeem.Application.Attendance.Seeding;
 using robeem.Application.Common;
 using robeem.Application.HR.Employees;
@@ -34,10 +35,14 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IScheduleResolutionService, ScheduleResolutionService>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
+        services.AddScoped<IPendingDayProcessor, PendingDayProcessor>();
+        services.AddScoped<IJobRunLog, JobRunLog>();
         services.AddScoped<IAttendanceCorrectionService, AttendanceCorrectionService>();
         services.AddScoped<IAttendanceReviewService, AttendanceReviewService>();
         services.AddScoped<IAttendanceExceptionQuery, AttendanceExceptionQuery>();
+        services.AddScoped<IAttendanceTransactionQuery, AttendanceTransactionQuery>();
         services.AddScoped<IAttendanceIntegrationService, AttendanceIntegrationService>();
+        services.AddScoped<IAttendanceFileFormatService, AttendanceFileFormatService>();
         services.AddScoped<IPayPeriodService, PayPeriodService>();
         services.AddScoped<IAttendancePolicyService, AttendancePolicyService>();
         services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();

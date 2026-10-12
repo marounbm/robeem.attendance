@@ -1,0 +1,173 @@
+@model JobsViewModel
+@{
+    ViewData["Title"] = "Background jobs";
+    var names = Model.Jobs.ToDictionary(j => j.Name, j => j.DisplayName);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Background jobs</h1>
+</div>
+
+<p class="text-muted">
+    These jobs run inside the Api, one run at a time each. A job that wakes every few seconds stores a run only when it did
+    something or failed; the nightly reconciliation is always stored. Times are the server's local time.
+    @if (!Model.CanRun)
+    {
+        <span>Starting a job needs the integration administrator role.</span>
+    }
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-4">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Job</th>
+                    <th scope="col">Schedule</th>
+                    <th scope="col">Next run</th>
+                    <th scope="col">Last checked</th>
+                    <th scope="col">Last run (this tenant)</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var job in Model.Jobs)
+                {
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@job.DisplayName</div>
+                            <div class="small text-muted">@job.Description</div>
+                            <code class="small">@job.Name</code>
+                        </td>
+                        <td class="small">@job.Schedule</td>
+                        <td class="text-nowrap small">
+                            @if (!job.Enabled)
+                            {
+                                <span class="badge text-bg-secondary">Switched off</span>
+                            }
+                            else if (job.IsRunning)
+                            {
+                                <span class="badge text-bg-info">Running now</span>
+                            }
+                            else
+                            {
+                                @DisplayFormats.DateTimeSeconds(job.NextRunAt)
+                            }
+                        </td>
+                        <td class="text-nowrap small">@DisplayFormats.DateTimeSeconds(job.LastCheckedAt)</td>
+                        <td class="small">
+                            @if (job.LastRun is { } last)
+                            {
+                                <span class="badge text-bg-@DisplayFormats.Badge(last.Status)">@last.Status</span>
+                                <span class="text-nowrap">@DisplayFormats.DateTime(last.StartedAt)</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">No stored run</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (Model.CanRun)
+                            {
+                                <form method="post" asp-action="Run" class="d-inline">
+                                    <input type="hidden" name="jobName" value="@job.Name" />
+                                    <button type="submit" class="btn btn-sm btn-outline-primary" disabled="@(!job.Enabled || job.IsRunning)">Run now</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="h5">Run history</h2>
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="jobName">Job</label>
+        <select id="jobName" name="jobName" class="form-select">
+            <option value="">All jobs</option>
+            @foreach (var job in Model.Jobs)
+            {
+                <option value="@job.Name" selected="@(job.Name == Model.JobName)">@job.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="status">Status</label>
+        <select id="status" name="status" class="form-select">
+            @foreach (var status in JobsViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@status</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Runs.Count == 0)
+    {
+        <div class="card-body text-muted">No run matches.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Started</th>
+                        <th scope="col">Job</th>
+                        <th scope="col">Trigger</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="text-end">Took</th>
+                        <th scope="col" class="text-end">Work</th>
+                        <th scope="col">Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.Runs)
+                    {
+                        <tr>
+                            <td class="text-nowrap small">
+                                @DisplayFormats.DateTimeSeconds(run.StartedAt)
+                                @if (run.Status == "Missed" && run.ScheduledFor is { } due)
+                                {
+                                    <div class="text-muted">was due @DisplayFormats.DateTime(due)</div>
+                                }
+                            </td>
+                            <td class="small">@(names.TryGetValue(run.JobName, out var display) ? display : run.JobName)</td>
+                            <td class="small">
+                                @run.Trigger
+                                @if (run.RequestedByName.Length > 0)
+                                {
+                                    <span class="text-muted">by @run.RequestedByName</span>
+                                }
+                            </td>
+                            <td><span class="badge text-bg-@DisplayFormats.Badge(run.Status)">@run.Status</span></td>
+                            <td class="text-end text-nowrap small">@(run.CompletedAt is { } done ? DisplayFormats.Duration(done - run.StartedAt) : "—")</td>
+                            <td class="text-end small">@run.WorkItems</td>
+                            <td class="small">@run.Summary</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    @if (Model.AnyRunning)
+    {
+        <script>
+            // A run is in progress: look again in a few seconds, so its end shows without a click.
+            setTimeout(function () { window.location.reload(); }, 5000);
+        </script>
+    }
+}

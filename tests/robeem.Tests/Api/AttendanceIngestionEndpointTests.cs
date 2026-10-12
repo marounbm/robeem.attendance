@@ -29,9 +29,9 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
     public async ValueTask DisposeAsync() => await _api.DisposeAsync();
 
     [Fact]
-    public async Task AnIntegrationAdministrator_UploadsAFile_AndGetsTheBatchOutcome()
+    public async Task AnHrAdministrator_UploadsAFile_AndGetsTheBatchOutcome()
     {
-        var response = await Upload(7, As(AttendanceRoles.IntegrationAdministrator), "punches.csv", Csv);
+        var response = await Upload(7, As(AttendanceRoles.HRAdministrator), "punches.csv", Csv);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<AttendanceIngestionResult>();
@@ -43,6 +43,19 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
 
         // ... and that temporary file is gone once the request is over.
         Assert.False(File.Exists(call.Path), "The uploaded file was left on disk.");
+
+        // The file's own name and the signed-in employee are what is recorded with it.
+        Assert.Equal(("punches.csv", (int?)1), Assert.Single(_ingestion.Uploads));
+    }
+
+    [Fact]
+    public async Task TheUploadHistory_IsListedForTheHrAdministrator_AndRefusedToOthers()
+    {
+        var listed = await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads") { Headers = { { "X-Test-User", As(AttendanceRoles.HRAdministrator) } } });
+        var refused = await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads") { Headers = { { "X-Test-User", As(AttendanceRoles.Manager) } } });
+
+        Assert.Equal("punches.csv", (await listed.Content.ReadFromJsonAsync<List<UploadedFileItem>>())!.Single().FileName);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
     }
 
     [Fact]
@@ -51,7 +64,7 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
         _ingestion.Throw = true;
 
         // The test server has no exception middleware, so the failure reaches the caller as it would reach it.
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Upload(7, As(AttendanceRoles.IntegrationAdministrator), "punches.csv", Csv));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Upload(7, As(AttendanceRoles.HRAdministrator), "punches.csv", Csv));
 
         Assert.False(File.Exists(Assert.Single(_ingestion.Calls).Path), "The uploaded file was left on disk.");
     }
@@ -59,7 +72,7 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
     [Fact]
     public async Task AnEmptyFile_IsRefusedAs400_AndNeverReachesTheService()
     {
-        var response = await Upload(7, As(AttendanceRoles.IntegrationAdministrator), "empty.csv", string.Empty);
+        var response = await Upload(7, As(AttendanceRoles.HRAdministrator), "empty.csv", string.Empty);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
@@ -72,26 +85,47 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
     {
         _ingestion.Known = false;
 
-        Assert.Equal(HttpStatusCode.NotFound, (await Upload(7, As(AttendanceRoles.IntegrationAdministrator), "punches.csv", Csv)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Upload(7, As(AttendanceRoles.HRAdministrator), "punches.csv", Csv)).StatusCode);
     }
 
     [Fact]
     public async Task ARequestWithoutAFilePart_IsRefused()
     {
-        var response = await _api.Send(HttpMethod.Post, "api/attendance/ingestion/7/uploads", As(AttendanceRoles.IntegrationAdministrator), new { not = "a file" });
+        var response = await _api.Send(HttpMethod.Post, "api/attendance/ingestion/7/uploads", As(AttendanceRoles.HRAdministrator), new { not = "a file" });
 
         Assert.InRange((int)response.StatusCode, 400, 499);
         Assert.Empty(_ingestion.Calls);
     }
 
+    [Fact]
+    public async Task AnIntegrationThatTakesNoUploads_Is404_AndTheFileIsNeverRead()
+    {
+        // Integration 8 is not in the targets: inactive, or a provider that reads no files.
+        Assert.Equal(HttpStatusCode.NotFound, (await Upload(8, As(AttendanceRoles.HRAdministrator), "punches.csv", Csv)).StatusCode);
+        Assert.Empty(_ingestion.Calls);
+    }
+
+    [Fact]
+    public async Task TheTargets_AreListedWithTheirFormatsAndLayout()
+    {
+        var response = await _api.Send(HttpMethod.Get, "api/attendance/ingestion/targets", As(AttendanceRoles.HRAdministrator));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var target = Assert.Single((await response.Content.ReadFromJsonAsync<List<UploadTarget>>())!);
+        Assert.Equal(7, target.IntegrationId);
+        Assert.Equal([".csv"], target.FileFormats);
+        Assert.Equal("ExternalEmployeeId", target.Layout.Fields.Single().Target);
+    }
+
     [Theory]
     [InlineData(AttendanceRoles.Employee)]
     [InlineData(AttendanceRoles.Manager)]
-    [InlineData(AttendanceRoles.HRAdministrator)]
+    [InlineData(AttendanceRoles.IntegrationAdministrator)]
     [InlineData(AttendanceRoles.PayrollAdministrator)]
-    public async Task AnyoneButAnIntegrationAdministrator_IsRefused_WithoutTheFileBeingRead(string role)
+    public async Task AnyoneButAnHrAdministrator_IsRefused_WithoutTheFileBeingRead(string role)
     {
         Assert.Equal(HttpStatusCode.Forbidden, (await Upload(7, As(role), "punches.csv", Csv)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await _api.Send(HttpMethod.Get, "api/attendance/ingestion/targets", As(role))).StatusCode);
         Assert.Empty(_ingestion.Calls);
     }
 
@@ -115,8 +149,33 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
 
         public bool Throw { get; set; }
 
+        public List<(string FileName, int? UploadedById)> Uploads { get; } = [];
+
+        public Task<IReadOnlyList<UploadTarget>> ListUploadTargetsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UploadTarget>>(
+            [
+                new UploadTarget
+                {
+                    IntegrationId = 7,
+                    DisplayName = "Head office",
+                    ProviderKey = "generic-csv",
+                    ProviderName = "Generic CSV",
+                    FileFormats = [".csv"],
+                    Layout = new ProviderMappingGuide { ProviderKey = "generic-csv", Fields = [new FieldMappingRule { Source = "employee_id", Target = "ExternalEmployeeId" }] },
+                },
+            ]);
+
         public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<AttendanceIngestionResult?> IngestUploadedFileAsync(int integrationId, string filePath, string fileName, int? uploadedById, CancellationToken cancellationToken)
+        {
+            Uploads.Add((fileName, uploadedById));
+            return IngestManualUploadAsync(integrationId, filePath, cancellationToken);
+        }
+
+        public Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UploadedFileItem>>([new UploadedFileItem { Id = 1, IntegrationId = 7, FileName = "punches.csv", Sha256 = new string('a', 64) }]);
 
         public async Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken)
         {

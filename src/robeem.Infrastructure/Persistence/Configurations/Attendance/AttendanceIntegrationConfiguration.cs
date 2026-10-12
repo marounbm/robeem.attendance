@@ -10,6 +10,10 @@ public sealed class AttendanceIntegrationConfiguration : IEntityTypeConfiguratio
     {
         // Enums are stored by name, so the column stays readable and reordering members is safe.
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(32);
+        builder.Property(i => i.Transport).HasConversion<string>().HasMaxLength(32);
         builder.Property(i => i.HealthStatus).HasConversion<string>().HasMaxLength(32);
+
+        // The device an uploaded file's punches are attributed to. Restrict, like every foreign key.
+        builder.HasOne(i => i.DefaultDevice).WithMany().HasForeignKey(i => i.DefaultDeviceId).OnDelete(DeleteBehavior.Restrict);
     }
 }

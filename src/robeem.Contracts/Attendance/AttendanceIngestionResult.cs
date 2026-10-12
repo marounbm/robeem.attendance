@@ -15,4 +15,10 @@ public sealed class AttendanceIngestionResult
     public int RecordsFailed { get; init; }
 
     public string? ErrorSummary { get; init; }
+
+    /// <summary>Gets the SHA-256 of the uploaded file's bytes; null for a webhook body, which is not tracked as a file.</summary>
+    public string? Sha256 { get; init; }
+
+    /// <summary>Gets when the same file (same bytes) was uploaded before, or null when it is new. The rows are stored again; normalization marks them duplicates.</summary>
+    public DateTimeOffset? SameFileUploadedAt { get; init; }
 }

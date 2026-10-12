@@ -47,6 +47,8 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         ["DELETE", "api/attendance/integrations/1/mappings/2", null!],
         ["POST", "api/attendance/integrations/1/sync", null!],
         ["POST", "api/attendance/integrations/1/reconcile", null!],
+        ["POST", "api/attendance/integrations/1/retry-failed", null!],
+        ["POST", "api/attendance/integrations/1/renormalize-flagged", null!],
         ["GET", "api/attendance/integrations/1/health", null!],
         ["GET", "api/attendance/integrations/1/raw-mapping", null!],
         ["GET", "api/attendance/integrations/1/raw-mapping/guide", null!],
@@ -119,6 +121,27 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
 
         Assert.Equal(HttpStatusCode.NotFound, (await Send("POST", "api/attendance/integrations/9/sync", Admin, null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("POST", "api/attendance/integrations/9/reconcile", Admin, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("POST", "api/attendance/integrations/9/retry-failed", Admin, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("POST", "api/attendance/integrations/9/renormalize-flagged", Admin, null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task RenormalizeFlagged_AnswersHowManyPunchesWereQueued()
+    {
+        var response = await Send("POST", "api/attendance/integrations/1/renormalize-flagged", Admin, null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var outcome = (await response.Content.ReadFromJsonAsync<RenormalizeFlaggedResponse>())!;
+        Assert.Equal((5, 2, "FileUpload"), (outcome.Requeued, outcome.Unresolved, outcome.Transport));
+    }
+
+    [Fact]
+    public async Task RetryFailed_AnswersHowManyPunchesWereQueued()
+    {
+        var response = await Send("POST", "api/attendance/integrations/1/retry-failed", Admin, null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(7, (await response.Content.ReadFromJsonAsync<RetryFailedResponse>())!.Requeued);
     }
 
     [Fact]
@@ -219,6 +242,11 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
             Runs.Add(("run", reconcile));
             return Record<SyncOutcomeResponse?>("run", Exists ? Outcome : null);
         }
+
+        public Task<int?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken) => Record<int?>("retryFailed", Exists ? 7 : null);
+
+        public Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken) =>
+            Record<RenormalizeFlaggedResponse?>("renormalizeFlagged", Exists ? new RenormalizeFlaggedResponse { Requeued = 5, Unresolved = 2, Transport = "FileUpload" } : null);
 
         private Task<T> Record<T>(string call, T value)
         {

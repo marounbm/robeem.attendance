@@ -112,6 +112,31 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
         Assert.Equal((1, TimeSpan.FromHours(8)), (record.Version, record.WorkingHours));
     }
 
+    [Fact]
+    public async Task APendingDayProcessor_TurnsNormalizedPunchesIntoRecords_WithoutAManualReprocess_AndOnlyOnce()
+    {
+        await IngestAsync(StandardDayCsv);
+        await NormalizeAllAsync();
+
+        Assert.Equal(1, await ProcessPendingAsync());
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var record = Assert.Single(db.AttendanceRecords);
+            Assert.Equal((TimeSpan.FromHours(8), AttendanceRecordStatus.Approved), (record.WorkingHours, record.Status));
+            Assert.All(db.NormalizedAttendanceTransactions, n => Assert.Equal(NormalizedTransactionProcessingStatus.Processed, n.ProcessingStatus));
+        }
+
+        // Nothing is pending any more, so the next run does no work.
+        Assert.Equal(0, await ProcessPendingAsync());
+    }
+
+    private async Task<int> ProcessPendingAsync()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await new PendingDayProcessor(db, CreateEngine(db), NullLogger<PendingDayProcessor>.Instance).ProcessPendingAsync(100, CancellationToken.None);
+    }
+
     private async Task IngestAsync(string csv)
     {
         var path = Path.GetTempFileName();

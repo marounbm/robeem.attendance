@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -102,33 +101,6 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
-    public async Task Upload_SendsTheFileAsAMultipartPart_AndReturnsTheBatch()
-    {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"batchId":9,"status":"Succeeded","recordsIngested":5,"recordsFailed":1}""");
-        var client = new IntegrationsApiClient(handler.CreateClient());
-        await using var file = new MemoryStream(Encoding.UTF8.GetBytes("a,b\r\n1,2\r\n"));
-
-        var result = await client.UploadAsync(5, file, "punches.csv", CancellationToken.None);
-
-        Assert.Equal("/api/attendance/ingestion/5/uploads", handler.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Contains("name=file", handler.Bodies.Single());
-        Assert.Contains("filename=punches.csv", handler.Bodies.Single());
-        Assert.Contains("a,b", handler.Bodies.Single());
-        Assert.Equal((5, 1), (result.Value!.RecordsIngested, result.Value.RecordsFailed));
-    }
-
-    [Fact]
-    public async Task AnUploadTheApiRefuses_ComesBackAsAMessage()
-    {
-        var problem = """{"title":"x","status":400,"errors":{"file":["The file is empty."]}}""";
-        var client = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.BadRequest, problem, "application/problem+json").CreateClient());
-
-        var result = await client.UploadAsync(5, new MemoryStream(), "empty.csv", CancellationToken.None);
-
-        Assert.Equal((false, "The file is empty."), (result.Succeeded, result.MessageText));
-    }
-
-    [Fact]
     public async Task Creating_RedirectsToTheNewIntegration_OrShowsTheFormWithItsErrors()
     {
         var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(7) };
@@ -193,26 +165,6 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
-    public async Task Upload_RefusesNothing_AnEmptyFile_AndReportsABatchThatFailed()
-    {
-        var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations));
-
-        await controller.Upload(5, null, CancellationToken.None);
-        Assert.Contains("can't be empty", (string)controller.TempData["ErrorMessage"]!);
-        Assert.Empty(integrations.Uploads);
-
-        integrations.Batch = new AttendanceIngestionResult { Status = "PartiallyFailed", RecordsIngested = 5, RecordsFailed = 1 };
-        await controller.Upload(5, FormFile("punches.csv", "a,b\r\n"), CancellationToken.None);
-        Assert.Equal("punches.csv", Assert.Single(integrations.Uploads));
-        Assert.Contains("5 row(s) stored, 1 unusable", (string)controller.TempData["StatusMessage"]!);
-
-        integrations.Batch = new AttendanceIngestionResult { Status = "Failed", ErrorSummary = "Could not read the file." };
-        await controller.Upload(5, FormFile("bad.csv", "x"), CancellationToken.None);
-        Assert.Contains("Could not read the file.", (string)controller.TempData["ErrorMessage"]!);
-    }
-
-    [Fact]
     public async Task TheClient_AsksForTheRawMappingWithItsFilter_AndMapsA404ToNull()
     {
         var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"rawId":4,"rawStatus":"Failed","processingError":"Unparseable timestamp 'x'","payload":"{}"}]""");
@@ -243,6 +195,77 @@ public sealed class IntegrationsWebTests
         Assert.IsType<NotFoundResult>(await controller.RawMapping(9, null, null, 100, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task TheClient_PostsRetryFailed_AndMapsA404ToNull()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"requeued":4}""");
+        var missing = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
+
+        var result = await new IntegrationsApiClient(handler.CreateClient()).RetryFailedAsync(5, CancellationToken.None);
+
+        Assert.Equal(("POST", "/api/attendance/integrations/5/retry-failed"), (handler.Requests.Single().Method.Method, handler.Requests.Single().RequestUri!.PathAndQuery));
+        Assert.Equal(4, result!.Requeued);
+        Assert.Null(await missing.RetryFailedAsync(9, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RetryFailed_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
+    {
+        var integrations = new FakeIntegrations();
+        var controller = WithTempData(new IntegrationsController(integrations));
+
+        var redirect = Assert.IsType<RedirectToActionResult>(await controller.RetryFailed(5, CancellationToken.None));
+
+        Assert.Equal((nameof(IntegrationsController.Details), 5), (redirect.ActionName, redirect.RouteValues!["id"]));
+        Assert.Contains("3 punch(es)", (string)controller.TempData["StatusMessage"]!);
+
+        integrations.Save = ApiSaveResult.Missing();
+        Assert.IsType<NotFoundResult>(await controller.RetryFailed(9, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheClient_PostsRenormalizeFlagged_AndMapsA404ToNull()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"requeued":6}""");
+        var missing = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
+
+        var result = await new IntegrationsApiClient(handler.CreateClient()).RenormalizeFlaggedAsync(5, CancellationToken.None);
+
+        Assert.Equal(("POST", "/api/attendance/integrations/5/renormalize-flagged"), (handler.Requests.Single().Method.Method, handler.Requests.Single().RequestUri!.PathAndQuery));
+        Assert.Equal(6, result!.Requeued);
+        Assert.Null(await missing.RenormalizeFlaggedAsync(9, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RenormalizeFlagged_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
+    {
+        var integrations = new FakeIntegrations();
+        var controller = WithTempData(new IntegrationsController(integrations));
+
+        var redirect = Assert.IsType<RedirectToActionResult>(await controller.RenormalizeFlagged(5, CancellationToken.None));
+
+        Assert.Equal((nameof(IntegrationsController.Details), 5), (redirect.ActionName, redirect.RouteValues!["id"]));
+        Assert.Contains("2 punch(es)", (string)controller.TempData["StatusMessage"]!);
+
+        integrations.Save = ApiSaveResult.Missing();
+        Assert.IsType<NotFoundResult>(await controller.RenormalizeFlagged(9, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(0, 0, "FileUpload", "StatusMessage", "No punch of this integration is flagged")]
+    [InlineData(0, 4, "FileUpload", "ErrorMessage", "choose one under Device for uploaded files")]
+    [InlineData(0, 4, "RestApi", "ErrorMessage", "not manual file upload")]
+    [InlineData(2, 3, "FileUpload", "StatusMessage", "3 other flagged punch(es)")]
+    public async Task RenormalizeFlagged_SaysWhyNothingWasQueued(int requeued, int unresolved, string transport, string key, string fragment)
+    {
+        var integrations = new FakeIntegrations { Renormalized = new RenormalizeFlaggedResponse { Requeued = requeued, Unresolved = unresolved, Transport = transport } };
+        var controller = WithTempData(new IntegrationsController(integrations));
+
+        await controller.RenormalizeFlagged(5, CancellationToken.None);
+
+        Assert.Contains(fragment, (string)controller.TempData[key]!);
+    }
+
     [Theory]
     [InlineData(0.9512, "95.1%")]
     [InlineData(0.0, "0%")]
@@ -260,12 +283,6 @@ public sealed class IntegrationsWebTests
     public void DelaysAreWrittenInTheRightUnit(double? seconds, string expected)
     {
         Assert.Equal(expected, DisplayFormats.Delay(seconds));
-    }
-
-    private static FormFile FormFile(string name, string content)
-    {
-        var bytes = Encoding.UTF8.GetBytes(content);
-        return new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", name);
     }
 
     private static T WithTempData<T>(T controller)
@@ -290,11 +307,9 @@ public sealed class IntegrationsWebTests
 
         public SyncOutcomeResponse Outcome { get; set; } = new() { Status = "Succeeded" };
 
-        public AttendanceIngestionResult Batch { get; set; } = new() { Status = "Succeeded" };
+        public RenormalizeFlaggedResponse Renormalized { get; set; } = new() { Requeued = 2, Transport = "FileUpload" };
 
         public List<string> Calls { get; } = [];
-
-        public List<string> Uploads { get; } = [];
 
         public List<int> RawMappingTakes { get; } = [];
 
@@ -305,6 +320,8 @@ public sealed class IntegrationsWebTests
         public Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken) => Task.FromResult<IntegrationInput?>(Save.NotFound ? null : new IntegrationInput());
 
         public Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProviderOption>>([]);
+
+        public Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<FileFormatOption>>([]);
 
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<EmployeeOption>>([]);
 
@@ -339,10 +356,16 @@ public sealed class IntegrationsWebTests
 
         public Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken) => Task.FromResult(Outcome);
 
-        public Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)
+        public Task<RetryFailedResponse?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken)
         {
-            Uploads.Add(fileName);
-            return Task.FromResult(ApiCommandResult<AttendanceIngestionResult>.Ok(Batch));
+            Calls.Add("retryFailed");
+            return Task.FromResult<RetryFailedResponse?>(Save.NotFound ? null : new RetryFailedResponse { Requeued = 3 });
+        }
+
+        public Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken)
+        {
+            Calls.Add("renormalizeFlagged");
+            return Task.FromResult<RenormalizeFlaggedResponse?>(Save.NotFound ? null : Renormalized);
         }
 
         private Task<ApiSaveResult> Record(string call)

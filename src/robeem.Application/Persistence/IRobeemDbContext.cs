@@ -30,6 +30,10 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceDevice> AttendanceDevices { get; }
 
+    DbSet<AttendanceFileFormat> AttendanceFileFormats { get; }
+
+    DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes { get; }
+
     DbSet<AttendancePolicy> AttendancePolicies { get; }
 
     DbSet<AttendanceProcessingBatch> AttendanceProcessingBatches { get; }
@@ -53,6 +57,10 @@ public interface IRobeemDbContext
     DbSet<PayPeriod> PayPeriods { get; }
 
     DbSet<AttendanceAuditLog> AttendanceAuditLogs { get; }
+
+    DbSet<AttendanceUploadedFile> AttendanceUploadedFiles { get; }
+
+    DbSet<AttendanceJobRun> AttendanceJobRuns { get; }
 
     ChangeTracker ChangeTracker { get; }
 

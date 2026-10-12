@@ -1,0 +1,151 @@
+@model NormalizedTransactionsIndexViewModel
+@{
+    ViewData["Title"] = "Normalized transactions";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Normalized transactions</h1>
+</div>
+
+<p class="text-muted">
+    Every punch after normalization, newest first: the employee and device it belongs to, its type and how sure that type is,
+    and whether it repeats an earlier punch. Duplicates are kept, marked, not removed. The raw punch each came from is on the
+    <a asp-controller="RawTransactions" asp-action="Index">Raw transactions</a> screen. Opening this screen is written to the audit log.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="integrationId">Integration</label>
+        <select id="integrationId" name="integrationId" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var integration in Model.Integrations)
+            {
+                <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="employee">Employee (number or name)</label>
+        <input id="employee" name="employee" type="text" value="@Model.Employee" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="eventType">Event</label>
+        <select id="eventType" name="eventType" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var type in NormalizedTransactionsIndexViewModel.EventTypes)
+            {
+                <option value="@type" selected="@(type == Model.EventType)">@DisplayFormats.Words(type)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="duplicate">Repeat?</label>
+        <select id="duplicate" name="duplicate" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var status in NormalizedTransactionsIndexViewModel.DuplicateStatuses)
+            {
+                <option value="@status" selected="@(status == Model.Duplicate)">@DisplayFormats.Words(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="flag">Flag</label>
+        <select id="flag" name="flag" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var flag in NormalizedTransactionsIndexViewModel.Flags)
+            {
+                <option value="@flag" selected="@(flag == Model.Flag)">@DisplayFormats.Words(flag)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="take">Rows</label>
+        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" style="width: 6rem" />
+    </div>
+    @if (Model.RawId is { } rawId)
+    {
+        <input type="hidden" name="rawId" value="@rawId" />
+        <div class="col-auto">
+            <span class="badge text-bg-light border">Raw punch #@rawId <a asp-action="Index" class="ms-1 text-decoration-none" title="Show all">&times;</a></span>
+        </div>
+    }
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Rows.Count == 0)
+    {
+        <div class="card-body text-muted">No normalized punches match.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Raw</th>
+                        <th>Integration</th>
+                        <th>Employee</th>
+                        <th>Device</th>
+                        <th>Date</th>
+                        <th>Local time</th>
+                        <th>Event</th>
+                        <th>Vendor label</th>
+                        <th>Source</th>
+                        <th>Certainty</th>
+                        <th>Repeat?</th>
+                        <th>Flag</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr class="@(row.ProcessingStatus == "Excluded" ? "text-muted" : row.ExceptionStatus != "None" ? "table-warning" : null)">
+                            <td>@row.Id</td>
+                            <td>#@row.RawId</td>
+                            <td>@row.IntegrationName</td>
+                            <td>@(row.EmployeeName is null ? "—" : $"{row.EmployeeName} ({row.EmployeeNumber})")</td>
+                            <td>@(row.DeviceName ?? "—")</td>
+                            <td>@DisplayFormats.Date(row.AttendanceDate)</td>
+                            <td>@DisplayFormats.DateTimeSeconds(row.LocalTime) <span class="text-muted small">@row.TimeZoneId</span></td>
+                            <td>@DisplayFormats.Words(row.EventType)</td>
+                            <td>@(row.OriginalEventType ?? "—")</td>
+                            <td>@DisplayFormats.Words(row.Source)</td>
+                            <td>@DisplayFormats.Words(row.Confidence)</td>
+                            <td>
+                                @if (row.DuplicateStatus == "Unique")
+                                {
+                                    <span>—</span>
+                                }
+                                else
+                                {
+                                    <span>@DisplayFormats.Words(row.DuplicateStatus)</span>
+                                    @if (row.DuplicateOfId is { } duplicateOf)
+                                    {
+                                        <span class="text-muted small">of #@duplicateOf</span>
+                                    }
+                                }
+                            </td>
+                            <td>@(row.ExceptionStatus == "None" ? "—" : DisplayFormats.Words(row.ExceptionStatus))</td>
+                            <td>@(row.ProcessingStatus == "Excluded" ? "Replaced" : DisplayFormats.Words(row.ProcessingStatus))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

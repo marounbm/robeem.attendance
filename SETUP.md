@@ -65,7 +65,7 @@ In Development, `Database:InitializeOnStartup` is `true`, so before it starts li
 2. applies all migrations;
 3. runs the seeders, which add only what is missing:
    - the HR seed: a "Standard Week" time schedule (Mon to Fri, 09:00 to 17:00) with its all-inclusive team;
-   - the Attendance seed: the provider catalog (`generic-csv` active; `generic-webhook`, `zkteco` and `suprema-biostar` listed but inactive because they have no adapter yet) and the tenant-wide default attendance policy.
+   - the Attendance seed: the provider catalog (`generic-csv`, `zkteco` and `suprema-biostar` active; `generic-webhook` listed but inactive because it has no adapter yet) and the tenant-wide default attendance policy.
 
 The same Api process also runs the background jobs (section 8): normalization, integration sync and the nightly reconciliation.
 
@@ -94,9 +94,9 @@ Open http://localhost:5180.
 |---|---|
 | `Employee` | See their own days and exceptions; propose a correction for a missing punch. |
 | `Manager` | The same for their direct reports; decide corrections and reviews of their reports. |
-| `HRAdministrator` | Employees, schedules, policies, the audit log; everyone's attendance; HR decisions; "Calculate again". |
+| `HRAdministrator` | Employees, schedules, policies, the audit log; everyone's attendance; HR decisions; "Calculate again"; uploading attendance files (*Import → Upload attendance*). |
 | `PayrollAdministrator` | Pay periods and the approved-days payroll view. |
-| `IntegrationAdministrator` | Integrations, devices, employee-id mappings, uploads and sync. |
+| `IntegrationAdministrator` | Integrations, devices, employee-id mappings and sync. |
 
 ---
 
@@ -116,7 +116,7 @@ Do this once per tenant, as a user with the roles shown.
    - *Schedule*: a cron expression of five fields (minute hour day month weekday; for example `*/5 * * * *`) or six with seconds first, or empty for uploads only.
 4. **Add the devices** on the integration's page. For each: the id as the vendor reports it, a name, the type, and the **IANA time zone of the device's clock** (for example `Asia/Beirut`). A punch without a UTC offset is read in its device's zone. Model, software version and SDK version are optional and are for your records.
 5. **Map vendor employee ids to employees** on the integration's page. A punch whose vendor id has no mapping cannot be assigned to an employee.
-6. **Upload a file**. For Generic CSV, an RFC 4180 CSV with a header row and columns such as `transaction_id, employee_id, timestamp, type, device_id`. The accepted header names are listed in `src/robeem.Infrastructure/Attendance/Providers/GenericCsvProvider.cs`.
+6. **Upload a file** (`HRAdministrator`, *Import → Upload attendance*). Choose the integration: it fixes the file format and the screen shows the layout the file is read by. For Generic CSV, an RFC 4180 CSV with a header row and columns such as `transaction_id, employee_id, timestamp, type, device_id`. The accepted header names are listed in `src/robeem.Infrastructure/Attendance/Providers/GenericCsvProvider.cs`.
 7. **Wait a few seconds.** Ingestion stores every punch unchanged (raw data is never edited). The normalization job (every 10 seconds by default) then turns raw punches into events, resolves the employee and device, and marks duplicates. The processing engine then calculates the day.
 8. **Look at the result**: *Attendance* (one line per employee and day, with the full working-out when you open a day) and *Exceptions* (missing punches and wrong order, which a person has to settle).
 
@@ -126,7 +126,7 @@ Do this once per tenant, as a user with the roles shown.
 
 - **Generic CSV (available now):** upload files as in step 6.
 - **A provider with an API or device protocol:** needs its adapter and event interpreter in `src/robeem.Infrastructure/Attendance/Providers`, both registered as keyed services under the provider's key, and the provider's `IsActive` flag switched on in `AttendanceSeedContributor` (`CLAUDE.md` §1.9, §4, and `ATTENDANCE_P15_NOTES.md`). Existing tenants keep the stored value of `IsActive`, because the seed never changes a row that exists; change it in the tenant database or through the catalog.
-- **ZKTeco** (for example the U350 with *Fingerprint Attendance System* 4.8.7 and SDK 6.2.5.5): the vendor and the device fields are recorded, but there is no adapter yet, so the provider is inactive. An adapter needs a sample export from the machine or a decision on how punches are pulled.
+- **ZKTeco** (for example the U350 with *Fingerprint Attendance System* 4.8.7 and SDK 6.2.5.5): upload the `.xls` file exactly as the software exports it (CSV and `.xlsx` also work); no re-saving is needed. Pulling punches from the device is not built. The one-time set-up (device, employee id mappings) is in `ZKTECO_XLS_IMPORT_SETUP.md`.
 - **Secrets for a provider connection:** the integration stores only a *reference*. The Api resolves it to the secret at `Secrets:{tenantId}:{reference}` in configuration for a single call, and never logs or stores it.
 
   ```bash

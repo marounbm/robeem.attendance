@@ -1,0 +1,168 @@
+@model UploadViewModel
+@{
+    ViewData["Title"] = "Upload attendance file";
+    var selected = Model.Selected;
+}
+
+<h1 class="h3 mb-3">Upload attendance file</h1>
+
+<p class="text-muted">
+    Export the punches from the time clock with its own software, then upload that file here, exactly as exported. Choose the
+    integration it belongs to: that fixes the file format and the layout it is read by. Every row is stored as received,
+    including unusable ones (a row's problem is counted, not dropped), and biometric columns are never stored.
+</p>
+
+<partial name="_StatusMessage" />
+
+@if (Model.Targets.Count == 0)
+{
+    <div class="card">
+        <div class="card-body text-muted">
+            No integration takes file uploads yet. An integration administrator adds one under Integrations, with a
+            file-upload provider such as the ZKTeco export or the generic CSV, and sets <em>Receives attendance by</em> to
+            <em>Manual file upload</em>.
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-6">
+            <label class="form-label small mb-0" for="integrationId">Integration (source and format)</label>
+            <select id="integrationId" class="form-select form-select-sm">
+                @if (selected is null)
+                {
+                    <option value="">— Choose —</option>
+                }
+
+                @foreach (var target in Model.Targets)
+                {
+                    <option value="@target.IntegrationId" selected="@(target.IntegrationId == selected?.IntegrationId)">@target.DisplayName — @target.ProviderName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button type="button" id="toggleLayout" class="btn btn-sm btn-outline-primary" aria-expanded="false" aria-controls="layouts" disabled="@(selected is null)">Show format and layout</button>
+        </div>
+    </div>
+
+    @* Every target's layout and upload form is rendered; the script shows the chosen one, so switching source needs no round trip. *@
+    <div id="layouts">
+        @foreach (var target in Model.Targets)
+        {
+            <div class="upload-target" data-target="@target.IntegrationId" hidden="@(target.IntegrationId != selected?.IntegrationId)">
+                <div class="card mb-3 layout-card" hidden>
+                    <div class="card-header">
+                        Format and layout: @target.ProviderName
+                        <span class="text-muted small ms-2">
+                            @(target.FileFormats.Count == 0 ? "any file type" : string.Join(" ", target.FileFormats))
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <partial name="_ProviderLayout" model="target.Layout" />
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">Upload into @target.DisplayName</div>
+                    <div class="card-body">
+                        <form method="post" asp-action="Upload" enctype="multipart/form-data" class="row g-2 align-items-end">
+                            <input type="hidden" name="integrationId" value="@target.IntegrationId" />
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="file-@target.IntegrationId">File (up to 10 MB)</label>
+                                <input id="file-@target.IntegrationId" type="file" name="file" accept="@string.Join(",", target.FileFormats)" class="form-control form-control-sm" required />
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+                            </div>
+                        </form>
+                        <p class="small text-muted mt-2 mb-0">
+                            Punches are matched to employees through the integration's employee-id mappings, and to the clock through its
+                            registered devices. Anything unmatched is still stored and shows as unresolved.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<div class="card mb-3">
+    <div class="card-header">Uploaded files</div>
+    @if (Model.Uploads.Count == 0)
+    {
+        <div class="card-body text-muted small">No file has been uploaded yet.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 small">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Uploaded</th>
+                        <th scope="col">File</th>
+                        <th scope="col">Integration</th>
+                        <th scope="col">SHA-256</th>
+                        <th scope="col" class="text-end">Size</th>
+                        <th scope="col" class="text-end">Rows</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var upload in Model.Uploads)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@DisplayFormats.Instant(upload.UploadedAt)</td>
+                            <td>@upload.FileName</td>
+                            <td>@upload.IntegrationName</td>
+                            <td class="text-nowrap">
+                                <code title="@upload.Sha256">@upload.Sha256[..12]…</code>
+                                @if (upload.RepeatsAnEarlierUpload)
+                                {
+                                    <span class="badge text-bg-warning" title="The same bytes were uploaded before.">same file as before</span>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">@((upload.FileSizeBytes / 1024.0).ToString("0.#")) KB</td>
+                            <td class="text-end">@upload.RecordsIngested@(upload.RecordsFailed > 0 ? $" ({upload.RecordsFailed} unusable)" : string.Empty)</td>
+                            <td><span class="badge text-bg-@DisplayFormats.Badge(upload.Status)">@DisplayFormats.Words(upload.Status)</span></td>
+                            <td>@(upload.UploadedByName.Length == 0 ? "—" : upload.UploadedByName)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var select = document.getElementById('integrationId');
+            var toggle = document.getElementById('toggleLayout');
+            if (!select || !toggle) {
+                return;
+            }
+
+            var panels = document.querySelectorAll('.upload-target');
+            var layoutShown = false;
+
+            function render() {
+                panels.forEach(function (panel) {
+                    panel.hidden = panel.dataset.target !== select.value;
+                    panel.querySelector('.layout-card').hidden = !layoutShown;
+                });
+                toggle.disabled = select.value === '';
+                toggle.setAttribute('aria-expanded', layoutShown ? 'true' : 'false');
+                toggle.textContent = layoutShown ? 'Hide format and layout' : 'Show format and layout';
+            }
+
+            select.addEventListener('change', render);
+            toggle.addEventListener('click', function () {
+                layoutShown = !layoutShown;
+                render();
+            });
+            render();
+        })();
+    </script>
+}

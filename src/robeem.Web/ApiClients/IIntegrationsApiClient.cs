@@ -2,7 +2,7 @@ using robeem.Contracts.Attendance;
 
 namespace robeem.Web.ApiClients;
 
-/// <summary>robeem.Api's integrations (<c>api/attendance/integrations</c>) and the CSV upload.</summary>
+/// <summary>robeem.Api's integrations (<c>api/attendance/integrations</c>).</summary>
 public interface IIntegrationsApiClient
 {
     Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken);
@@ -14,6 +14,9 @@ public interface IIntegrationsApiClient
     Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken);
+
+    /// <summary>The active custom file formats a manual-upload integration can be set to read its files by.</summary>
+    Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);
 
@@ -50,6 +53,9 @@ public interface IIntegrationsApiClient
     /// <summary>Runs a sync now (or, with <paramref name="reconcile"/>, the wider reconciliation).</summary>
     Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken);
 
-    /// <summary>Uploads an attendance file into the integration's raw transactions.</summary>
-    Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken);
+    /// <summary>Queues the punches that failed for want of a time zone to be normalized again; null when the integration does not exist.</summary>
+    Task<RetryFailedResponse?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken);
+
+    /// <summary>Queues the punches flagged for an unrecognized device to be normalized again; null when the integration does not exist.</summary>
+    Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken);
 }

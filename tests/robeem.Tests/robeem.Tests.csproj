@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The real ZKTeco U350 export, read by ZktecoXlsUploadTests. -->
+    <None Include="..\Attendance data April and May 2026.xls" Link="TestData\ZktecoExport.xls" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- robeem.Web's API clients and tenant handler use ASP.NET Core types. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

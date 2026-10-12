@@ -201,9 +201,26 @@ public sealed class ZktecoAdapterTests : IDisposable
 
         Assert.Equal(ZktecoProvider.ProviderKey, guide.ProviderKey);
         Assert.Contains(guide.EventCodes, c => c is { Code: "C/In", EventType: nameof(NormalizedEventType.CheckIn) });
-        Assert.Equal(ZktecoInterpreter.EventCodes.Count, guide.EventCodes.Count);
-        Assert.Equal(ZktecoInterpreter.TimestampFormats, guide.TimestampFormats);
+        Assert.Equal(["C/In", "C/Out"], guide.EventCodes.Select(c => c.Code));
+        Assert.Equal([ZktecoInterpreter.ExportTimestampFormat], guide.TimestampFormats);
         Assert.Contains("CardNo", guide.NotStored);
+    }
+
+    [Fact]
+    public async Task Guide_ListsTheColumnsOfTheRealExport_InTheOrderTheFileHasThem()
+    {
+        var guide = new ZktecoProvider().DescribeMapping();
+        var config = new AttendanceIntegrationConfig(_integrationId, ZktecoProvider.ProviderKey, string.Empty) { UploadFilePath = Path.Combine(AppContext.BaseDirectory, "TestData", "ZktecoExport.xls") };
+
+        var batch = await new ZktecoProvider().RetrieveAttendanceTransactionsAsync(config, null, CancellationToken.None);
+
+        // The payload keeps the file's columns in file order, minus CardNo, which is never copied.
+        var columns = JsonDocument.Parse(batch.Transactions[0].RawPayload).RootElement.EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Equal(guide.Fields.Select(f => f.Source).Where(s => s != "CardNo"), columns);
+        Assert.All(batch.Transactions, t => Assert.True(
+            DateTime.TryParseExact(t.TransactionTimestampRaw, ZktecoInterpreter.ExportTimestampFormat, global::System.Globalization.CultureInfo.InvariantCulture, global::System.Globalization.DateTimeStyles.None, out _),
+            t.TransactionTimestampRaw));
+        Assert.All(batch.Transactions, t => Assert.Contains(t.TransactionTypeRaw, guide.EventCodes.Select(c => c.Code)));
     }
 
     private IngestionService CreateIngestion(RobeemDbContext db) =>

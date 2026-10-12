@@ -1,0 +1,129 @@
+@model RawTransactionsIndexViewModel
+@{
+    ViewData["Title"] = "Raw transactions";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Raw transactions</h1>
+</div>
+
+<p class="text-muted">
+    Every punch exactly as the time clock or file sent it, newest first. Raw punches are never changed or deleted: what
+    they became is on the <a asp-controller="NormalizedTransactions" asp-action="Index">Normalized transactions</a> screen.
+    The dates are when the batch that stored the punch started. Opening this screen is written to the audit log.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="integrationId">Integration</label>
+        <select id="integrationId" name="integrationId" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var integration in Model.Integrations)
+            {
+                <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="status">Status</label>
+        <select id="status" name="status" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var status in RawTransactionsIndexViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@status</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="batchId">Batch</label>
+        <input id="batchId" name="batchId" type="number" min="1" value="@Model.BatchId" class="form-control form-control-sm" style="width: 6rem" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="search">Employee, device or transaction id</label>
+        <input id="search" name="search" type="text" value="@Model.Search" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="take">Rows</label>
+        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" style="width: 6rem" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Rows.Count == 0)
+    {
+        <div class="card-body text-muted">No raw punches match.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Integration</th>
+                        <th>Batch</th>
+                        <th>Received</th>
+                        <th>Employee id</th>
+                        <th>Device id</th>
+                        <th>Transaction id</th>
+                        <th>Timestamp</th>
+                        <th>Label</th>
+                        <th>Status</th>
+                        <th>Normalized</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        <tr class="@(row.Status == "Failed" ? "table-danger" : null)">
+                            <td>
+                                <details>
+                                    <summary>@row.Id</summary>
+                                    <pre class="small mb-0">@row.Payload</pre>
+                                </details>
+                            </td>
+                            <td>@row.IntegrationName</td>
+                            <td>@row.BatchId</td>
+                            <td>@DisplayFormats.DateTime(row.ReceivedAt)</td>
+                            <td>@(row.ExternalEmployeeId ?? "—")</td>
+                            <td>@(row.DeviceExternalId ?? "—")</td>
+                            <td>@(row.ExternalTransactionId ?? "—")</td>
+                            <td><code>@row.TimestampRaw</code></td>
+                            <td>@(string.Join(" · ", new[] { row.TypeRaw, row.DirectionRaw }.Where(v => !string.IsNullOrEmpty(v))) is { Length: > 0 } label ? label : "—")</td>
+                            <td>
+                                <span class="badge text-bg-@DisplayFormats.Badge(row.Status)">@row.Status</span>
+                                @if (row.ProcessingError is not null)
+                                {
+                                    <div class="small text-danger">@row.ProcessingError</div>
+                                }
+                            </td>
+                            <td>
+                                @if (row.NormalizedId is { } normalizedId)
+                                {
+                                    <a asp-controller="NormalizedTransactions" asp-action="Index" asp-route-rawId="@row.Id">#@normalizedId</a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

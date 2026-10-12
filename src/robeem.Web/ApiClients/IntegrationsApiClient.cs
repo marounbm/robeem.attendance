@@ -8,7 +8,6 @@ namespace robeem.Web.ApiClients;
 public sealed class IntegrationsApiClient : IIntegrationsApiClient
 {
     private const string Path = "api/attendance/integrations";
-    private const string IngestionPath = "api/attendance/ingestion";
 
     private readonly HttpClient _http;
 
@@ -36,6 +35,12 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
     {
         using var response = await _http.GetAsync($"{Path}/providers", cancellationToken);
         return await ApiResponses.ReadAsync<List<ProviderOption>>(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync("api/attendance/file-formats/options", cancellationToken);
+        return await ApiResponses.ReadAsync<List<FileFormatOption>>(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
@@ -123,11 +128,16 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.ReadAsync<SyncOutcomeResponse>(response, cancellationToken);
     }
 
-    public async Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)
+    public async Task<RetryFailedResponse?> RetryFailedAsync(int integrationId, CancellationToken cancellationToken)
     {
-        using var content = new MultipartFormDataContent { { new StreamContent(file), "file", fileName } };
-        using var response = await _http.PostAsync($"{IngestionPath}/{Number(integrationId)}/uploads", content, cancellationToken);
-        return await ApiResponses.CommandAsync<AttendanceIngestionResult>(response, cancellationToken);
+        using var response = await _http.PostAsync($"{IntegrationPath(integrationId)}/retry-failed", null, cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<RetryFailedResponse>(response, cancellationToken);
+    }
+
+    public async Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsync($"{IntegrationPath(integrationId)}/renormalize-flagged", null, cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<RenormalizeFlaggedResponse>(response, cancellationToken);
     }
 
     private static string IntegrationPath(int id) => $"{Path}/{Number(id)}";

@@ -34,6 +34,39 @@ namespace robeem.DataModel
         [MaxLength(255)]
         public string ConnectionConfigRef { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Gets or sets how this integration receives attendance. One of the provider's
+        /// <see cref="AttendanceProvider.SupportedTransports"/>; only <see cref="AttendanceTransport.FileUpload"/>
+        /// integrations are offered on the Upload attendance screen.
+        /// </summary>
+        public AttendanceTransport Transport { get; set; } = AttendanceTransport.FileUpload;
+
+        /// <summary>
+        /// Gets or sets the custom file layout uploads are read by; null for the provider's own layout.
+        /// Only meaningful when <see cref="Transport"/> is <see cref="AttendanceTransport.FileUpload"/>.
+        /// </summary>
+        public int? FileFormatId { get; set; }
+
+        public AttendanceFileFormat? FileFormat { get; set; }
+
+        /// <summary>
+        /// Gets or sets the device every punch of an uploaded file is attributed to, ignoring the device
+        /// id in the file: a file has no physical device. One of this integration's own devices; only
+        /// meaningful when <see cref="Transport"/> is <see cref="AttendanceTransport.FileUpload"/>. Null:
+        /// the file's device id is looked up, and an unregistered one is flagged.
+        /// </summary>
+        public int? DefaultDeviceId { get; set; }
+
+        public AttendanceDevice? DefaultDevice { get; set; }
+
+        /// <summary>
+        /// Gets or sets the IANA time zone used to read a punch that carries no UTC offset when its
+        /// device gives none (the device is unknown or unregistered). A registered device's own zone
+        /// always wins. Null: such a punch fails normalization.
+        /// </summary>
+        [MaxLength(64)]
+        public string? TimeZoneId { get; set; }
+
         [MaxLength(100)]
         public string? PollingScheduleCron { get; set; }
 

@@ -4,7 +4,10 @@ using Microsoft.Extensions.Options;
 using robeem.Api.Attendance;
 using robeem.Api.Attendance.Jobs;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Jobs;
 using robeem.Application.Tenancy;
+using robeem.Contracts.Attendance;
+using robeem.DataModel;
 
 namespace robeem.Tests.Api;
 
@@ -230,6 +233,7 @@ public sealed class AttendanceJobsTests
             new FakeTenants(_log),
             new FakeTenants(_log),
             Options.Create(new AttendanceSyncOptions { Enabled = syncEnabled, ReconciliationEnabled = reconciliationEnabled, ReconciliationCron = cron }),
+            TimeProvider.System,
             NullLogger<ReconciliationJob>.Instance);
 
         Assert.Equal(expectedEnabled, job.Enabled);
@@ -244,7 +248,7 @@ public sealed class AttendanceJobsTests
         new(tenants, tenants, Options.Create(new AttendanceSyncOptions()), clock, NullLogger<IntegrationSyncJob>.Instance);
 
     private ReconciliationJob ReconciliationJob(FakeTenants tenants) =>
-        new(tenants, tenants, Options.Create(new AttendanceSyncOptions()), NullLogger<ReconciliationJob>.Instance);
+        new(tenants, tenants, Options.Create(new AttendanceSyncOptions()), TimeProvider.System, NullLogger<ReconciliationJob>.Instance);
 
     private sealed class Log
     {
@@ -288,6 +292,8 @@ public sealed class AttendanceJobsTests
             _providers[id] = new ServiceCollection()
                 .AddSingleton<INormalizationService>(new FakeNormalization(_log, id, pendingBatches ?? [], throwOnNormalize))
                 .AddSingleton<IIntegrationSyncService>(new FakeSync(_log, id, polling ?? [], throwOnList, throwOnSyncOf, syncOutcome ?? new SyncOutcome(SyncOutcomeStatus.Succeeded), throwOnPrune))
+                .AddSingleton<IPendingDayProcessor>(new FakePendingDays())
+                .AddSingleton<IJobRunLog>(new FakeJobRunLog())
                 .BuildServiceProvider();
             return this;
         }
@@ -296,6 +302,28 @@ public sealed class AttendanceJobsTests
 
         public AsyncServiceScope CreateScope(string tenantId) =>
             _broken.Contains(tenantId) ? throw new InvalidOperationException($"No scope for {tenantId}.") : _providers[tenantId].CreateAsyncScope();
+    }
+
+    private sealed class FakePendingDays : IPendingDayProcessor
+    {
+        public Task<int> ProcessPendingAsync(int maxDays, CancellationToken cancellationToken) => Task.FromResult(0);
+    }
+
+    private sealed class FakeJobRunLog : IJobRunLog
+    {
+        public Task<int> BeginAsync(string jobName, JobTrigger trigger, JobRunStatus status, DateTime? scheduledFor, DateTime startedAt, DateTime? completedAt, string? summary, int? requestedById, CancellationToken cancellationToken) => Task.FromResult(1);
+
+        public Task CompleteAsync(int runId, JobRunStatus status, int workItems, string? summary, DateTime completedAt, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<JobRunItem>> ListAsync(string? jobName, string? status, int take, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<JobRunItem>>([]);
+
+        public Task<IReadOnlyDictionary<string, JobRunItem>> LastRunsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyDictionary<string, JobRunItem>>(new Dictionary<string, JobRunItem>());
+
+        public Task<DateTime?> LastScheduledAtAsync(string jobName, CancellationToken cancellationToken) => Task.FromResult<DateTime?>(null);
+
+        public Task<int> FailInterruptedAsync(DateTime now, CancellationToken cancellationToken) => Task.FromResult(0);
+
+        public Task<int> PruneAsync(DateTime olderThan, CancellationToken cancellationToken) => Task.FromResult(0);
     }
 
     private sealed class FakeNormalization(Log log, string tenant, int[] pending, bool throwOnNormalize) : INormalizationService

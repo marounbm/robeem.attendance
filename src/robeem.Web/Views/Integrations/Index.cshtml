@@ -28,6 +28,7 @@
                     <tr>
                         <th scope="col">Name</th>
                         <th scope="col">Provider</th>
+                        <th scope="col">Receives by</th>
                         <th scope="col">Status</th>
                         <th scope="col">Health</th>
                         <th scope="col">Schedule</th>
@@ -43,9 +44,10 @@
                         <tr>
                             <td><a asp-action="Details" asp-route-id="@item.Id">@item.DisplayName</a></td>
                             <td>@item.ProviderName</td>
+                            <td>@DisplayFormats.Transport(item.Transport)</td>
                             <td><span class="badge text-bg-@(item.Status == "Active" ? "success" : item.Status == "Failed" ? "danger" : "secondary")">@item.Status</span></td>
                             <td><span class="badge text-bg-@DisplayFormats.Badge(item.HealthStatus)">@item.HealthStatus</span></td>
-                            <td class="text-nowrap"><code>@(item.PollingScheduleCron ?? "uploads only")</code></td>
+                            <td class="text-nowrap"><code>@(item.PollingScheduleCron ?? "—")</code></td>
                             <td class="text-nowrap">@DisplayFormats.DateTime(item.LastSuccessfulSyncAt)</td>
                             <td class="text-end">@item.DeviceCount</td>
                             <td class="text-end">@item.MappingCount</td>

@@ -102,6 +102,22 @@ public sealed class IntegrationRawMappingTests : IDisposable
     }
 
     [Fact]
+    public async Task AReplacedPunch_IsNotShownBesideItsRawRow()
+    {
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.NormalizedAttendanceTransactions.OrderBy(n => n.Id).First().ProcessingStatus = NormalizedTransactionProcessingStatus.Excluded;
+            db.SaveChanges();
+        }
+
+        var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 0)))!;
+
+        Assert.Equal(5, rows.Count);
+        Assert.Null(rows[4].NormalizedId);
+        Assert.NotNull(rows[3].NormalizedId);
+    }
+
+    [Fact]
     public async Task ARowThatFailed_HasNoNormalizedSide_AndSaysWhy()
     {
         var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 0)))!;

@@ -20,12 +20,21 @@ public sealed class AttendanceSeedContributor : ISeedContributor
 {
     public const string CsvProviderKey = "generic-csv";
 
+    // The names rows were seeded with earlier, by provider key. The transport is chosen on the
+    // integration, so a provider name carries only the vendor and product.
+    private static readonly Dictionary<string, string[]> LegacyDisplayNames = new(StringComparer.Ordinal)
+    {
+        ["generic-webhook"] = ["Generic webhook (adapter not available yet)"],
+        ["zkteco"] = ["ZKTeco-style biometric devices (adapter not available yet)", "ZKTeco attendance export (CSV upload)", "ZKTeco attendance export (XLS / CSV upload)"],
+        ["suprema-biostar"] = ["Suprema BioStar (adapter not available yet)", "Suprema BioStar 2 (REST API)"],
+    };
+
     private static readonly SeedProvider[] Providers =
     [
         new(CsvProviderKey, "Generic CSV upload", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true),
-        new("generic-webhook", "Generic webhook (adapter not available yet)", AttendanceTransport.Webhook, SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
-        new("zkteco", "ZKTeco attendance export (CSV upload)", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
-        new("suprema-biostar", "Suprema BioStar 2 (REST API)", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
+        new("generic-webhook", "Generic webhook", AttendanceTransport.Webhook, SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
+        new("zkteco", "ZKTeco", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
+        new("suprema-biostar", "Suprema BioStar 2", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
     ];
 
     /// <summary>Gets the run order; after the HR seed.</summary>
@@ -49,23 +58,42 @@ public sealed class AttendanceSeedContributor : ISeedContributor
             });
         }
 
-        // Rows seeded before the vendor details existed get them, but only into empty fields: what an
-        // administrator typed is never replaced.
-        var vendors = Providers.Where(p => p.Manufacturer.Length > 0 && existing.Contains(p.Key, StringComparer.Ordinal)).ToList();
-        if (vendors.Count > 0)
+        // Rows seeded before a field existed get it, but only into empty fields: what an administrator
+        // typed is never replaced. A provider is also switched on once its adapter exists (its seed flag
+        // is true): a row seeded while the adapter was missing would otherwise stay disabled for good,
+        // and nothing in the application ever switches a provider off.
+        var present = Providers.Where(p => existing.Contains(p.Key, StringComparer.Ordinal)).ToList();
+        if (present.Count > 0)
         {
-            var keys = vendors.Select(v => v.Key).ToList();
+            var keys = present.Select(v => v.Key).ToList();
             foreach (var row in await db.AttendanceProviders.Where(p => keys.Contains(p.ProviderKey)).ToListAsync(cancellationToken))
             {
-                var vendor = vendors.Single(v => v.Key == row.ProviderKey);
+                var seeded = present.Single(v => v.Key == row.ProviderKey);
+
+                // The name this row was seeded with before the suffix was dropped; a name an administrator typed is left alone.
+                if (LegacyDisplayNames.TryGetValue(row.ProviderKey, out var legacyNames) && legacyNames.Contains(row.DisplayName))
+                {
+                    row.DisplayName = seeded.DisplayName;
+                }
+
                 if (row.Manufacturer.Length == 0)
                 {
-                    row.Manufacturer = vendor.Manufacturer;
+                    row.Manufacturer = seeded.Manufacturer;
                 }
 
                 if (row.WebsiteUrl.Length == 0)
                 {
-                    row.WebsiteUrl = vendor.WebsiteUrl;
+                    row.WebsiteUrl = seeded.WebsiteUrl;
+                }
+
+                if (row.SupportedTransports.Length == 0)
+                {
+                    row.SupportedTransports = seeded.Transport.ToString();
+                }
+
+                if (seeded.IsActive && !row.IsActive)
+                {
+                    row.IsActive = true;
                 }
             }
         }

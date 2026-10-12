@@ -7,7 +7,7 @@ namespace robeem.Web.Controllers;
 
 /// <summary>
 /// Integrations: the connections to attendance providers, their devices and vendor-id mappings,
-/// health, file upload, and sync-now. An integration is paused, never deleted (raw data points at
+/// health, and sync-now (file upload is the Uploads screen). An integration is paused, never deleted (raw data points at
 /// it). The connection secret is only ever a reference here; the secret lives in configuration.
 /// </summary>
 public sealed class IntegrationsController : Controller
@@ -29,8 +29,13 @@ public sealed class IntegrationsController : Controller
         var providers = await _integrations.ListProvidersAsync(cancellationToken);
         return View(new IntegrationFormViewModel
         {
-            Input = new IntegrationInput { ProviderId = providers.FirstOrDefault(p => p.IsActive)?.Id ?? 0 },
+            Input = new IntegrationInput
+            {
+                ProviderId = providers.FirstOrDefault(p => p.IsActive)?.Id ?? 0,
+                Transport = providers.FirstOrDefault(p => p.IsActive)?.SupportedTransports.FirstOrDefault() ?? "FileUpload",
+            },
             Providers = providers,
+            FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken),
         });
     }
 
@@ -50,6 +55,7 @@ public sealed class IntegrationsController : Controller
         }
 
         model.Providers = await _integrations.ListProvidersAsync(cancellationToken);
+        model.FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken);
         return View(model);
     }
 
@@ -61,7 +67,14 @@ public sealed class IntegrationsController : Controller
             return NotFound();
         }
 
-        return View(new IntegrationFormViewModel { Id = id, Input = input, Providers = await _integrations.ListProvidersAsync(cancellationToken) });
+        return View(new IntegrationFormViewModel
+        {
+            Id = id,
+            Input = input,
+            Providers = await _integrations.ListProvidersAsync(cancellationToken),
+            FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken),
+            Devices = await _integrations.ListDevicesAsync(id, cancellationToken),
+        });
     }
 
     [HttpPost]
@@ -86,6 +99,8 @@ public sealed class IntegrationsController : Controller
 
         model.Id = id;
         model.Providers = await _integrations.ListProvidersAsync(cancellationToken);
+        model.FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken);
+        model.Devices = await _integrations.ListDevicesAsync(id, cancellationToken);
         return View(model);
     }
 
@@ -168,25 +183,42 @@ public sealed class IntegrationsController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> Upload(int id, IFormFile? file, CancellationToken cancellationToken)
+    public async Task<IActionResult> RetryFailed(int id, CancellationToken cancellationToken)
     {
-        if (file is null || file.Length == 0)
+        if (await _integrations.RetryFailedAsync(id, cancellationToken) is not { } result)
         {
-            TempData["ErrorMessage"] = "Choose a file to upload: it can't be empty.";
-            return RedirectToAction(nameof(Details), new { id });
+            return NotFound();
         }
 
-        await using var stream = file.OpenReadStream();
-        var result = await _integrations.UploadAsync(id, stream, file.FileName, cancellationToken);
-        if (result.Succeeded)
+        TempData["StatusMessage"] = result.Requeued == 0
+            ? "No punch is waiting on a time zone."
+            : $"{result.Requeued} punch(es) were queued to be normalized again; that takes a few seconds.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> RenormalizeFlagged(int id, CancellationToken cancellationToken)
+    {
+        if (await _integrations.RenormalizeFlaggedAsync(id, cancellationToken) is not { } result)
         {
-            var batch = result.Value!;
-            var text = $"Uploaded {file.FileName}: {batch.RecordsIngested} row(s) stored, {batch.RecordsFailed} unusable. Status: {batch.Status}.";
-            TempData[batch.Status == "Failed" ? "ErrorMessage" : "StatusMessage"] = text + (string.IsNullOrWhiteSpace(batch.ErrorSummary) ? string.Empty : " " + batch.ErrorSummary);
+            return NotFound();
+        }
+
+        if (result.Requeued > 0)
+        {
+            TempData["StatusMessage"] = $"{result.Requeued} punch(es) were queued to be normalized again; that takes a few seconds, and their days are then calculated."
+                + (result.Unresolved > 0 ? $" {result.Unresolved} other flagged punch(es) can't be resolved yet." : string.Empty);
+        }
+        else if (result.Unresolved == 0)
+        {
+            TempData["StatusMessage"] = "No punch of this integration is flagged for an unrecognized device right now. If you pressed this button before, they were already queued: look at Normalized transactions.";
         }
         else
         {
-            TempData["ErrorMessage"] = result.MessageText;
+            TempData["ErrorMessage"] = $"{result.Unresolved} flagged punch(es) can't be resolved yet: "
+                + (result.Transport == "FileUpload"
+                    ? "this integration has no device for uploaded files and their devices are not registered. Edit the integration, choose one under Device for uploaded files, and save."
+                    : $"this integration receives attendance by {DisplayFormats.Transport(result.Transport)}, not manual file upload, so it has no device for uploaded files. Register the punches' devices instead.");
         }
 
         return RedirectToAction(nameof(Details), new { id });

@@ -53,6 +53,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
 
+    public DbSet<AttendanceFileFormat> AttendanceFileFormats => Set<AttendanceFileFormat>();
+
+    public DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes => Set<AttendanceFileFormatEventCode>();
+
     public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
 
     public DbSet<AttendanceProcessingBatch> AttendanceProcessingBatches => Set<AttendanceProcessingBatch>();
@@ -76,6 +80,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
     public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
 
     public DbSet<AttendanceAuditLog> AttendanceAuditLogs => Set<AttendanceAuditLog>();
+
+    public DbSet<AttendanceUploadedFile> AttendanceUploadedFiles => Set<AttendanceUploadedFile>();
+
+    public DbSet<AttendanceJobRun> AttendanceJobRuns => Set<AttendanceJobRun>();
 
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
@@ -166,9 +174,9 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     private static void EnsureAuditLogAppendOnly(EntityEntry entry)
     {
-        if (entry.Entity is AttendanceAuditLog)
+        if (entry.Entity is AttendanceAuditLog or AttendanceUploadedFile)
         {
-            throw new InvalidOperationException("AttendanceAuditLog is append-only: a row is never changed or deleted.");
+            throw new InvalidOperationException($"{entry.Entity.GetType().Name} is append-only: a row is never changed or deleted.");
         }
     }
 

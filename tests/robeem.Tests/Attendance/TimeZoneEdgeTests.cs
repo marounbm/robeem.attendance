@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using robeem.Application.Attendance;
+using robeem.Contracts.Attendance;
 using robeem.DataModel;
 using robeem.Infrastructure.Attendance.Providers;
+using robeem.Infrastructure.Persistence;
 
 namespace robeem.Tests.Attendance;
 
@@ -128,13 +130,308 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         Assert.Equal((TimeSpan.FromHours(8), 0, AttendanceRecordStatus.Approved), (record.WorkingHours, record.LateMinutes, record.Status));
     }
 
+    [Fact]
+    public async Task AnUnknownDevice_WithNoIntegrationZone_FailsAsKnownToBeWaitingOnAZone()
+    {
+        Prepare();
+        var rawId = AddUnknownDeviceRaw("2026-10-05 08:00:00");
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(0, 0, 0, 1), result);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(db.NormalizedAttendanceTransactions);
+        var raw = db.RawAttendanceTransactions.Single(r => r.Id == rawId);
+        Assert.Equal(RawTransactionProcessingStatus.Failed, raw.ProcessingStatus);
+        Assert.StartsWith(NormalizationFailures.NoTimeZonePrefix, raw.ProcessingError);
+        Assert.Contains("integration has no time zone", raw.ProcessingError);
+    }
+
+    [Fact]
+    public async Task AnUnknownDevice_IsReadInTheIntegrationsZone_AndStillFlagged()
+    {
+        Prepare();
+        SetIntegrationZone("Asia/Beirut");
+        AddUnknownDeviceRaw("2026-10-05 08:00:00");
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(1, 0, 1, 0), result);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var row = db.NormalizedAttendanceTransactions.Single();
+        Assert.Equal(new DateTimeOffset(2026, 10, 5, 5, 0, 0, TimeSpan.Zero), row.EventTimestampUtc);
+        Assert.Equal((new DateTime(2026, 10, 5, 8, 0, 0), new DateTime(2026, 10, 5), "Asia/Beirut"), (row.EventTimestampLocal, row.AttendanceDate, row.TimeZoneId));
+        Assert.Equal((null, TransactionExceptionStatus.FlaggedUnrecognizedDevice), (row.DeviceId, row.ExceptionStatus));
+    }
+
+    [Fact]
+    public async Task ARegisteredDevicesZone_WinsOverTheIntegrationsZone()
+    {
+        UseDeviceZone(NewYork);
+        SetIntegrationZone("Asia/Beirut");
+        AddRaw("2026-10-05 08:00:00", "IN");
+
+        await NormalizeAsync();
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var row = db.NormalizedAttendanceTransactions.Single();
+        Assert.Equal(new DateTimeOffset(2026, 10, 5, 12, 0, 0, TimeSpan.Zero), row.EventTimestampUtc);
+        Assert.Equal((NewYork, TransactionExceptionStatus.None), (row.TimeZoneId, row.ExceptionStatus));
+    }
+
+    [Fact]
+    public async Task APunchInTheGapOfTheIntegrationsZone_FailsWithoutBeingTakenForAMissingZone()
+    {
+        Prepare();
+        SetIntegrationZone(NewYork);
+        var rawId = AddUnknownDeviceRaw("2026-03-08 02:30:00");
+
+        await NormalizeAsync();
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var error = db.RawAttendanceTransactions.Single(r => r.Id == rawId).ProcessingError;
+        Assert.Contains("integration time zone", error);
+        Assert.Contains("daylight-saving gap", error);
+        Assert.DoesNotContain(NormalizationFailures.NoTimeZonePrefix, error);
+    }
+
+    [Fact]
+    public async Task RetryingFailedPunches_QueuesOnlyTheOnesThatWaitedOnAZone_AndTheyNormalizeOnceAZoneIsSet()
+    {
+        Prepare();
+        var waiting = AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        var broken = AddFailedRaw("Unparseable timestamp 'x'.");
+        await NormalizeAsync();
+        SetIntegrationZone("Asia/Beirut");
+
+        int? queued;
+        int integrationId;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            integrationId = db.AttendanceIntegrations.Single().Id;
+            queued = await CreateIntegrationService(db).RetryFailedAsync(integrationId, CancellationToken.None);
+        }
+
+        Assert.Equal(1, queued);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(RawTransactionProcessingStatus.Pending, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingStatus);
+            Assert.Null(db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingError);
+            Assert.Equal(RawTransactionProcessingStatus.Failed, db.RawAttendanceTransactions.Single(r => r.Id == broken).ProcessingStatus);
+            Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.IntegrationChanged && a.Details!.Contains("1 punch(es)"));
+        }
+
+        Assert.Equal(new NormalizationResult(1, 0, 1, 0), await NormalizeAsync());
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(RawTransactionProcessingStatus.Normalized, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingStatus);
+            Assert.Equal("Asia/Beirut", db.NormalizedAttendanceTransactions.Single().TimeZoneId);
+            Assert.Null(await CreateIntegrationService(db).RetryFailedAsync(integrationId + 100, CancellationToken.None));
+        }
+    }
+
+    [Fact]
+    public async Task TheDeviceForUploads_TakesEveryPunch_UnknownOrRegisteredDeviceAlike_WithoutAFlag()
+    {
+        UseDeviceZone(NewYork);
+        var uploadDeviceId = AddDeviceForUploads("Asia/Beirut");
+        AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        AddRaw("2026-10-05 09:00:00", "IN");
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(2, 0, 0, 0), result);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var rows = db.NormalizedAttendanceTransactions.OrderBy(n => n.Id).ToList();
+        Assert.All(rows, n => Assert.Equal((uploadDeviceId, "Asia/Beirut", TransactionExceptionStatus.None), (n.DeviceId, n.TimeZoneId, n.ExceptionStatus)));
+        Assert.Equal(new DateTimeOffset(2026, 10, 5, 5, 0, 0, TimeSpan.Zero), rows[0].EventTimestampUtc);
+
+        // The registered device of the file is ignored, so its New York zone does not apply.
+        Assert.Equal(new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.Zero), rows[1].EventTimestampUtc);
+    }
+
+    [Fact]
+    public async Task TheDeviceForUploads_IsIgnored_ByAnIntegrationThatDoesNotReceiveFiles()
+    {
+        Prepare();
+        AddDeviceForUploads("Asia/Beirut");
+        SetTransport(AttendanceTransport.RestApi);
+        SetIntegrationZone("Asia/Beirut");
+        AddUnknownDeviceRaw("2026-10-05 08:00:00");
+
+        await NormalizeAsync();
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var row = db.NormalizedAttendanceTransactions.Single();
+        Assert.Equal((null, TransactionExceptionStatus.FlaggedUnrecognizedDevice), (row.DeviceId, row.ExceptionStatus));
+    }
+
+    [Fact]
+    public async Task RenormalizingFlaggedPunches_ReplacesThemWithPunchesOfTheDeviceForUploads_AndLeavesTheOldOnesAsHistory()
+    {
+        Prepare();
+        SetIntegrationZone("Asia/Beirut");
+        var rawId = AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        await NormalizeAsync();
+
+        RenormalizeFlaggedResponse? queued;
+        int integrationId;
+        int uploadDeviceId;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            integrationId = db.AttendanceIntegrations.Single().Id;
+
+            // Nothing can resolve the device yet, so nothing is taken up again, and the answer says why.
+            var none = await CreateIntegrationService(db).RenormalizeFlaggedAsync(integrationId, CancellationToken.None);
+            Assert.Equal((0, 1, false, "FileUpload"), (none!.Requeued, none.Unresolved, none.HasDeviceForUploads, none.Transport));
+        }
+
+        uploadDeviceId = AddDeviceForUploads("Asia/Beirut");
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            queued = await CreateIntegrationService(db).RenormalizeFlaggedAsync(integrationId, CancellationToken.None);
+        }
+
+        Assert.Equal((1, 0, true), (queued!.Requeued, queued.Unresolved, queued.HasDeviceForUploads));
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var old = db.NormalizedAttendanceTransactions.Single();
+            Assert.Equal((NormalizedTransactionProcessingStatus.Excluded, TransactionExceptionStatus.FlaggedUnrecognizedDevice, (int?)null), (old.ProcessingStatus, old.ExceptionStatus, old.DeviceId));
+            Assert.Equal(RawTransactionProcessingStatus.Pending, db.RawAttendanceTransactions.Single(r => r.Id == rawId).ProcessingStatus);
+            Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.IntegrationChanged && a.Details!.Contains("1 punch(es) flagged for an unrecognized device"));
+        }
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 0), await NormalizeAsync());
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var rows = db.NormalizedAttendanceTransactions.OrderBy(n => n.Id).ToList();
+            Assert.Equal(2, rows.Count);
+            Assert.Equal((NormalizedTransactionProcessingStatus.Excluded, TransactionExceptionStatus.FlaggedUnrecognizedDevice), (rows[0].ProcessingStatus, rows[0].ExceptionStatus));
+            Assert.Equal((uploadDeviceId, TransactionExceptionStatus.None, DuplicateStatus.Unique, rawId), (rows[1].DeviceId, rows[1].ExceptionStatus, rows[1].DuplicateStatus, rows[1].RawTransactionId));
+            Assert.Equal(RawTransactionProcessingStatus.Normalized, db.RawAttendanceTransactions.Single(r => r.Id == rawId).ProcessingStatus);
+
+            // Taking the same flagged punches up again finds none: the old one is already replaced.
+            var again = await CreateIntegrationService(db).RenormalizeFlaggedAsync(integrationId, CancellationToken.None);
+            Assert.Equal((0, 0), (again!.Requeued, again.Unresolved));
+            Assert.Null(await CreateIntegrationService(db).RenormalizeFlaggedAsync(integrationId + 100, CancellationToken.None));
+        }
+    }
+
+    [Fact]
+    public async Task RenormalizingFlaggedPunches_AlsoTakesUpThoseWhoseDeviceWasRegisteredSince()
+    {
+        Prepare();
+        SetIntegrationZone("Asia/Beirut");
+        AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        await NormalizeAsync();
+
+        // The file's device "99" is registered afterwards.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDevices.Add(new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "99", Name = "Late", TimeZoneId = "Asia/Beirut" });
+            db.SaveChanges();
+        }
+
+        RenormalizeFlaggedResponse? queued;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            queued = await CreateIntegrationService(db).RenormalizeFlaggedAsync(db.AttendanceIntegrations.Single().Id, CancellationToken.None);
+        }
+
+        Assert.Equal((1, 0, false), (queued!.Requeued, queued.Unresolved, queued.HasDeviceForUploads));
+        await NormalizeAsync();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var live = db.NormalizedAttendanceTransactions.Single(n => n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded);
+            Assert.Equal(("Late", TransactionExceptionStatus.None), (db.AttendanceDevices.Single(d => d.Id == live.DeviceId).Name, live.ExceptionStatus));
+        }
+    }
+
     private static VendorTimestamp At(int year, int month, int day, int hour, int minute) =>
         new(new DateTime(year, month, day, hour, minute, 0), null);
 
-    private void UseDeviceZone(string timeZoneId)
+    private AttendanceIntegrationService CreateIntegrationService(RobeemDbContext db) =>
+        new(db, new NoSync(), CreateAudit(db), new ServiceCollection().BuildServiceProvider());
+
+    private int AddDeviceForUploads(string timeZoneId)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        db.AttendanceDevices.Single().TimeZoneId = timeZoneId;
+        var integration = db.AttendanceIntegrations.Single();
+        var device = new AttendanceDevice { IntegrationId = integration.Id, ExternalDeviceId = "upload", Name = "Uploads", TimeZoneId = timeZoneId };
+        db.AttendanceDevices.Add(device);
+        db.SaveChanges();
+        integration.DefaultDeviceId = device.Id;
+        db.SaveChanges();
+        return device.Id;
+    }
+
+    private void SetTransport(AttendanceTransport transport)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.AttendanceIntegrations.Single().Transport = transport;
+        db.SaveChanges();
+    }
+
+    private void SetIntegrationZone(string? timeZoneId)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.AttendanceIntegrations.Single().TimeZoneId = timeZoneId;
+        db.SaveChanges();
+    }
+
+    private int AddUnknownDeviceRaw(string timestamp)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var raw = new RawAttendanceTransaction
+        {
+            IntegrationId = db.AttendanceIntegrations.Single().Id,
+            ImportBatchId = db.AttendanceProcessingBatches.Single().Id,
+            DeviceExternalId = "99",
+            ExternalEmployeeId = "E-1",
+            TransactionTimestampRaw = timestamp,
+            TransactionTypeRaw = "IN",
+            RawPayload = "{}",
+            SourceSystem = GenericCsvProvider.ProviderKey,
+            RecordHash = Guid.NewGuid().ToString("N"),
+        };
+        db.RawAttendanceTransactions.Add(raw);
+        db.SaveChanges();
+        return raw.Id;
+    }
+
+    private int AddFailedRaw(string error)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var raw = new RawAttendanceTransaction
+        {
+            IntegrationId = db.AttendanceIntegrations.Single().Id,
+            ImportBatchId = db.AttendanceProcessingBatches.Single().Id,
+            TransactionTimestampRaw = "x",
+            RawPayload = "{}",
+            SourceSystem = GenericCsvProvider.ProviderKey,
+            RecordHash = Guid.NewGuid().ToString("N"),
+            ProcessingStatus = RawTransactionProcessingStatus.Failed,
+            ProcessingError = error,
+        };
+        db.RawAttendanceTransactions.Add(raw);
+        db.SaveChanges();
+        return raw.Id;
+    }
+
+    private void UseDeviceZone(string timeZoneId)
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDevices.OrderBy(d => d.Id).First().TimeZoneId = timeZoneId;
+            db.SaveChanges();
+        }
+
+        Prepare();
+    }
+
+    private void Prepare()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
 
         // The base fixture's seed row is not a punch of this test; normalization must leave it alone.
         db.RawAttendanceTransactions.Single().ProcessingStatus = RawTransactionProcessingStatus.Normalized;
@@ -147,7 +444,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();
-        var device = db.AttendanceDevices.Single();
+        var device = db.AttendanceDevices.OrderBy(d => d.Id).First();
         var raw = new RawAttendanceTransaction
         {
             IntegrationId = integration.Id,
@@ -172,5 +469,16 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         var batchId = db.AttendanceProcessingBatches.Single().Id;
         var service = new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _interpreters, NullLogger<NormalizationService>.Instance);
         return await service.NormalizeBatchAsync(batchId, CancellationToken.None);
+    }
+
+    private sealed class NoSync : IIntegrationSyncService
+    {
+        public Task<IReadOnlyList<PollingIntegration>> ListPollingIntegrationsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<SyncOutcome> SyncAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<SyncOutcome> ReconcileAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<int> PruneEmptyBatchesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

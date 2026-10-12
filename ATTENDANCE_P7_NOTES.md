@@ -143,7 +143,7 @@ The summary is a derived rollup, updated in place each time the day is processed
 
 ## Not done
 
-- **Normalized rows are not marked `Processed`.** The prompt didn't ask for it, and nothing triggers processing yet. A trigger is P10's job.
+- **Normalized rows are not marked `Processed`.** The prompt didn't ask for it, and nothing triggers processing yet. A trigger is P10's job. *(Added later: P10 did not add it. `PendingDayProcessor`, run by `NormalizationJob` after normalization, now processes the day of every `Pending` normalized punch that names an employee and marks those punches `Processed`; a punch with no recognized employee stays `Pending`.)*
 - **The shift's `Overtime` flag (`TimeShiftEntity.Overtime`) is not used.** Its meaning isn't documented: "overtime allowed" or "this is an overtime shift"?
 - **Corrections (P9) aren't folded in yet.** `AttendancePunchSource.Corrected` is ready for them.
 
