@@ -11,7 +11,7 @@ public sealed class NormalizationServiceTests : IDisposable
 {
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _interpreters = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey)
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .BuildServiceProvider();
 
     private readonly int _employeeId;
@@ -21,11 +21,12 @@ public sealed class NormalizationServiceTests : IDisposable
 
     public NormalizationServiceTests()
     {
+        _database.SeedAttendanceCatalog();
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var employee = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         var integration = new AttendanceIntegration
         {
-            Provider = new AttendanceProvider { ProviderKey = GenericCsvProvider.ProviderKey, DisplayName = "Generic CSV" },
+            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv"),
             DisplayName = "HQ",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };
@@ -239,7 +240,7 @@ public sealed class NormalizationServiceTests : IDisposable
             TransactionTimestampRaw = timestamp,
             TransactionTypeRaw = type,
             RawPayload = "{}",
-            SourceSystem = GenericCsvProvider.ProviderKey,
+            SourceSystem = "generic-csv",
             RecordHash = Guid.NewGuid().ToString("N"),
         };
         db.RawAttendanceTransactions.Add(raw);

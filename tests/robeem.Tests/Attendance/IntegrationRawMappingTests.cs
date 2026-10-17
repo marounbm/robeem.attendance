@@ -21,8 +21,8 @@ public sealed class IntegrationRawMappingTests : IDisposable
 
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _services = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey)
-        .AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .AddKeyedSingleton<IAttendanceProvider, UndescribedProvider>("undescribed")
         .BuildServiceProvider();
 
@@ -34,10 +34,11 @@ public sealed class IntegrationRawMappingTests : IDisposable
     public IntegrationRawMappingTests()
     {
         File.WriteAllText(_csvPath, Csv);
+        _database.SeedAttendanceCatalog();
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var zkteco = new AttendanceProvider { ProviderKey = ZktecoProvider.ProviderKey, DisplayName = "ZKTeco export" };
+            var zkteco = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
             var integration = new AttendanceIntegration { Provider = zkteco, DisplayName = "Head office clock" };
             var other = new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = "undescribed", DisplayName = "Undescribed" }, DisplayName = "Other" };
             db.AddRange(
@@ -87,7 +88,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
 
         Assert.NotNull(rows);
         Assert.Equal(["Failed", "Failed", "Normalized", "Normalized", "Normalized"], rows.Select(r => r.RawStatus));
-        Assert.All(rows, r => Assert.Equal((ZktecoProvider.ProviderKey, _integrationId, _batchId), (r.ProviderKey, r.IntegrationId, r.BatchId)));
+        Assert.All(rows, r => Assert.Equal(("zkteco", _integrationId, _batchId), (r.ProviderKey, r.IntegrationId, r.BatchId)));
 
         // Oldest raw row: the vendor's text on the left, the interpreted punch on the right.
         var first = rows[4];
@@ -179,7 +180,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     }
 
     [Fact]
-    public async Task TheGuide_IsTheAdaptersOwnDescription_OrSaysThereIsNone()
+    public async Task TheGuide_IsTheFormatsOrTheAdaptersOwnDescription_OrSaysThereIsNone()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = CreateService(db);
@@ -187,7 +188,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
         var guide = await service.GetRawMappingGuideAsync(_integrationId, CancellationToken.None);
         var undescribed = await service.GetRawMappingGuideAsync(_otherIntegrationId, CancellationToken.None);
 
-        Assert.Equal(ZktecoProvider.ProviderKey, guide!.ProviderKey);
+        Assert.Equal("zkteco", guide!.ProviderKey);
         Assert.Contains(guide.EventCodes, c => c.Code == "C/In");
         Assert.Equal("undescribed", undescribed!.ProviderKey);
         Assert.Contains("does not describe", undescribed.Summary);
@@ -201,7 +202,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>
-        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services);
+        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services, new StubAdapterCatalog());
 
     private sealed class NoSync : IIntegrationSyncService
     {

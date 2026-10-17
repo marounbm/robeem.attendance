@@ -1,0 +1,77 @@
+@model ProvidersIndexViewModel
+@{
+    ViewData["Title"] = "Providers";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Providers</h1>
+    <a class="btn btn-primary" asp-action="Create">Add provider</a>
+</div>
+
+<p class="text-muted">
+    The vendors you receive attendance from. A provider is <strong>usable</strong> when it is active and something can read what it
+    delivers: a <em>default file format</em> (for a time clock whose software exports files) or a <em>code adapter</em> registered under
+    its key (for a vendor that is pulled over an API or pushes webhooks). A provider is deactivated, never deleted.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card">
+    @if (Model.Providers.Count == 0)
+    {
+        <div class="card-body text-muted">No providers yet. <a asp-action="Create">Add the first one.</a></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Key</th>
+                        <th scope="col">Transports</th>
+                        <th scope="col">Default file format</th>
+                        <th scope="col">Code adapter</th>
+                        <th scope="col" class="text-end">Integrations</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Providers)
+                    {
+                        <tr>
+                            <td>
+                                @item.DisplayName
+                                @if (item.Manufacturer.Length > 0)
+                                {
+                                    <div class="small text-muted">@item.Manufacturer</div>
+                                }
+                            </td>
+                            <td><code>@item.ProviderKey</code></td>
+                            <td>File upload@(item.Transports.Count > 0 ? ", " + string.Join(", ", item.Transports) : string.Empty)</td>
+                            <td>@(item.DefaultFileFormatName ?? "—")</td>
+                            <td>@(item.HasAdapter ? "Yes" : "No")</td>
+                            <td class="text-end">@item.IntegrationCount</td>
+                            <td>
+                                @if (item.IsUsable)
+                                {
+                                    <span class="badge text-bg-success">Usable</span>
+                                }
+                                else if (item.IsActive)
+                                {
+                                    <span class="badge text-bg-warning" title="Active, but it has neither a default file format nor a code adapter.">Nothing reads it</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td class="text-end"><a class="btn btn-sm btn-outline-secondary" asp-action="Edit" asp-route-id="@item.Id">Edit</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

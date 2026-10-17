@@ -9,7 +9,8 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// <summary>
 /// Reads an uploaded file by an <see cref="AttendanceFileFormat"/>: text split by its delimiter or a sheet of a
 /// workbook, with or without a header row. Each data row becomes one transaction whose raw payload is the whole
-/// row (header, or <c>column{n}</c>, to text); the mapped columns also fill the transaction's fields. The
+/// row (header, or <c>column{n}</c>, to text), or only the format's allowlisted columns; the mapped columns also
+/// fill the transaction's fields. A column setting may list several headers: the first non-empty value is used. The
 /// timestamp is parsed by the format's own interpreter, as the generic CSV adapter does.
 /// </summary>
 public sealed class CustomFormatFileReader : ICustomFormatFileReader
@@ -48,19 +49,50 @@ public sealed class CustomFormatFileReader : ICustomFormatFileReader
         var device = Locate(format.DeviceColumn, headers, format.HasHeaderRow, nameof(format.DeviceColumn));
         var transactionId = Locate(format.TransactionIdColumn, headers, format.HasHeaderRow, nameof(format.TransactionIdColumn));
 
+        // With a list of columns to keep, only those enter the payload, under the name the format gives them (CLAUDE.md §1.10).
+        var kept = format.HasHeaderRow
+            ? FileFormatLayout.Aliases(format.PayloadColumns).GroupBy(CsvDocument.NormalizeHeader).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal)
+            : [];
+
         var transactions = new List<ExternalAttendanceTransaction>();
         foreach (var row in data)
         {
-            // Every cell is kept, even beyond the headers (named column{n}); a short row just has fewer.
             var payload = new Dictionary<string, string>();
-            for (var i = 0; i < row.Count; i++)
+            if (kept.Count > 0)
             {
-                payload[i < headers.Count ? headers[i] : $"column{i + 1}"] = row[i];
+                // A short row just has fewer.
+                for (var i = 0; i < row.Count && i < headers.Count; i++)
+                {
+                    if (kept.TryGetValue(CsvDocument.NormalizeHeader(headers[i]), out var name))
+                    {
+                        payload[name] = row[i];
+                    }
+                }
+            }
+            else
+            {
+                // Every cell is kept, even beyond the headers (named column{n}); a short row just has fewer.
+                for (var i = 0; i < row.Count; i++)
+                {
+                    payload[i < headers.Count ? headers[i] : $"column{i + 1}"] = row[i];
+                }
             }
 
-            string? Cell(int? index) => index is { } at && at < row.Count && row[at].Trim().Length > 0 ? row[at].Trim() : null;
+            string? Cell(IReadOnlyList<int> indexes)
+            {
+                // The first non-empty value among the columns the format lists.
+                foreach (var at in indexes)
+                {
+                    if (at < row.Count && row[at].Trim().Length > 0)
+                    {
+                        return row[at].Trim();
+                    }
+                }
 
-            var timestampText = timestamp is not null
+                return null;
+            }
+
+            var timestampText = format.TimestampColumn.Length > 0
                 ? Cell(timestamp) ?? string.Empty
                 : string.Join(' ', new[] { Cell(date), Cell(time) }.Where(part => part is not null));
             transactions.Add(new ExternalAttendanceTransaction(JsonSerializer.Serialize(payload, PayloadOptions), timestampText)
@@ -77,22 +109,35 @@ public sealed class CustomFormatFileReader : ICustomFormatFileReader
         return transactions;
     }
 
-    /// <summary>The index of a mapped column: null when none is mapped; throws when the file does not have it.</summary>
-    private static int? Locate(string column, IReadOnlyList<string> headers, bool hasHeaderRow, string field)
+    /// <summary>
+    /// The indexes of a mapped column, in the order the format lists its headers: none when nothing is mapped. A single
+    /// header the file does not have throws; of several listed headers the file may have any number, even none.
+    /// </summary>
+    private static IReadOnlyList<int> Locate(string column, IReadOnlyList<string> headers, bool hasHeaderRow, string field)
     {
         if (column.Length == 0)
         {
-            return null;
+            return [];
         }
 
         if (!hasHeaderRow)
         {
             var number = int.Parse(column, CultureInfo.InvariantCulture);
-            return number <= headers.Count ? number - 1 : throw new InvalidDataException($"The file has no column {number} ({field}).");
+            return number <= headers.Count ? [number - 1] : throw new InvalidDataException($"The file has no column {number} ({field}).");
         }
 
-        var wanted = CsvDocument.NormalizeHeader(column);
-        var index = headers.ToList().FindIndex(h => CsvDocument.NormalizeHeader(h) == wanted);
-        return index >= 0 ? index : throw new InvalidDataException($"The file has no column named '{column}' ({field}).");
+        var names = FileFormatLayout.Aliases(column);
+        var indexes = new List<int>();
+        foreach (var name in names)
+        {
+            var wanted = CsvDocument.NormalizeHeader(name);
+            var index = headers.ToList().FindIndex(h => CsvDocument.NormalizeHeader(h) == wanted);
+            if (index >= 0 && !indexes.Contains(index))
+            {
+                indexes.Add(index);
+            }
+        }
+
+        return indexes.Count == 0 && names.Count == 1 ? throw new InvalidDataException($"The file has no column named '{names[0]}' ({field}).") : indexes;
     }
 }

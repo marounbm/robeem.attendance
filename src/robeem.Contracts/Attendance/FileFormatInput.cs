@@ -60,5 +60,10 @@ public sealed class FileFormatInput
     [Display(Name = "Timestamp patterns")]
     public string? TimestampFormats { get; set; }
 
+    /// <summary>Gets or sets the only columns kept in the raw payload (headers separated by <c>|</c>). Empty keeps every column.</summary>
+    [StringLength(1000)]
+    [Display(Name = "Columns to keep")]
+    public string? PayloadColumns { get; set; }
+
     public List<FileFormatEventCodeInput> EventCodes { get; set; } = [];
 }

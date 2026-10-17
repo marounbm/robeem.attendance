@@ -18,7 +18,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
     private readonly FakeSecretStore _secrets = new();
     private readonly ServiceProvider _adapters;
     private readonly ServiceProvider _interpreters = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey)
+        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericWebhookInterpreter>("generic-csv")
         .BuildServiceProvider();
 
     private readonly AttendanceSyncOptions _options = new()
@@ -34,7 +34,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
 
     public IntegrationSyncServiceTests()
     {
-        _adapters = new ServiceCollection().AddKeyedSingleton<IAttendanceProvider>(GenericCsvProvider.ProviderKey, _provider).BuildServiceProvider();
+        _adapters = new ServiceCollection().AddKeyedSingleton<IAttendanceProvider>("generic-csv", _provider).BuildServiceProvider();
         _resilience = new IntegrationResilience(Options.Create(_options), Clock);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);

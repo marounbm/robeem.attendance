@@ -44,7 +44,7 @@
                         <tr>
                             <td><a asp-action="Details" asp-route-id="@item.Id">@item.DisplayName</a></td>
                             <td>@item.ProviderName</td>
-                            <td>@DisplayFormats.Transport(item.Transport)</td>
+                            <td>@item.TransportName</td>
                             <td><span class="badge text-bg-@(item.Status == "Active" ? "success" : item.Status == "Failed" ? "danger" : "secondary")">@item.Status</span></td>
                             <td><span class="badge text-bg-@DisplayFormats.Badge(item.HealthStatus)">@item.HealthStatus</span></td>
                             <td class="text-nowrap"><code>@(item.PollingScheduleCron ?? "—")</code></td>

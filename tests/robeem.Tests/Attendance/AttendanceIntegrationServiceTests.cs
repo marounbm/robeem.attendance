@@ -13,17 +13,31 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     private readonly FakeSync _sync = new();
     private readonly int _csvProviderId;
     private readonly int _inactiveProviderId;
+    private readonly int _unreadableProviderId;
     private readonly int _employeeId;
+    private readonly Dictionary<string, int> _deviceTypeIds;
 
     public AttendanceIntegrationServiceTests()
     {
+        _database.SeedAttendanceCatalog();
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var csv = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV", SupportedTransports = "FileUpload,Webhook,RestApi", IsActive = true };
-        var zk = new AttendanceProvider { ProviderKey = "zkteco", DisplayName = "ZKTeco", IsActive = false };
+
+        // The seeded Generic CSV provider (default file format: usable), given two more transports; the seeded ZKTeco one switched off;
+        // and one that is active but has neither a default file format nor a code adapter.
+        var csv = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv");
+        foreach (var key in new[] { "Webhook", "RestApi" })
+        {
+            csv.Transports.Add(new AttendanceProviderTransport { Transport = db.AttendanceTransportDefinitions.Single(t => t.TransportKey == key) });
+        }
+
+        var zk = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+        zk.IsActive = false;
+        var unreadable = new AttendanceProvider { ProviderKey = "unreadable", DisplayName = "Unreadable" };
         var ada = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
-        db.AddRange(csv, zk, ada);
+        db.AddRange(unreadable, ada);
         db.SaveChanges();
-        (_csvProviderId, _inactiveProviderId, _employeeId) = (csv.Id, zk.Id, ada.Id);
+        (_csvProviderId, _inactiveProviderId, _unreadableProviderId, _employeeId) = (csv.Id, zk.Id, unreadable.Id, ada.Id);
+        _deviceTypeIds = db.AttendanceDeviceTypes.ToDictionary(t => t.Name, t => t.Id, StringComparer.OrdinalIgnoreCase);
     }
 
     public void Dispose() => _database.Dispose();
@@ -101,11 +115,42 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AProviderWithNoAdapter_CanNotBeChosen()
+    public async Task AnInactiveProvider_CanNotBeChosen()
     {
         var result = await CreateAsync(Input(providerId: _inactiveProviderId));
 
-        Assert.Contains("no adapter", result.Errors[nameof(IntegrationInput.ProviderId)]);
+        Assert.Contains("not active", result.Errors[nameof(IntegrationInput.ProviderId)]);
+    }
+
+    [Fact]
+    public async Task AProviderNothingCanRead_CanNotBeChosen_UntilItHasAFormatOrAnAdapter()
+    {
+        var refused = await CreateAsync(Input(providerId: _unreadableProviderId));
+        Assert.Contains("neither a default file format nor a code adapter", refused.Errors[nameof(IntegrationInput.ProviderId)]);
+
+        // A code adapter registered under its key is enough.
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var withAdapter = new AttendanceIntegrationService(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog("unreadable"));
+        Assert.True((await withAdapter.CreateAsync(Input(providerId: _unreadableProviderId), CancellationToken.None)).Succeeded);
+    }
+
+    [Fact]
+    public async Task TheProviderList_SaysWhichProvidersAreUsable_AndWhichTransportsEachOffers()
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+
+        var providers = await CreateService(db).ListProvidersAsync(CancellationToken.None);
+
+        var csv = providers.Single(p => p.Key == "generic-csv");
+        Assert.True(csv.IsActive);
+        Assert.Equal(["FileUpload", "RestApi", "Webhook"], csv.SupportedTransports.Select(t => t.Key).Order(StringComparer.Ordinal));
+        Assert.Equal("FileUpload", csv.SupportedTransports[^1].Key);
+        Assert.Contains(csv.SupportedTransports, t => t.Key == "RestApi" && t.DisplayName == "REST API" && t.IsPull && !t.UsesFileFormat);
+
+        // ZKTeco is switched off; "unreadable" and BioStar are active but have no default format, and this service's catalog has no adapter for them.
+        Assert.False(providers.Single(p => p.Key == "zkteco").IsActive);
+        Assert.False(providers.Single(p => p.Key == "unreadable").IsActive);
+        Assert.False(providers.Single(p => p.Key == "suprema-biostar").IsActive);
     }
 
     [Theory]
@@ -203,7 +248,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 
         Assert.Equal(["A clock", "B clock"], list.Select(i => i.DisplayName));
         var b = list.Single(i => i.DisplayName == "B clock");
-        Assert.Equal((2, 1, "generic-csv", "Generic CSV", "Unknown", "Active"), (b.DeviceCount, b.MappingCount, b.ProviderKey, b.ProviderName, b.HealthStatus, b.Status));
+        Assert.Equal((2, 1, "generic-csv", "Generic CSV upload", "Unknown", "Active"), (b.DeviceCount, b.MappingCount, b.ProviderKey, b.ProviderName, b.HealthStatus, b.Status));
         Assert.Equal(("b-ref", "0 * * * *"), (b.ConnectionConfigRef, b.PollingScheduleCron));
         var input = (await service.GetInputAsync(id, CancellationToken.None))!;
         Assert.Equal(("B clock", "b-ref", "0 * * * *", "Active", _csvProviderId), (input.DisplayName, input.ConnectionConfigRef, input.PollingScheduleCron, input.Status, input.ProviderId));
@@ -218,7 +263,10 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 
         var providers = await CreateService(db).ListProvidersAsync(CancellationToken.None);
 
-        Assert.Equal([("generic-csv", true), ("zkteco", false)], providers.Select(p => (p.Key, p.IsActive)));
+        // Usable ones first (here only generic CSV has a default format), then the rest by name.
+        Assert.Equal(
+            [("generic-csv", true), ("generic-webhook", false), ("suprema-biostar", false), ("unreadable", false), ("zkteco", false)],
+            providers.Select(p => (p.Key, p.IsActive)));
     }
 
     [Fact]
@@ -249,7 +297,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
             var device = db.AttendanceDevices.Single();
-            Assert.Equal(("DEV-1", "Main entrance", AttendanceDeviceType.Facial, "UTC"), (device.ExternalDeviceId, device.Name, device.DeviceType, device.TimeZoneId));
+            Assert.Equal(("DEV-1", "Main entrance", _deviceTypeIds["Facial"], "UTC"), (device.ExternalDeviceId, device.Name, device.DeviceTypeId, device.TimeZoneId));
         }
 
         Assert.True((await DeleteDeviceAsync(integrationId, deviceId)).Succeeded);
@@ -263,12 +311,12 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     [InlineData("DEV-1", "", "UTC", "Biometric", "Name", "required")]
     [InlineData("DEV-1", "Front", "Mars/Olympus", "Biometric", "TimeZoneId", "IANA")]
     [InlineData("DEV-1", "Front", "", "Biometric", "TimeZoneId", "IANA")]
-    [InlineData("DEV-1", "Front", "UTC", "Toaster", "DeviceType", "must be one of")]
+    [InlineData("DEV-1", "Front", "UTC", "Toaster", "DeviceTypeId", "active device types")]
     public async Task ABadDevice_IsRefused(string external, string name, string zone, string type, string field, string fragment)
     {
         var integrationId = (await CreateAsync(Input())).Id!.Value;
 
-        var result = await AddDeviceAsync(integrationId, new DeviceInput { ExternalDeviceId = external, Name = name, TimeZoneId = zone, DeviceType = type });
+        var result = await AddDeviceAsync(integrationId, new DeviceInput { ExternalDeviceId = external, Name = name, TimeZoneId = zone, DeviceTypeId = _deviceTypeIds.GetValueOrDefault(type, 999) });
 
         Assert.Contains(fragment, result.Errors[field]);
     }
@@ -528,12 +576,12 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Transport = transport,
     };
 
-    private static DeviceInput Device(string external, string name = "Front door", string zone = "UTC", string type = "Biometric") => new()
+    private DeviceInput Device(string external, string name = "Front door", string zone = "UTC", string type = "Biometric") => new()
     {
         ExternalDeviceId = external,
         Name = name,
         TimeZoneId = zone,
-        DeviceType = type,
+        DeviceTypeId = _deviceTypeIds[type],
     };
 
     private async Task<robeem.Application.Common.SaveResult> CreateAsync(IntegrationInput input)
@@ -581,7 +629,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>
-        new(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
+        new(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
 
     private sealed class FakeSync : IIntegrationSyncService
     {

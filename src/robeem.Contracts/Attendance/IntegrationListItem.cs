@@ -16,7 +16,10 @@ public sealed class IntegrationListItem
     /// <summary>Gets how the integration receives attendance: an AttendanceTransport name such as FileUpload.</summary>
     public string Transport { get; init; } = string.Empty;
 
-    /// <summary>Gets the custom file format uploads are read by; null for the provider's own layout.</summary>
+    /// <summary>Gets the transport's display name, as the administrators named it; set after the query, from the transport definitions.</summary>
+    public string TransportName { get; set; } = string.Empty;
+
+    /// <summary>Gets the file format uploads are read by; null for the provider's default.</summary>
     public int? FileFormatId { get; init; }
 
     public string? FileFormatName { get; init; }

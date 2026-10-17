@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -10,7 +11,11 @@ using robeem.Infrastructure.Persistence;
 
 namespace robeem.Tests.Attendance;
 
-public sealed class ZktecoAdapterTests : IDisposable
+/// <summary>
+/// The ZKTeco export, read by the seeded "ZKTeco attendance export" file format. These are the tests of the
+/// hard-coded ZKTeco adapter, ported: the same files must come out the same way.
+/// </summary>
+public sealed class ZktecoFormatTests : IDisposable
 {
     // The headers and value shapes of the real export (tests/Attendance data April and May 2026.xls),
     // plus a CardNo that is filled in and a column the allowlist does not know.
@@ -24,24 +29,25 @@ public sealed class ZktecoAdapterTests : IDisposable
 
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _services = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey)
-        .AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .BuildServiceProvider();
 
     private readonly string _csvPath = Path.GetTempFileName();
     private readonly int _integrationId;
     private readonly int _hibaId;
 
-    public ZktecoAdapterTests()
+    public ZktecoFormatTests()
     {
         // Excel writes a UTF-8 byte order mark when it saves as CSV.
         File.WriteAllText(_csvPath, SampleCsv, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        _database.SeedAttendanceCatalog();
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var hiba = new Profile { EmployeeNumber = "21001", FirstName = "Hiba", LastName = "Rahme", Title = "Hiba Rahme" };
         var integration = new AttendanceIntegration
         {
-            Provider = new AttendanceProvider { ProviderKey = ZktecoProvider.ProviderKey, DisplayName = "ZKTeco export" },
+            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
             DisplayName = "Head office clock",
         };
         db.AddRange(
@@ -103,7 +109,7 @@ public sealed class ZktecoAdapterTests : IDisposable
 
         await CreateIngestion(db).IngestManualUploadAsync(_integrationId, _csvPath, CancellationToken.None);
 
-        // Invariant 10: a column the adapter does not list never reaches the database, CardNo included.
+        // Invariant 10: a column the format does not list never reaches the database, CardNo included.
         var payload = JsonDocument.Parse(db.RawAttendanceTransactions.OrderBy(r => r.Id).First().RawPayload).RootElement;
         var names = payload.EnumerateObject().Select(p => p.Name).Order().ToList();
         Assert.Equal(["Date/Time", "Department", "ID Number", "Location ID", "Name", "No.", "Status", "VerifyCode"], names);
@@ -149,12 +155,11 @@ public sealed class ZktecoAdapterTests : IDisposable
     }
 
     [Fact]
-    public async Task PullingFromTheDevice_IsNotSupported_SoTheSyncJobSkipsIt()
+    public void ZktecoNeedsNoCodeAdapter_SoNothingIsRegisteredForItsKey()
     {
-        var provider = _services.GetRequiredKeyedService<IAttendanceProvider>(ZktecoProvider.ProviderKey);
-        var config = new AttendanceIntegrationConfig(_integrationId, ZktecoProvider.ProviderKey, string.Empty);
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => provider.GetTransactionChangesAsync(config, null, CancellationToken.None));
+        // A vendor of exported files is data: a file format and a provider row, no adapter and no interpreter.
+        Assert.Null(_services.GetKeyedService<IAttendanceProvider>("zkteco"));
+        Assert.Null(_services.GetKeyedService<IAttendanceEventInterpreter>("zkteco"));
     }
 
     [Theory]
@@ -166,7 +171,7 @@ public sealed class ZktecoAdapterTests : IDisposable
     [InlineData("2026-04-01 08:33:25", 2026, 4, 1, 8, 33, 25)]
     public void Interpreter_ReadsTheDayFirstFormats_AsDeviceWallClock(string text, int year, int month, int day, int hour, int minute, int second)
     {
-        var parsed = new ZktecoInterpreter().ParseTimestamp(text);
+        var parsed = Interpreter().ParseTimestamp(text);
 
         Assert.NotNull(parsed);
         Assert.Equal(new DateTime(year, month, day, hour, minute, second), parsed.Value.WallClock);
@@ -178,7 +183,7 @@ public sealed class ZktecoAdapterTests : IDisposable
     [InlineData("yesterday")]
     [InlineData("13/13/2026 08:00")]
     public void Interpreter_DoesNotGuess_AtAnUnreadableTimestamp(string text) =>
-        Assert.Null(new ZktecoInterpreter().ParseTimestamp(text));
+        Assert.Null(Interpreter().ParseTimestamp(text));
 
     [Theory]
     [InlineData("C/In", NormalizedEventType.CheckIn)]
@@ -188,40 +193,48 @@ public sealed class ZktecoAdapterTests : IDisposable
     [InlineData("OT In", NormalizedEventType.Other)]
     [InlineData("OT Out", NormalizedEventType.Other)]
     public void Interpreter_MapsTheStatusLabels(string label, NormalizedEventType expected) =>
-        Assert.Equal(expected, new ZktecoInterpreter().MapEventType(label, null));
+        Assert.Equal(expected, Interpreter().MapEventType(label, null));
 
     [Fact]
     public void Interpreter_ReturnsNull_ForALabelItDoesNotKnow() =>
-        Assert.Null(new ZktecoInterpreter().MapEventType("Lunch", null));
+        Assert.Null(Interpreter().MapEventType("Lunch", null));
 
     [Fact]
-    public void Guide_ListsTheCodesAndFormats_TheInterpreterUses_AndWhatIsNotStored()
+    public void Guide_ListsTheCodesAndFormats_TheFormatUses_AndWhatIsNotStored()
     {
-        var guide = new ZktecoProvider().DescribeMapping();
+        var guide = FileFormatLayout.Describe(Format(), "zkteco");
 
-        Assert.Equal(ZktecoProvider.ProviderKey, guide.ProviderKey);
+        Assert.Equal("zkteco", guide.ProviderKey);
         Assert.Contains(guide.EventCodes, c => c is { Code: "C/In", EventType: nameof(NormalizedEventType.CheckIn) });
-        Assert.Equal(["C/In", "C/Out"], guide.EventCodes.Select(c => c.Code));
-        Assert.Equal([ZktecoInterpreter.ExportTimestampFormat], guide.TimestampFormats);
-        Assert.Contains("CardNo", guide.NotStored);
+        Assert.Contains(guide.EventCodes, c => c is { Code: "OT In", EventType: nameof(NormalizedEventType.Other) });
+        Assert.Contains("d-MMM-yy H:mm:ss", guide.TimestampFormats);
+        Assert.Contains(guide.NotStored, n => n.Contains("not listed", StringComparison.Ordinal));
+        Assert.Contains(guide.Fields, f => f is { Target: "ExternalEmployeeId" } && f.Source == "No. / ID Number");
     }
 
     [Fact]
-    public async Task Guide_ListsTheColumnsOfTheRealExport_InTheOrderTheFileHasThem()
+    public async Task TheRealExport_IsReadWithItsColumnsInFileOrder_MinusCardNo()
     {
-        var guide = new ZktecoProvider().DescribeMapping();
-        var config = new AttendanceIntegrationConfig(_integrationId, ZktecoProvider.ProviderKey, string.Empty) { UploadFilePath = Path.Combine(AppContext.BaseDirectory, "TestData", "ZktecoExport.xls") };
+        var xls = Path.Combine(AppContext.BaseDirectory, "TestData", "ZktecoExport.xls");
 
-        var batch = await new ZktecoProvider().RetrieveAttendanceTransactionsAsync(config, null, CancellationToken.None);
+        var transactions = await new CustomFormatFileReader().ReadAsync(Format(), xls, CancellationToken.None);
 
         // The payload keeps the file's columns in file order, minus CardNo, which is never copied.
-        var columns = JsonDocument.Parse(batch.Transactions[0].RawPayload).RootElement.EnumerateObject().Select(p => p.Name).ToList();
-        Assert.Equal(guide.Fields.Select(f => f.Source).Where(s => s != "CardNo"), columns);
-        Assert.All(batch.Transactions, t => Assert.True(
-            DateTime.TryParseExact(t.TransactionTimestampRaw, ZktecoInterpreter.ExportTimestampFormat, global::System.Globalization.CultureInfo.InvariantCulture, global::System.Globalization.DateTimeStyles.None, out _),
+        var columns = JsonDocument.Parse(transactions[0].RawPayload).RootElement.EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Equal(["Department", "Name", "No.", "Date/Time", "Status", "Location ID", "ID Number", "VerifyCode"], columns);
+        Assert.All(transactions, t => Assert.True(
+            DateTime.TryParseExact(t.TransactionTimestampRaw, "dd-MMM-yy HH:mm:ss", global::System.Globalization.CultureInfo.InvariantCulture, global::System.Globalization.DateTimeStyles.None, out _),
             t.TransactionTimestampRaw));
-        Assert.All(batch.Transactions, t => Assert.Contains(t.TransactionTypeRaw, guide.EventCodes.Select(c => c.Code)));
+        Assert.All(transactions, t => Assert.Contains(t.TransactionTypeRaw, new[] { "C/In", "C/Out" }));
     }
+
+    private AttendanceFileFormat Format()
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        return db.AttendanceFileFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "ZKTeco attendance export");
+    }
+
+    private CustomFormatInterpreter Interpreter() => new(Format());
 
     private IngestionService CreateIngestion(RobeemDbContext db) =>
         new(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);

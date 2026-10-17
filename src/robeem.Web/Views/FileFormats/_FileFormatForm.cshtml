@@ -61,6 +61,8 @@
         <div class="col-12 form-text mt-0">
             Name each column by its header, as written in the file's first row (case, spaces and punctuation are ignored). When the
             file has <strong>no header row</strong>, give the column's number instead: 1 for the first column.
+            To accept several names, separate them with <code>|</code> (for example <code>No.|ID Number</code>): the first one that has a
+            value is used, and a file that has none of them leaves the field empty.
         </div>
         <div class="col-md-3">
             <label asp-for="Input.EmployeeColumn" class="form-label"></label>
@@ -108,6 +110,15 @@
             <div class="form-text">Optional.</div>
             <span asp-validation-for="Input.TransactionIdColumn" class="text-danger small"></span>
         </div>
+        <div class="col-12">
+            <label asp-for="Input.PayloadColumns" class="form-label"></label>
+            <input asp-for="Input.PayloadColumns" class="form-control" autocomplete="off" placeholder="e.g. Name|Department|Date/Time|Status" />
+            <div class="form-text">
+                Optional, header row only. Only these columns are stored with the punch, separated by <code>|</code>; any other column is never copied.
+                Leave it empty to keep every column (biometric-looking ones are always removed).
+            </div>
+            <span asp-validation-for="Input.PayloadColumns" class="text-danger small"></span>
+        </div>
     </div>
 </div>
 
@@ -142,7 +153,7 @@
                         <td><input name="Input.EventCodes[@i].Code" value="@code.Code" class="form-control form-control-sm" autocomplete="off" /></td>
                         <td>
                             <select name="Input.EventCodes[@i].EventType" class="form-select form-select-sm">
-                                @foreach (var type in new[] { "CheckIn", "CheckOut", "BreakOut", "BreakIn" })
+                                @foreach (var type in new[] { "CheckIn", "CheckOut", "BreakOut", "BreakIn", "Other", "Unknown" })
                                 {
                                     <option value="@type" selected="@(type == code.EventType)">@DisplayFormats.Words(type)</option>
                                 }
@@ -207,8 +218,8 @@
 <script>
     (function () {
         var body = document.querySelector('#event-codes tbody');
-        var types = ['CheckIn', 'CheckOut', 'BreakOut', 'BreakIn'];
-        var labels = { CheckIn: 'Check in', CheckOut: 'Check out', BreakOut: 'Break out', BreakIn: 'Break in' };
+        var types = ['CheckIn', 'CheckOut', 'BreakOut', 'BreakIn', 'Other', 'Unknown'];
+        var labels = { CheckIn: 'Check in', CheckOut: 'Check out', BreakOut: 'Break out', BreakIn: 'Break in', Other: 'Other', Unknown: 'Unknown' };
 
         document.getElementById('add-event-code').addEventListener('click', function () {
             var index = body.rows.length;

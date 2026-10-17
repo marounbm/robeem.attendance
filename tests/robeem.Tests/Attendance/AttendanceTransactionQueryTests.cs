@@ -21,8 +21,8 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
 
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _services = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey)
-        .AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .BuildServiceProvider();
 
     private readonly string _csvPath = Path.GetTempFileName();
@@ -33,10 +33,11 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
     public AttendanceTransactionQueryTests()
     {
         File.WriteAllText(_csvPath, Csv);
+        _database.SeedAttendanceCatalog();
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var integration = new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = ZktecoProvider.ProviderKey, DisplayName = "ZKTeco export" }, DisplayName = "Head office clock" };
+            var integration = new AttendanceIntegration { Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"), DisplayName = "Head office clock" };
             var other = new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = "other", DisplayName = "Other" }, DisplayName = "Branch clock" };
             db.AddRange(
                 other,

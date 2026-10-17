@@ -258,19 +258,22 @@ erDiagram
 
 ### 4.1 `Attendance.AttendanceProvider` — the vendor catalog
 
-`Entity`. A short list of vendors robeem can talk to (for example `generic-csv`, `zkteco`, a BioStar server, a webhook). Seeded at startup; a provider is seeded active only if its code adapter exists. Adding a vendor adds a row here **and** an adapter in code, nothing else.
+`Entity`. The vendors robeem can talk to (for example `generic-csv`, `zkteco`, a BioStar server, a webhook). Seeded at startup, then yours to manage: you add, edit and deactivate providers on the *Providers* screen. A provider is **usable** when it is active and has a `DefaultFileFormatId` (a vendor of exported files: no code needed) or a code adapter registered under its `ProviderKey` (a vendor pulled over an API or pushing webhooks).
 
 | Column | Type | Null? | Meaning | Filled by |
 |---|---|---|---|---|
 | *shared columns* | | | no `Title` column (it is `DisplayName` in code) | |
-| `ProviderKey` | varchar(100) | N | Stable key the code adapter is registered under, e.g. `generic-csv`. **Unique per tenant.** | System (seed) |
-| `DisplayName` | varchar(255) | N | | System (seed) |
-| `Manufacturer` | varchar(255) | N | Company that makes the devices; empty if unknown. | System (seed) |
-| `WebsiteUrl` | varchar(255) | N | Manufacturer's site; empty if unknown. | System (seed) |
-| `SupportedTransports` | varchar(255) | N | Comma-separated: `FileUpload`, `Sftp`, `RestApi`, `Webhook`, `Database`, `DeviceSdk`. | System (seed) |
-| `SupportsWebhooks` | boolean | N | | System (seed) |
-| `SupportsIncrementalSync` | boolean | N | Whether the adapter can fetch "only what is new". | System (seed) |
-| `IsActive` | boolean | N | Whether integrations can use it. | System (seed) |
+| `ProviderKey` | varchar(100) | N | Stable key a code adapter is registered under, e.g. `suprema-biostar`. **Unique per tenant; never changes.** | You (seed) |
+| `DisplayName` | varchar(255) | N | | You (seed) |
+| `Manufacturer` | varchar(255) | N | Company that makes the devices; empty if unknown. | You (seed) |
+| `WebsiteUrl` | varchar(255) | N | Manufacturer's site; empty if unknown. | You (seed) |
+| `DefaultFileFormatId` | integer → `AttendanceFileFormat.Id` | Y | The layout an upload is read by when its integration names none. | You (seed) |
+| `SupportedTransports` (code name `LegacySupportedTransports`) | varchar(255) | N | **Old.** The transports as comma-separated text. Read once by the seeder into `AttendanceProviderTransport`, then emptied; to be dropped by a later migration. | System |
+| `SupportsWebhooks` | boolean | N | | You (seed) |
+| `SupportsIncrementalSync` | boolean | N | Whether the adapter can fetch "only what is new". | You (seed) |
+| `IsActive` | boolean | N | Whether integrations can be made with it (with a format or an adapter behind it). | You (seed) |
+
+The transports a provider offers (besides file upload, which every provider has) are rows of **`Attendance.AttendanceProviderTransport`** (`ProviderId`, `TransportId`; unique together per tenant), pointing at **`Attendance.AttendanceTransportDefinition`**: one row per `AttendanceTransport` (`FileUpload`, `Sftp`, `RestApi`, `Webhook`, `Database`, `DeviceSdk`) with a `DisplayName` you can change, `IsPull` and `UsesFileFormat` (fixed by what the transport is), and `IsActive`. **`Attendance.AttendanceDeviceType`** (`Name`, `IsActive`) lists the kinds of device (`Biometric`, `Facial`, `RFID`, `Mobile`, `Cloud`, `OnPrem` to start with) and is yours to extend.
 
 ### 4.2 `Attendance.AttendanceIntegration` — the tenant's connection
 
@@ -298,7 +301,8 @@ erDiagram
 | `IntegrationId` | integer → `AttendanceIntegration.Id` | N | | You / System (discovered) |
 | `ExternalDeviceId` | varchar(100) | N | The device id exactly as the vendor reports it. **Unique per integration.** | You / System |
 | `Name` | varchar(255) | N | | You |
-| `DeviceType` | varchar(32) | N | `Biometric`, `Facial`, `RFID`, `Mobile`, `Cloud`, `OnPrem`. | You |
+| `DeviceTypeId` | integer → `AttendanceDeviceType.Id` | Y | The kind of device. Empty only for a device saved before types were a table (the seeder fills it in). | You |
+| `DeviceType` (code name `LegacyDeviceType`) | varchar(32) | N | **Old.** The type as text. Read once by the seeder into `DeviceTypeId`, then emptied; to be dropped by a later migration. | System |
 | `Model` | varchar(100) | N | e.g. `U350`; empty if unknown. | You |
 | `SoftwareVersion` | varchar(100) | N | Version of the vendor's attendance software; empty if unknown. | You |
 | `SdkVersion` | varchar(50) | N | Version of the vendor SDK; empty if unknown. | You |

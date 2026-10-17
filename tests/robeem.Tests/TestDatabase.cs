@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using robeem.Application.Attendance.Seeding;
 using robeem.Application.Tenancy;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Tenancy;
@@ -34,6 +35,20 @@ public sealed class TestDatabase : IDisposable
             .AddInterceptors([UtcDateTimeGuardInterceptor.Instance, .. interceptors])
             .Options;
         return new RobeemDbContext(options, new FixedTenantContext(tenantId));
+    }
+
+    /// <summary>
+    /// Gives a tenant the attendance catalog startup gives it: transports, device types, the built-in file formats
+    /// (generic CSV, ZKTeco) and the providers, each file-based provider linked to its default format. Not the default
+    /// attendance policy: a test that wants one adds its own.
+    /// </summary>
+    public void SeedAttendanceCatalog(string tenantId = TenantA)
+    {
+        using var db = CreateContext(tenantId);
+        new AttendanceSeedContributor().SeedAsync(db, CancellationToken.None).GetAwaiter().GetResult();
+        db.SaveChanges();
+        db.AttendancePolicies.RemoveRange(db.AttendancePolicies.Where(p => p.TimeScheduleId == null));
+        db.SaveChanges();
     }
 
     public void Dispose() => _connection.Dispose();

@@ -10,7 +10,9 @@ public sealed class DeviceItem
 
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>Gets the kind: Biometric, Facial, RFID, Mobile, Cloud or OnPrem.</summary>
+    public int? DeviceTypeId { get; init; }
+
+    /// <summary>Gets the name of the device's type; empty when it has none.</summary>
     public string DeviceType { get; init; } = string.Empty;
 
     /// <summary>Gets the machine model, e.g. U350; empty when not recorded.</summary>

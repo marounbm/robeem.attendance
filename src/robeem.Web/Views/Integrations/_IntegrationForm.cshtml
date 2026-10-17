@@ -3,8 +3,14 @@
 <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
 @{
-    // Each provider's transports, so the choice offers only what the chosen provider can do.
-    var supportedByProvider = Model.Providers.ToDictionary(p => p.Id.ToString(), p => p.SupportedTransports);
+    // Each provider's transports, so the choice offers only what the chosen provider can do. A transport an
+    // administrator switched off is offered only to the integration that already has it.
+    var supportedByProvider = Model.Providers.ToDictionary(
+        p => p.Id.ToString(),
+        p => p.SupportedTransports.Where(t => t.IsActive || t.Key == Model.Input.Transport).Select(t => t.Key).ToArray());
+    var transports = Model.Providers.SelectMany(p => p.SupportedTransports).GroupBy(t => t.Key).Select(g => g.First()).ToList();
+    var pullingTransports = transports.Where(t => t.IsPull).Select(t => t.Key).ToArray();
+    var fileTransports = transports.Where(t => t.UsesFileFormat).Select(t => t.Key).ToArray();
 }
 
 <div class="card mb-3">
@@ -27,7 +33,7 @@
                         </option>
                     }
                 </select>
-                <div class="form-text">Only a provider with an adapter can be chosen.</div>
+                <div class="form-text">Only a usable provider can be chosen: active, with a default file format or a code adapter. <a asp-controller="Providers" asp-action="Index">Manage providers.</a></div>
                 @foreach (var vendor in Model.Providers.Where(p => p.Manufacturer.Length > 0))
                 {
                     <div class="form-text">@vendor.DisplayName: made by @vendor.Manufacturer@(vendor.WebsiteUrl.Length > 0 ? " (" + vendor.WebsiteUrl + ")" : string.Empty).</div>
@@ -44,30 +50,30 @@
         <div class="col-md-6">
             <label asp-for="Input.Transport" class="form-label"></label>
             <select asp-for="Input.Transport" class="form-select" id="integration-transport">
-                @foreach (var transport in new[] { "FileUpload", "Webhook", "RestApi", "DeviceSdk", "Sftp", "Database" })
+                @foreach (var transport in transports)
                 {
-                    <option value="@transport" selected="@(transport == Model.Input.Transport)">@DisplayFormats.Transport(transport)</option>
+                    <option value="@transport.Key" selected="@(transport.Key == Model.Input.Transport)">@transport.DisplayName</option>
                 }
             </select>
             <div class="form-text">
                 <strong>Manual file upload</strong>: HR uploads the exported file on the <em>Upload attendance</em> screen; only such
                 integrations are listed there. It is available for every provider. The other choices are listed only as far as the
-                chosen provider supports them.
+                chosen provider supports them. <a asp-controller="Transports" asp-action="Index">Rename or switch off a transport.</a>
             </div>
             <span asp-validation-for="Input.Transport" class="text-danger small"></span>
         </div>
         <div class="col-md-6" id="integration-file-format">
             <label asp-for="Input.FileFormatId" class="form-label"></label>
             <select asp-for="Input.FileFormatId" class="form-select">
-                <option value="">The provider's own layout</option>
+                <option value="">The provider's default file format</option>
                 @foreach (var format in Model.FileFormats)
                 {
                     <option value="@format.Id" selected="@(format.Id == Model.Input.FileFormatId)">@format.Name</option>
                 }
             </select>
             <div class="form-text">
-                How the uploaded file is read. A provider with no file layout of its own reads the generic CSV / Excel layout.
-                <a asp-controller="FileFormats" asp-action="Index">Define your own file format.</a>
+                How the uploaded file is read. A provider with no default file format needs one chosen here before a file can be uploaded.
+                <a asp-controller="FileFormats" asp-action="Index">Define a file format.</a>
             </div>
             <span asp-validation-for="Input.FileFormatId" class="text-danger small"></span>
         </div>
@@ -137,7 +143,8 @@
 <script>
     (function () {
         var supported = @Json.Serialize(supportedByProvider);
-        var pulling = ['Sftp', 'RestApi', 'Database', 'DeviceSdk'];
+        var pulling = @Json.Serialize(pullingTransports);
+        var fileBased = @Json.Serialize(fileTransports);
         var provider = document.querySelector('[name="Input.ProviderId"]');
         var transport = document.getElementById('integration-transport');
         var schedule = document.getElementById('integration-schedule');
@@ -155,8 +162,8 @@
                 transport.value = allowed[0];
             }
             schedule.hidden = pulling.indexOf(transport.value) < 0;
-            fileFormat.hidden = transport.value !== 'FileUpload';
-            defaultDevice.hidden = transport.value !== 'FileUpload';
+            fileFormat.hidden = fileBased.indexOf(transport.value) < 0;
+            defaultDevice.hidden = fileBased.indexOf(transport.value) < 0;
         }
 
         provider.addEventListener('change', refresh);

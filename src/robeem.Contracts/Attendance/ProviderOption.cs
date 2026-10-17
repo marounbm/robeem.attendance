@@ -14,9 +14,9 @@ public sealed class ProviderOption
     /// <summary>Gets the manufacturer's website; empty when not recorded.</summary>
     public string WebsiteUrl { get; init; } = string.Empty;
 
-    /// <summary>Gets the transports the provider supports (AttendanceTransport names); an integration picks one.</summary>
-    public IReadOnlyList<string> SupportedTransports { get; init; } = Array.Empty<string>();
+    /// <summary>Gets the transports an integration of this provider can choose from: the provider's own, and file upload.</summary>
+    public IReadOnlyList<TransportOption> SupportedTransports { get; init; } = Array.Empty<TransportOption>();
 
-    /// <summary>Gets a value indicating whether the provider can be used: only an active one has an adapter.</summary>
+    /// <summary>Gets a value indicating whether the provider can be used: it is active, and has a default file format or a code adapter.</summary>
     public bool IsActive { get; init; }
 }

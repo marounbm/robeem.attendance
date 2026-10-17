@@ -25,8 +25,8 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
         "T4,E-1,2026-10-05 17:00:00,OUT,DEV-1\r\n";
 
     private readonly ServiceProvider _adapters = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey)
-        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .BuildServiceProvider();
 
     private readonly int _integrationId;
@@ -35,6 +35,9 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
     {
         Clock.Local = Monday.At(18, 0);
         AssignSchedule(StandardDay);
+
+        // The fixture's generic-csv provider gets the seeded Generic CSV format as its default, as at startup.
+        Database.SeedAttendanceCatalog();
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();

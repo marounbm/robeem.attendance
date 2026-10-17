@@ -40,7 +40,10 @@ public static class NavigationMenu
         "Integrations",
         [
             new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health and sync.", Integration),
+            new NavItem("Providers", "Providers", "Index", "The vendors you receive attendance from: their transports and the file format their uploads are read by.", Integration),
             new NavItem("File formats", "FileFormats", "Index", "Define the layout of a file an integration reads on manual upload: columns, date patterns and type labels.", Integration),
+            new NavItem("Device types", "DeviceTypes", "Index", "The kinds of punch device a device can be given.", Integration),
+            new NavItem("Transports", "Transports", "Index", "Rename the ways attendance reaches robeem, or switch one off for new integrations.", Integration),
             new NavItem("Background jobs", "Jobs", "Index", "When the jobs that normalize punches, calculate days and sync integrations run next, how each run ended, and run one now.", Integration, Hr),
         ]);
 

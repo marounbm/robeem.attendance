@@ -20,7 +20,7 @@ public sealed class IngestionServiceTests : IDisposable
 
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _adapters = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
         .BuildServiceProvider();
 
     private readonly string _csvPath = Path.GetTempFileName();
@@ -31,11 +31,15 @@ public sealed class IngestionServiceTests : IDisposable
     {
         File.WriteAllText(_csvPath, SampleCsv);
 
+        _database.SeedAttendanceCatalog();
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Provider = new AttendanceProvider { ProviderKey = GenericCsvProvider.ProviderKey, DisplayName = "Generic CSV" },
+            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv"),
             DisplayName = "HQ uploads",
+
+            // Named outright: an integration that does not receive uploads (a test below) still reads this file by it.
+            FileFormat = db.AttendanceFileFormats.Single(f => f.Name == "Generic CSV"),
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };
         db.AttendanceDevices.Add(device);
@@ -188,10 +192,9 @@ public sealed class IngestionServiceTests : IDisposable
     {
         using (var seed = _database.CreateContext(TestDatabase.TenantA))
         {
-            var csv = seed.AttendanceProviders.Single(p => p.ProviderKey == GenericCsvProvider.ProviderKey);
-            csv.SupportedTransports = "FileUpload,Webhook";
-            var rest = new AttendanceProvider { ProviderKey = "rest-only", DisplayName = "REST", SupportedTransports = nameof(AttendanceTransport.RestApi) };
-            var retired = new AttendanceProvider { ProviderKey = "retired", DisplayName = "Retired", SupportedTransports = nameof(AttendanceTransport.FileUpload), IsActive = false };
+            var csv = seed.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv");
+            var rest = new AttendanceProvider { ProviderKey = "rest-only", DisplayName = "REST" };
+            var retired = new AttendanceProvider { ProviderKey = "retired", DisplayName = "Retired", IsActive = false };
             seed.AttendanceIntegrations.AddRange(
                 new AttendanceIntegration { Provider = csv, DisplayName = "B takes uploads" },
                 new AttendanceIntegration { Provider = csv, DisplayName = "A takes uploads" },
@@ -207,8 +210,8 @@ public sealed class IngestionServiceTests : IDisposable
 
         // The constructor's "HQ uploads" shares the provider, so it counts; paused, webhook, pull-only and retired ones do not.
         Assert.Equal(["A takes uploads", "B takes uploads", "HQ uploads"], targets.Select(t => t.DisplayName));
-        Assert.All(targets, t => Assert.Equal([".csv", ".xls", ".xlsx"], t.FileFormats));
-        Assert.All(targets, t => Assert.Equal("Generic CSV", t.ProviderName));
+        Assert.All(targets, t => Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], t.FileFormats));
+        Assert.All(targets, t => Assert.Equal("Generic CSV upload", t.ProviderName));
         Assert.Contains(targets[0].Layout.Fields, f => f.Target == "ExternalEmployeeId");
     }
 

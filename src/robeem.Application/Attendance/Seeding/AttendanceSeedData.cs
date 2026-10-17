@@ -1,0 +1,107 @@
+using robeem.DataModel;
+
+namespace robeem.Application.Attendance.Seeding;
+
+/// <summary>
+/// The catalog every tenant starts with. Plain data: the seeder adds these rows when they are missing and an
+/// administrator then owns them (CLAUDE.md §2.3).
+/// </summary>
+internal static class AttendanceSeedData
+{
+    public const string GenericCsvFormatName = "Generic CSV";
+
+    public const string ZktecoFormatName = "ZKTeco attendance export";
+
+    /// <summary>The kinds of device an administrator can give a device.</summary>
+    public static readonly string[] DeviceTypes = ["Biometric", "Facial", "RFID", "Mobile", "Cloud", "OnPrem"];
+
+    public static readonly SeedTransport[] Transports =
+    [
+        new(AttendanceTransport.FileUpload, "Manual file upload", IsPull: false, UsesFileFormat: true),
+        new(AttendanceTransport.Sftp, "SFTP drop", IsPull: true, UsesFileFormat: false),
+        new(AttendanceTransport.RestApi, "REST API", IsPull: true, UsesFileFormat: false),
+        new(AttendanceTransport.Webhook, "Webhook", IsPull: false, UsesFileFormat: false),
+        new(AttendanceTransport.Database, "Database", IsPull: true, UsesFileFormat: false),
+        new(AttendanceTransport.DeviceSdk, "Device SDK / agent", IsPull: true, UsesFileFormat: false),
+    ];
+
+    /// <summary>The providers; a file-based one is read by <see cref="SeedProvider.DefaultFormat"/>, an API or webhook one by the code adapter registered under its key.</summary>
+    public static readonly SeedProvider[] Providers =
+    [
+        new("generic-csv", "Generic CSV upload", [], SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, DefaultFormat: GenericCsvFormatName),
+        new("generic-webhook", "Generic webhook", [AttendanceTransport.Webhook], SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
+        new("zkteco", "ZKTeco", [], SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, DefaultFormat: ZktecoFormatName, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
+        new("suprema-biostar", "Suprema BioStar 2", [AttendanceTransport.RestApi], SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
+    ];
+
+    /// <summary>
+    /// The layouts of the file-based vendors: generic CSV (columns matched by several names, ISO 8601 timestamps),
+    /// and the export of the ZKTeco clock's own software (day-first times, only the listed columns stored, CardNo never).
+    /// </summary>
+    public static readonly SeedFormat[] Formats =
+    [
+        new(
+            GenericCsvFormatName,
+            "A CSV file, or an Excel sheet, with a header row, uploaded by hand. Columns are matched by name, ignoring case, spaces and punctuation. Timestamps are ISO 8601 (yyyy-MM-dd HH:mm[:ss], T also accepted), optionally ending in Z or an offset.",
+            EmployeeColumn: "Employee ID|Emp ID|Badge ID|User ID",
+            TimestampColumn: "Timestamp|DateTime|Punch Time",
+            TypeColumn: "Type|Event Type|Punch Type",
+            DirectionColumn: "Direction|In Out",
+            DeviceColumn: "Device ID|Terminal ID",
+            TransactionIdColumn: "Transaction ID|Record ID",
+            PayloadColumns: string.Empty,
+            TimestampFormats:
+            [
+                "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF",
+                "yyyy-MM-dd HH:mm:ss.FFFFFFF",
+                "yyyy-MM-dd'T'HH:mm",
+                "yyyy-MM-dd HH:mm",
+            ],
+            EventCodes:
+            [
+                ("In", NormalizedEventType.CheckIn),
+                ("Check In", NormalizedEventType.CheckIn),
+                ("Clock In", NormalizedEventType.CheckIn),
+                ("Out", NormalizedEventType.CheckOut),
+                ("Check Out", NormalizedEventType.CheckOut),
+                ("Clock Out", NormalizedEventType.CheckOut),
+                ("Break Out", NormalizedEventType.BreakOut),
+                ("Break Start", NormalizedEventType.BreakOut),
+                ("Break In", NormalizedEventType.BreakIn),
+                ("Break End", NormalizedEventType.BreakIn),
+            ]),
+
+        new(
+            ZktecoFormatName,
+            "The attendance export of the ZKTeco clock's own software (Fingerprint Attendance System), uploaded as exported (XLS; XLSX or CSV also work). One row per punch; times are wall-clock at the device (no offset), day first. Break Out, Break In, OT In and OT Out are also read when the clock writes them; any other Status fails the row.",
+            EmployeeColumn: "No.|ID Number",
+            TimestampColumn: "Date/Time",
+            TypeColumn: "Status",
+            DirectionColumn: string.Empty,
+            DeviceColumn: "Location ID",
+            TransactionIdColumn: string.Empty,
+            PayloadColumns: "Department|Name|No.|Date/Time|Status|Location ID|ID Number|VerifyCode",
+            TimestampFormats:
+            [
+                "d-MMM-yy H:mm:ss",
+                "d-MMM-yy H:mm",
+                "d-MMM-yyyy H:mm:ss",
+                "d-MMM-yyyy H:mm",
+                "d/M/yyyy H:mm:ss",
+                "d/M/yyyy H:mm",
+                "d/M/yy H:mm:ss",
+                "d/M/yy H:mm",
+                "yyyy-MM-dd H:mm:ss",
+                "yyyy-MM-dd H:mm",
+            ],
+            EventCodes:
+            [
+                ("C/In", NormalizedEventType.CheckIn),
+                ("C/Out", NormalizedEventType.CheckOut),
+                ("Break Out", NormalizedEventType.BreakOut),
+                ("Break In", NormalizedEventType.BreakIn),
+                ("OT In", NormalizedEventType.Other),
+                ("OT Out", NormalizedEventType.Other),
+            ]),
+    ];
+}

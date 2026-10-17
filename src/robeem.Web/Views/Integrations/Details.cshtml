@@ -11,7 +11,7 @@
         <div class="text-muted">
             @integration.ProviderName
             · <span class="badge text-bg-@(integration.Status == "Active" ? "success" : integration.Status == "Failed" ? "danger" : "secondary")">@integration.Status</span>
-            · <span class="badge text-bg-light border">@DisplayFormats.Transport(integration.Transport)</span>
+            · <span class="badge text-bg-light border">@integration.TransportName</span>
             @if (integration.FileFormatName is not null)
             {
                 <span>· file format <strong>@integration.FileFormatName</strong></span>
@@ -116,10 +116,15 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small mb-0" for="dev-type-@device.Id">Type</label>
-                    <select id="dev-type-@device.Id" name="DeviceType" class="form-select form-select-sm">
-                        @foreach (var type in IntegrationDetailsViewModel.DeviceTypes)
+                    <select id="dev-type-@device.Id" name="DeviceTypeId" class="form-select form-select-sm">
+                        @if (device.DeviceTypeId is { } currentTypeId && Model.DeviceTypes.All(t => t.Id != currentTypeId))
                         {
-                            <option value="@type" selected="@(type == device.DeviceType)">@type</option>
+                            @* The device's type has been retired: it keeps it until someone picks another. *@
+                            <option value="@currentTypeId" selected>@device.DeviceType (retired)</option>
+                        }
+                        @foreach (var type in Model.DeviceTypes)
+                        {
+                            <option value="@type.Id" selected="@(type.Id == device.DeviceTypeId)">@type.Name</option>
                         }
                     </select>
                 </div>
@@ -159,10 +164,10 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-0" for="new-dev-type">Type</label>
-                <select id="new-dev-type" name="DeviceType" class="form-select form-select-sm">
-                    @foreach (var type in IntegrationDetailsViewModel.DeviceTypes)
+                <select id="new-dev-type" name="DeviceTypeId" class="form-select form-select-sm">
+                    @foreach (var type in Model.DeviceTypes)
                     {
-                        <option value="@type">@type</option>
+                        <option value="@type.Id">@type.Name</option>
                     }
                 </select>
             </div>

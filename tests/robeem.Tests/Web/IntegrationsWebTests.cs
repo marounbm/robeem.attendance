@@ -323,6 +323,8 @@ public sealed class IntegrationsWebTests
 
         public Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<FileFormatOption>>([]);
 
+        public Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DeviceTypeOption>>([]);
+
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<EmployeeOption>>([]);
 
         public Task<ApiSaveResult> CreateAsync(IntegrationInput input, CancellationToken cancellationToken) => Record("create");

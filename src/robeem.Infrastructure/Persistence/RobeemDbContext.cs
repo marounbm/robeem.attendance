@@ -53,6 +53,12 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
 
+    public DbSet<AttendanceDeviceType> AttendanceDeviceTypes => Set<AttendanceDeviceType>();
+
+    public DbSet<AttendanceTransportDefinition> AttendanceTransportDefinitions => Set<AttendanceTransportDefinition>();
+
+    public DbSet<AttendanceProviderTransport> AttendanceProviderTransports => Set<AttendanceProviderTransport>();
+
     public DbSet<AttendanceFileFormat> AttendanceFileFormats => Set<AttendanceFileFormat>();
 
     public DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes => Set<AttendanceFileFormatEventCode>();

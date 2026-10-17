@@ -6,97 +6,31 @@ using robeem.DataModel;
 namespace robeem.Application.Attendance.Seeding;
 
 /// <summary>
-/// Gives a tenant database the provider catalog and the tenant-wide default attendance policy
-/// (study §20.1). Adds only what is missing, matching providers by key and the policy by being the
-/// tenant default, so edits made by an administrator are never overwritten.
+/// Gives a tenant database the attendance catalog and the tenant-wide default attendance policy (study §20.1):
+/// the transports, the device types, the file formats of the file-based vendors (generic CSV, ZKTeco) and the
+/// providers. Adds only what is missing, matching rows by key or name, so an edit made by an administrator is
+/// never overwritten.
 /// </summary>
 /// <remarks>
-/// A provider is seeded active only when its adapter exists: <c>generic-csv</c>, <c>zkteco</c> and <c>suprema-biostar</c> today. The others
-/// are listed so an integration can be planned, and are switched on when their adapter is added
-/// (CLAUDE.md §1.9). <see cref="CsvProviderKey"/> must equal <c>GenericCsvProvider.ProviderKey</c>;
-/// a test checks that, since Application cannot reference Infrastructure.
+/// <para>Which provider is usable is not decided here: a provider is usable when it is active and has a default
+/// file format or a code adapter (<see cref="ProviderUsability"/>).</para>
+/// <para>It also finishes the move of the catalog into tables, once per row: a provider's transports and a device's
+/// type were stored as text, and are read from it into the new tables (the text is then cleared); the file
+/// formats the built-in vendors used to be read by in code are linked to their provider, and to the integrations
+/// of that provider that had no format, the run that creates them.</para>
 /// </remarks>
 public sealed class AttendanceSeedContributor : ISeedContributor
 {
-    public const string CsvProviderKey = "generic-csv";
-
-    // The names rows were seeded with earlier, by provider key. The transport is chosen on the
-    // integration, so a provider name carries only the vendor and product.
-    private static readonly Dictionary<string, string[]> LegacyDisplayNames = new(StringComparer.Ordinal)
-    {
-        ["generic-webhook"] = ["Generic webhook (adapter not available yet)"],
-        ["zkteco"] = ["ZKTeco-style biometric devices (adapter not available yet)", "ZKTeco attendance export (CSV upload)", "ZKTeco attendance export (XLS / CSV upload)"],
-        ["suprema-biostar"] = ["Suprema BioStar (adapter not available yet)", "Suprema BioStar 2 (REST API)"],
-    };
-
-    private static readonly SeedProvider[] Providers =
-    [
-        new(CsvProviderKey, "Generic CSV upload", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true),
-        new("generic-webhook", "Generic webhook", AttendanceTransport.Webhook, SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
-        new("zkteco", "ZKTeco", AttendanceTransport.FileUpload, SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
-        new("suprema-biostar", "Suprema BioStar 2", AttendanceTransport.RestApi, SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
-    ];
-
     /// <summary>Gets the run order; after the HR seed.</summary>
     public int Order => 200;
 
     public async Task SeedAsync(IRobeemDbContext db, CancellationToken cancellationToken)
     {
-        var existing = await db.AttendanceProviders.Select(p => p.ProviderKey).ToListAsync(cancellationToken);
-        foreach (var provider in Providers.Where(p => !existing.Contains(p.Key, StringComparer.Ordinal)))
-        {
-            db.AttendanceProviders.Add(new AttendanceProvider
-            {
-                ProviderKey = provider.Key,
-                DisplayName = provider.DisplayName,
-                SupportedTransports = provider.Transport.ToString(),
-                SupportsWebhooks = provider.SupportsWebhooks,
-                SupportsIncrementalSync = provider.SupportsIncrementalSync,
-                IsActive = provider.IsActive,
-                Manufacturer = provider.Manufacturer,
-                WebsiteUrl = provider.WebsiteUrl,
-            });
-        }
-
-        // Rows seeded before a field existed get it, but only into empty fields: what an administrator
-        // typed is never replaced. A provider is also switched on once its adapter exists (its seed flag
-        // is true): a row seeded while the adapter was missing would otherwise stay disabled for good,
-        // and nothing in the application ever switches a provider off.
-        var present = Providers.Where(p => existing.Contains(p.Key, StringComparer.Ordinal)).ToList();
-        if (present.Count > 0)
-        {
-            var keys = present.Select(v => v.Key).ToList();
-            foreach (var row in await db.AttendanceProviders.Where(p => keys.Contains(p.ProviderKey)).ToListAsync(cancellationToken))
-            {
-                var seeded = present.Single(v => v.Key == row.ProviderKey);
-
-                // The name this row was seeded with before the suffix was dropped; a name an administrator typed is left alone.
-                if (LegacyDisplayNames.TryGetValue(row.ProviderKey, out var legacyNames) && legacyNames.Contains(row.DisplayName))
-                {
-                    row.DisplayName = seeded.DisplayName;
-                }
-
-                if (row.Manufacturer.Length == 0)
-                {
-                    row.Manufacturer = seeded.Manufacturer;
-                }
-
-                if (row.WebsiteUrl.Length == 0)
-                {
-                    row.WebsiteUrl = seeded.WebsiteUrl;
-                }
-
-                if (row.SupportedTransports.Length == 0)
-                {
-                    row.SupportedTransports = seeded.Transport.ToString();
-                }
-
-                if (seeded.IsActive && !row.IsActive)
-                {
-                    row.IsActive = true;
-                }
-            }
-        }
+        var transports = await SeedTransportsAsync(db, cancellationToken);
+        var deviceTypes = await SeedDeviceTypesAsync(db, cancellationToken);
+        var createdFormats = await SeedFormatsAsync(db, cancellationToken);
+        await SeedProvidersAsync(db, transports, createdFormats, cancellationToken);
+        await MoveLegacyTextAsync(db, transports, deviceTypes, cancellationToken);
 
         // The MVP defaults of study §20.1: no inference of unlabeled punches, no overtime
         // pre-approval, the manager approves corrections. An administrator changes them in place.
@@ -112,5 +46,166 @@ public sealed class AttendanceSeedContributor : ISeedContributor
         }
     }
 
-    private sealed record SeedProvider(string Key, string DisplayName, AttendanceTransport Transport, bool SupportsWebhooks, bool SupportsIncrementalSync, bool IsActive, string Manufacturer = "", string WebsiteUrl = "");
+    private static async Task<Dictionary<string, AttendanceTransportDefinition>> SeedTransportsAsync(IRobeemDbContext db, CancellationToken cancellationToken)
+    {
+        var rows = await db.AttendanceTransportDefinitions.ToDictionaryAsync(t => t.TransportKey, StringComparer.Ordinal, cancellationToken);
+        foreach (var seed in AttendanceSeedData.Transports.Where(t => !rows.ContainsKey(t.Transport.ToString())))
+        {
+            var row = new AttendanceTransportDefinition
+            {
+                TransportKey = seed.Transport.ToString(),
+                DisplayName = seed.DisplayName,
+                IsPull = seed.IsPull,
+                UsesFileFormat = seed.UsesFileFormat,
+                IsActive = true,
+            };
+            db.AttendanceTransportDefinitions.Add(row);
+            rows[row.TransportKey] = row;
+        }
+
+        return rows;
+    }
+
+    private static async Task<Dictionary<string, AttendanceDeviceType>> SeedDeviceTypesAsync(IRobeemDbContext db, CancellationToken cancellationToken)
+    {
+        var rows = (await db.AttendanceDeviceTypes.ToListAsync(cancellationToken)).ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var name in AttendanceSeedData.DeviceTypes.Where(n => !rows.ContainsKey(n)))
+        {
+            var row = new AttendanceDeviceType { Name = name, IsActive = true };
+            db.AttendanceDeviceTypes.Add(row);
+            rows[name] = row;
+        }
+
+        return rows;
+    }
+
+    /// <summary>Adds the built-in file formats that are missing, and returns the ones added by this run.</summary>
+    private static async Task<Dictionary<string, AttendanceFileFormat>> SeedFormatsAsync(IRobeemDbContext db, CancellationToken cancellationToken)
+    {
+        var existing = await db.AttendanceFileFormats.Select(f => f.Name).ToListAsync(cancellationToken);
+        var created = new Dictionary<string, AttendanceFileFormat>(StringComparer.OrdinalIgnoreCase);
+        foreach (var seed in AttendanceSeedData.Formats.Where(f => !existing.Contains(f.Name, StringComparer.OrdinalIgnoreCase)))
+        {
+            var format = new AttendanceFileFormat
+            {
+                Name = seed.Name,
+                Description = seed.Description,
+                FileKind = AttendanceFileKind.Auto,
+                Delimiter = ",",
+                HasHeaderRow = true,
+                SheetNumber = 1,
+                IsActive = true,
+                EmployeeColumn = seed.EmployeeColumn,
+                TimestampColumn = seed.TimestampColumn,
+                TypeColumn = seed.TypeColumn,
+                DirectionColumn = seed.DirectionColumn,
+                DeviceColumn = seed.DeviceColumn,
+                TransactionIdColumn = seed.TransactionIdColumn,
+                PayloadColumns = seed.PayloadColumns,
+                TimestampFormats = string.Join(";", seed.TimestampFormats),
+            };
+            foreach (var (code, type) in seed.EventCodes)
+            {
+                format.EventCodes.Add(new AttendanceFileFormatEventCode { Code = code, EventType = type });
+            }
+
+            db.AttendanceFileFormats.Add(format);
+            created[seed.Name] = format;
+        }
+
+        return created;
+    }
+
+    private static async Task SeedProvidersAsync(
+        IRobeemDbContext db,
+        Dictionary<string, AttendanceTransportDefinition> transports,
+        Dictionary<string, AttendanceFileFormat> createdFormats,
+        CancellationToken cancellationToken)
+    {
+        var rows = (await db.AttendanceProviders.Include(p => p.Transports).ToListAsync(cancellationToken)).ToDictionary(p => p.ProviderKey, StringComparer.Ordinal);
+        foreach (var seed in AttendanceSeedData.Providers)
+        {
+            if (!rows.TryGetValue(seed.Key, out var provider))
+            {
+                provider = new AttendanceProvider
+                {
+                    ProviderKey = seed.Key,
+                    DisplayName = seed.DisplayName,
+                    SupportsWebhooks = seed.SupportsWebhooks,
+                    SupportsIncrementalSync = seed.SupportsIncrementalSync,
+                    IsActive = seed.IsActive,
+                    Manufacturer = seed.Manufacturer,
+                    WebsiteUrl = seed.WebsiteUrl,
+                };
+                foreach (var transport in seed.Transports)
+                {
+                    provider.Transports.Add(new AttendanceProviderTransport { Transport = transports[transport.ToString()] });
+                }
+
+                db.AttendanceProviders.Add(provider);
+                rows[seed.Key] = provider;
+            }
+
+            // A format created by this run is the layout the provider used to be read by in code: link it, and the
+            // integrations that had no format of their own, so they read as before. Later runs leave the link alone.
+            if (seed.DefaultFormat is { } formatName && createdFormats.TryGetValue(formatName, out var format))
+            {
+                if (provider.DefaultFileFormatId is null && provider.DefaultFileFormat is null)
+                {
+                    provider.DefaultFileFormat = format;
+                }
+
+                if (provider.Id != 0)
+                {
+                    var unformatted = await db.AttendanceIntegrations
+                        .Where(i => i.ProviderId == provider.Id && i.Transport == AttendanceTransport.FileUpload && i.FileFormatId == null)
+                        .ToListAsync(cancellationToken);
+                    foreach (var integration in unformatted)
+                    {
+                        integration.FileFormat = format;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>Reads a provider's transports and a device's type from the text they were once stored as, then clears the text so an administrator's later edits stand.</summary>
+    private static async Task MoveLegacyTextAsync(
+        IRobeemDbContext db,
+        Dictionary<string, AttendanceTransportDefinition> transports,
+        Dictionary<string, AttendanceDeviceType> deviceTypes,
+        CancellationToken cancellationToken)
+    {
+        var providers = await db.AttendanceProviders.Include(p => p.Transports).Where(p => p.LegacySupportedTransports != string.Empty).ToListAsync(cancellationToken);
+        foreach (var provider in providers)
+        {
+            var keys = provider.LegacySupportedTransports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var key in keys.Where(k => !string.Equals(k, nameof(AttendanceTransport.FileUpload), StringComparison.OrdinalIgnoreCase)))
+            {
+                if (Enum.TryParse<AttendanceTransport>(key, ignoreCase: true, out var transport)
+                    && Enum.IsDefined(transport)
+                    && transports.TryGetValue(transport.ToString(), out var definition)
+                    && !provider.Transports.Any(t => t.Transport == definition || (definition.Id != 0 && t.TransportId == definition.Id)))
+                {
+                    provider.Transports.Add(new AttendanceProviderTransport { Transport = definition });
+                }
+            }
+
+            provider.LegacySupportedTransports = string.Empty;
+        }
+
+        var devices = await db.AttendanceDevices.Where(d => d.DeviceTypeId == null && d.LegacyDeviceType != string.Empty).ToListAsync(cancellationToken);
+        foreach (var device in devices)
+        {
+            if (!deviceTypes.TryGetValue(device.LegacyDeviceType, out var type))
+            {
+                type = new AttendanceDeviceType { Name = device.LegacyDeviceType, IsActive = true };
+                db.AttendanceDeviceTypes.Add(type);
+                deviceTypes[device.LegacyDeviceType] = type;
+            }
+
+            device.DeviceType = type;
+            device.LegacyDeviceType = string.Empty;
+        }
+    }
 }

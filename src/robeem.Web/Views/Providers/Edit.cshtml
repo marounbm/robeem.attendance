@@ -1,0 +1,16 @@
+@model ProviderFormViewModel
+@{
+    ViewData["Title"] = "Edit provider";
+}
+
+<h1 class="h3 mb-3">Edit provider</h1>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.Id">
+    <partial name="_ProviderForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Index">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

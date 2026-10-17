@@ -56,21 +56,6 @@ public static class DisplayFormats
         return char.ToUpperInvariant(text[0]) + text[1..];
     }
 
-    /// <summary>Writes how an integration receives attendance (an AttendanceTransport name) for a person.</summary>
-    public static string Transport(string? transport) => transport switch
-    {
-        "FileUpload" => "Manual file upload",
-        "Sftp" => "SFTP drop",
-        "RestApi" => "REST API",
-        "Webhook" => "Webhook",
-        "Database" => "Database",
-        "DeviceSdk" => "Device SDK / agent",
-        _ => Words(transport),
-    };
-
-    /// <summary>Whether the integration pulls from the vendor (so it has a schedule) rather than being pushed to.</summary>
-    public static bool PullsOnSchedule(string? transport) => transport is "Sftp" or "RestApi" or "Database" or "DeviceSdk";
-
     /// <summary>The Bootstrap badge colour of a status name.</summary>
     public static string Badge(string? status) => status switch
     {

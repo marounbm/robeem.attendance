@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using robeem.Application.Attendance.Seeding;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
@@ -27,20 +26,25 @@ public sealed class IngestionService : IIngestionService
         var integrations = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Status == AttendanceIntegrationStatus.Active && i.Transport == AttendanceTransport.FileUpload && i.Provider!.IsActive)
             .OrderBy(i => i.DisplayName)
-            .Select(i => new { i.Id, i.DisplayName, i.FileFormatId, Provider = i.Provider! })
+            .Select(i => new { i.Id, i.DisplayName, i.Transport, i.FileFormatId, Provider = i.Provider! })
             .ToListAsync(cancellationToken);
 
-        var formatIds = integrations.Where(i => i.FileFormatId != null).Select(i => i.FileFormatId!.Value).Distinct().ToList();
-        var formats = formatIds.Count == 0
+        var effectiveFormatIds = integrations
+            .Select(i => FileFormatResolution.EffectiveFormatId(i.Transport, i.FileFormatId, i.Provider.DefaultFileFormatId))
+            .Where(id => id != null)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var formats = effectiveFormatIds.Count == 0
             ? []
-            : await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).Where(f => formatIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, cancellationToken);
+            : await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).Where(f => effectiveFormatIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, cancellationToken);
 
         return integrations
             .Select(i =>
             {
-                var layout = i.FileFormatId is { } formatId && formats.TryGetValue(formatId, out var format)
+                var layout = FileFormatResolution.EffectiveFormatId(i.Transport, i.FileFormatId, i.Provider.DefaultFileFormatId) is { } formatId && formats.TryGetValue(formatId, out var format)
                     ? FileFormatLayout.Describe(format, i.Provider.ProviderKey)
-                    : DescribeProviderLayout(i.Provider);
+                    : NoFormatLayout(i.Provider);
                 return new UploadTarget
                 {
                     IntegrationId = i.Id,
@@ -140,57 +144,20 @@ public sealed class IngestionService : IIngestionService
         return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
     }
 
-    /// <summary>
-    /// The layout a file is read by when the integration has no custom format: the provider's own when its
-    /// adapter reads files, otherwise the generic CSV/Excel layout (the provider's timestamp formats and event
-    /// labels still apply, since normalization uses its interpreter).
-    /// </summary>
-    private ProviderMappingGuide DescribeProviderLayout(AttendanceProvider provider)
+    /// <summary>The layout shown for an integration that has no file format: there is nothing to read its files by yet.</summary>
+    private static ProviderMappingGuide NoFormatLayout(AttendanceProvider provider) => new()
     {
-        var adapter = _services.GetKeyedService<IAttendanceProvider>(provider.ProviderKey);
-        var own = (adapter as IAttendanceMappingGuide)?.DescribeMapping();
-        if (adapter is IAttendanceFileReader || adapter is null)
-        {
-            return own ?? new ProviderMappingGuide { ProviderKey = provider.ProviderKey, Summary = "This provider's adapter does not describe its file layout." };
-        }
+        ProviderKey = provider.ProviderKey,
+        Summary = $"{provider.DisplayName} has no file format of its own, and this integration has none chosen. Edit the integration and choose a file format (or give the provider a default one) before uploading a file.",
+    };
 
-        var generic = (_services.GetKeyedService<IAttendanceProvider>(AttendanceSeedContributor.CsvProviderKey) as IAttendanceMappingGuide)?.DescribeMapping();
-        if (generic is null)
-        {
-            return new ProviderMappingGuide { ProviderKey = provider.ProviderKey, Summary = "No file reader is available for this provider." };
-        }
-
-        return new ProviderMappingGuide
-        {
-            ProviderKey = provider.ProviderKey,
-            Summary = $"{provider.DisplayName} has no file layout of its own, so the file is read with the generic CSV/Excel layout. Timestamps and event labels in it must follow {provider.DisplayName}'s formats (listed below), because they are interpreted the way the provider's own data is. " + generic.Summary,
-            FileFormats = generic.FileFormats,
-            Fields = generic.Fields,
-            TimestampFormats = own is { TimestampFormats.Count: > 0 } ? own.TimestampFormats : generic.TimestampFormats,
-            EventCodes = own is { EventCodes.Count: > 0 } ? own.EventCodes : generic.EventCodes,
-            NotStored = generic.NotStored,
-        };
-    }
-
-    /// <summary>Reads the file with what its integration says: a custom format, the provider's own adapter, or (for a provider that cannot read a file) the generic CSV adapter.</summary>
+    /// <summary>Reads an uploaded file by the integration's file format, else its provider's default. An integration with neither has no way to read a file.</summary>
     private async Task<IReadOnlyList<ExternalAttendanceTransaction>> ReadUploadAsync(AttendanceIntegration integration, string providerKey, string filePath, CancellationToken cancellationToken)
     {
-        if (integration.FileFormatId is { } formatId)
-        {
-            var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
-            return await _services.GetRequiredService<ICustomFormatFileReader>().ReadAsync(format, filePath, cancellationToken);
-        }
-
-        var provider = _services.GetKeyedService<IAttendanceProvider>(providerKey)
-            ?? throw new InvalidOperationException($"No adapter is registered for provider '{providerKey}'.");
-        if (provider is not IAttendanceFileReader)
-        {
-            provider = _services.GetKeyedService<IAttendanceProvider>(AttendanceSeedContributor.CsvProviderKey)
-                ?? throw new InvalidOperationException($"Provider '{providerKey}' cannot read a file, and the generic CSV adapter is not registered.");
-        }
-
-        var config = new AttendanceIntegrationConfig(integration.Id, providerKey, integration.ConnectionConfigRef) { UploadFilePath = filePath };
-        return (await provider.RetrieveAttendanceTransactionsAsync(config, null, cancellationToken)).Transactions;
+        var formatId = FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.Provider!.DefaultFileFormatId)
+            ?? throw new InvalidOperationException($"Integration '{integration.DisplayName}' has no file format, and provider '{providerKey}' has no default one, so its files can't be read. Choose a file format for the integration.");
+        var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+        return await _services.GetRequiredService<ICustomFormatFileReader>().ReadAsync(format, filePath, cancellationToken);
     }
 
     private async Task<AttendanceIngestionResult?> IngestFileAsync(int integrationId, string filePath, AttendanceBatchType batchType, UploadedFileSource? upload, CancellationToken cancellationToken)

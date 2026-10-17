@@ -35,14 +35,14 @@ public sealed class CustomFileFormatTests : IDisposable
     {
         _services = new ServiceCollection()
             .AddKeyedSingleton<IAttendanceProvider>(RestKey, _rest)
-            .AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey)
-            .AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(RestKey)
             .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
             .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
             .BuildServiceProvider();
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var provider = new AttendanceProvider { ProviderKey = RestKey, DisplayName = "REST only", SupportedTransports = nameof(AttendanceTransport.RestApi) };
+        var provider = new AttendanceProvider { ProviderKey = RestKey, DisplayName = "REST only" };
+        provider.Transports.Add(new AttendanceProviderTransport { Transport = new AttendanceTransportDefinition { TransportKey = nameof(AttendanceTransport.RestApi), DisplayName = "REST API", IsPull = true } });
+        db.Add(new AttendanceTransportDefinition { TransportKey = nameof(AttendanceTransport.FileUpload), DisplayName = "Manual file upload", UsesFileFormat = true });
         var employee = new Profile { EmployeeNumber = "P-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         var integration = new AttendanceIntegration { Provider = provider, DisplayName = "Branch upload", Transport = AttendanceTransport.FileUpload };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Door", TimeZoneId = "Asia/Beirut" };
@@ -182,7 +182,7 @@ public sealed class CustomFileFormatTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = IntegrationService(db);
         var providers = await service.ListProvidersAsync(CancellationToken.None);
-        Assert.Equal([nameof(AttendanceTransport.RestApi), nameof(AttendanceTransport.FileUpload)], providers.Single(p => p.Key == RestKey).SupportedTransports);
+        Assert.Equal([nameof(AttendanceTransport.RestApi), nameof(AttendanceTransport.FileUpload)], providers.Single(p => p.Key == RestKey).SupportedTransports.Select(t => t.Key));
 
         var result = await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
 
@@ -289,29 +289,50 @@ public sealed class CustomFileFormatTests : IDisposable
     }
 
     [Fact]
-    public async Task ARestProvidersIntegration_SetToUpload_IsATargetReadByTheGenericLayout()
+    public async Task ARestProvidersIntegration_SetToUploadWithNoFormat_IsATarget_ThatSaysToChooseAFormat()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
         var target = Assert.Single(await IngestionService(db).ListUploadTargetsAsync(CancellationToken.None));
 
         Assert.Equal((RestKey, "Branch upload"), (target.ProviderKey, target.DisplayName));
-        Assert.Contains(".csv", target.FileFormats);
-        Assert.Contains("generic CSV/Excel layout", target.Layout.Summary);
+        Assert.Empty(target.FileFormats);
+        Assert.Contains("choose a file format", target.Layout.Summary);
         Assert.Equal(RestKey, target.Layout.ProviderKey);
     }
 
     [Fact]
-    public async Task AnUploadToARestProvider_IsReadAsAFile_AndTheRestApiIsNeverCalled()
+    public async Task AnUploadToAProviderWithNoFormat_FailsTheBatch_WithTheReason_AndTheRestApiIsNeverCalled()
     {
         File.WriteAllText(_path, "employee_id,timestamp,type,device_id\r\nE-1,2026-10-04 09:00,IN,DEV-1\r\n");
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var result = await IngestionService(db).IngestManualUploadAsync(_integrationId, _path, CancellationToken.None);
 
-        Assert.Equal((nameof(AttendanceBatchStatus.Succeeded), 1, 0), (result!.Status, result.RecordsIngested, result.RecordsFailed));
+        Assert.Equal(nameof(AttendanceBatchStatus.Failed), result!.Status);
+        Assert.Contains("has no file format", result.ErrorSummary);
         Assert.Equal(0, _rest.Calls);
-        Assert.Equal(_deviceId, db.RawAttendanceTransactions.Single().DeviceId);
+        Assert.Empty(db.RawAttendanceTransactions);
+    }
+
+    [Fact]
+    public async Task AProvidersDefaultFormat_ReadsTheUploadsOfAnIntegrationThatNamesNone()
+    {
+        var formatId = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceProviders.Single().DefaultFileFormatId = formatId;
+            db.SaveChanges();
+        }
+
+        File.WriteAllText(_path, SemicolonFile);
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var target = Assert.Single(await IngestionService(check).ListUploadTargetsAsync(CancellationToken.None));
+        var result = await IngestionService(check).IngestManualUploadAsync(_integrationId, _path, CancellationToken.None);
+
+        Assert.Contains("Custom format 'Branch export'", target.Layout.Summary);
+        Assert.Equal((nameof(AttendanceBatchStatus.Succeeded), 3, 0), (result!.Status, result.RecordsIngested, result.RecordsFailed));
+        Assert.Equal(0, _rest.Calls);
     }
 
     [Fact]
@@ -417,7 +438,7 @@ public sealed class CustomFileFormatTests : IDisposable
         new(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory());
 
     private AttendanceIntegrationService IntegrationService(RobeemDbContext db) =>
-        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services);
+        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services, new StubAdapterCatalog());
 
     private IngestionService IngestionService(RobeemDbContext db) =>
         new(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);

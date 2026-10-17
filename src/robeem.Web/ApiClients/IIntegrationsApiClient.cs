@@ -18,6 +18,9 @@ public interface IIntegrationsApiClient
     /// <summary>The active custom file formats a manual-upload integration can be set to read its files by.</summary>
     Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken);
 
+    /// <summary>The active device types a device can be given.</summary>
+    Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);
 
     Task<ApiSaveResult> CreateAsync(IntegrationInput input, CancellationToken cancellationToken);

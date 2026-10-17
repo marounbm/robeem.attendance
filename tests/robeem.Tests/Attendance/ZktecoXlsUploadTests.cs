@@ -20,18 +20,19 @@ public sealed class ZktecoXlsUploadTests : IDisposable
     private readonly string _xlsPath = Path.Combine(AppContext.BaseDirectory, "TestData", "ZktecoExport.xls");
     private readonly TestDatabase _database = new();
     private readonly ServiceProvider _services = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey)
-        .AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey)
+        .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
+        .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
         .BuildServiceProvider();
 
     private readonly int _integrationId;
 
     public ZktecoXlsUploadTests()
     {
+        _database.SeedAttendanceCatalog();
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Provider = new AttendanceProvider { ProviderKey = ZktecoProvider.ProviderKey, DisplayName = "ZKTeco export" },
+            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
             DisplayName = "Head office clock",
         };
         db.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" });

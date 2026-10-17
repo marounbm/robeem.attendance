@@ -32,7 +32,7 @@ public sealed class IntegrationsController : Controller
             Input = new IntegrationInput
             {
                 ProviderId = providers.FirstOrDefault(p => p.IsActive)?.Id ?? 0,
-                Transport = providers.FirstOrDefault(p => p.IsActive)?.SupportedTransports.FirstOrDefault() ?? "FileUpload",
+                Transport = providers.FirstOrDefault(p => p.IsActive)?.SupportedTransports.FirstOrDefault(t => t.IsActive)?.Key ?? "FileUpload",
             },
             Providers = providers,
             FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken),
@@ -117,6 +117,7 @@ public sealed class IntegrationsController : Controller
             Integration = integration,
             Health = await _integrations.GetHealthAsync(id, cancellationToken),
             Devices = await _integrations.ListDevicesAsync(id, cancellationToken),
+            DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken),
             Mappings = await _integrations.ListMappingsAsync(id, cancellationToken),
             Employees = await _integrations.ListEmployeeOptionsAsync(cancellationToken),
         });
@@ -218,7 +219,7 @@ public sealed class IntegrationsController : Controller
             TempData["ErrorMessage"] = $"{result.Unresolved} flagged punch(es) can't be resolved yet: "
                 + (result.Transport == "FileUpload"
                     ? "this integration has no device for uploaded files and their devices are not registered. Edit the integration, choose one under Device for uploaded files, and save."
-                    : $"this integration receives attendance by {DisplayFormats.Transport(result.Transport)}, not manual file upload, so it has no device for uploaded files. Register the punches' devices instead.");
+                    : $"this integration receives attendance by {result.TransportName}, not manual file upload, so it has no device for uploaded files. Register the punches' devices instead.");
         }
 
         return RedirectToAction(nameof(Details), new { id });

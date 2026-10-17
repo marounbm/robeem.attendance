@@ -1,0 +1,61 @@
+@model TransportsIndexViewModel
+@{
+    ViewData["Title"] = "Transports";
+}
+
+<h1 class="h3 mb-3">Transports</h1>
+
+<p class="text-muted">
+    The six ways attendance reaches robeem. What each one <em>does</em> is built into the application, so you can rename a transport or
+    switch it off for new integrations, but not add one. Whether robeem pulls on a schedule, and whether a file format applies, are
+    fixed by what the transport is. Integrations that already use a switched-off transport keep it.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Code</th>
+                    <th scope="col">Robeem pulls on a schedule</th>
+                    <th scope="col">Read by a file format</th>
+                    <th scope="col" class="text-end">Providers</th>
+                    <th scope="col" class="text-end">Integrations</th>
+                    <th scope="col">Available</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Transports)
+                {
+                    <tr>
+                        <td colspan="8">
+                            <form method="post" asp-action="Update" asp-route-id="@item.Id" class="row g-2 align-items-center">
+                                <div class="col-md-3">
+                                    <label class="visually-hidden" for="transport-name-@item.Id">Name</label>
+                                    <input id="transport-name-@item.Id" name="DisplayName" value="@item.DisplayName" class="form-control form-control-sm" required maxlength="255" />
+                                </div>
+                                <div class="col-md-1"><code>@item.Key</code></div>
+                                <div class="col-md-2">@(item.IsPull ? "Yes" : "No")</div>
+                                <div class="col-md-1">@(item.UsesFileFormat ? "Yes" : "No")</div>
+                                <div class="col-md-1 text-end">@item.ProviderCount</div>
+                                <div class="col-md-1 text-end">@item.IntegrationCount</div>
+                                <div class="col-md-2">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="IsActive" value="true" class="form-check-input" id="transport-active-@item.Id" checked="@item.IsActive" />
+                                        <input type="hidden" name="IsActive" value="false" />
+                                        <label class="form-check-label" for="transport-active-@item.Id">Available</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-1 text-end"><button type="submit" class="btn btn-sm btn-outline-primary">Save</button></div>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

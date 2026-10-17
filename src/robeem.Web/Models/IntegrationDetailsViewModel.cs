@@ -4,8 +4,6 @@ namespace robeem.Web.Models;
 
 public sealed class IntegrationDetailsViewModel
 {
-    public static IReadOnlyList<string> DeviceTypes { get; } = ["Biometric", "Facial", "RFID", "Mobile", "Cloud", "OnPrem"];
-
     /// <summary>Gets IANA zones offered as suggestions; any IANA zone id is accepted.</summary>
     public static IReadOnlyList<string> CommonTimeZones { get; } =
     [
@@ -18,6 +16,9 @@ public sealed class IntegrationDetailsViewModel
     public IntegrationHealthReport? Health { get; init; }
 
     public IReadOnlyList<DeviceItem> Devices { get; init; } = Array.Empty<DeviceItem>();
+
+    /// <summary>Gets the active device types, to choose a device's type from.</summary>
+    public IReadOnlyList<DeviceTypeOption> DeviceTypes { get; init; } = Array.Empty<DeviceTypeOption>();
 
     public IReadOnlyList<MappingItem> Mappings { get; init; } = Array.Empty<MappingItem>();
 

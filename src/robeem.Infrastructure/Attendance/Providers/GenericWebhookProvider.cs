@@ -85,7 +85,7 @@ public sealed class GenericWebhookProvider : IAttendanceProvider, IAttendanceMap
     public ProviderMappingGuide DescribeMapping() => new()
     {
         ProviderKey = ProviderKey,
-        Summary = "Events pushed as JSON to the integration's webhook (one object, an array, or {\"events\": [...]}), each request signed with HMAC-SHA256 of its body under the integration's secret. Same timestamp formats and event labels as the generic CSV.",
+        Summary = "Events pushed as JSON to the integration's webhook (one object, an array, or {\"events\": [...]}), each request signed with HMAC-SHA256 of its body under the integration's secret. ISO 8601 timestamps; IN, OUT, BREAK OUT and BREAK IN labels (and their spellings).",
         Fields =
         [
             new FieldMappingRule { Source = "transactionId", Target = "ExternalTransactionId" },
@@ -95,8 +95,8 @@ public sealed class GenericWebhookProvider : IAttendanceProvider, IAttendanceMap
             new FieldMappingRule { Source = "type", Target = "TransactionTypeRaw", Note = "Tried before direction." },
             new FieldMappingRule { Source = "direction", Target = "DirectionRaw" },
         ],
-        TimestampFormats = GenericCsvInterpreter.TimestampFormats.Select(f => f.Replace("'", string.Empty)).ToList(),
-        EventCodes = GenericCsvInterpreter.RecognizedEventTypes.Select(e => new EventCodeRule { Code = e.Key, EventType = e.Value.ToString() }).ToList(),
+        TimestampFormats = GenericWebhookInterpreter.TimestampFormats.Select(f => f.Replace("'", string.Empty)).ToList(),
+        EventCodes = GenericWebhookInterpreter.RecognizedEventTypes.Select(e => new EventCodeRule { Code = e.Key, EventType = e.Value.ToString() }).ToList(),
         NotStored = ["any field not listed above"],
     };
 

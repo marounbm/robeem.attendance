@@ -6,6 +6,7 @@ using robeem.Application.Attendance;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.Application.Tenancy;
+using robeem.Infrastructure.Attendance;
 using robeem.Infrastructure.Attendance.Providers;
 using robeem.Infrastructure.Persistence;
 using robeem.Infrastructure.Security;
@@ -42,12 +43,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<SeedDataRunner>();
         services.AddSingleton<TenantDatabaseInitializer>();
 
-        // Attendance adapters: one keyed service per AttendanceProvider.ProviderKey (CLAUDE.md §1.9).
-        // A new vendor is an adapter plus an event interpreter, registered under the same key.
-        services.AddKeyedSingleton<IAttendanceProvider, GenericCsvProvider>(GenericCsvProvider.ProviderKey);
-        services.AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey);
-        services.AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey);
-        services.AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey);
+        // Attendance adapters: one keyed service per AttendanceProvider.ProviderKey (CLAUDE.md §1.9). Only a vendor
+        // that is not read from files needs one (an API it is pulled from, a webhook it pushes): an adapter plus an
+        // event interpreter, registered under the same key. A vendor of exported files is a file format in the database.
+        services.AddSingleton<IAttendanceAdapterCatalog, AttendanceAdapterCatalog>();
 
         // BioStar is pulled over HTTPS. The second client is for a server with a self-signed certificate and is
         // used only when the integration's secret says allowUntrustedCertificate: certificates are verified otherwise.

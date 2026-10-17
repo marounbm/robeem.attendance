@@ -72,6 +72,37 @@ public sealed class PostgresMigrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task TheSeed_MovesTheOldTextColumnsAndLinksTheBuiltInFormats_OnPostgres()
+    {
+        await MigrateAsync();
+        await using (var db = _database!.CreateContext("tenant-a"))
+        {
+            // A database from before the catalog was data: the transports and the device type as text, a provider with no format.
+            var provider = new AttendanceProvider { ProviderKey = "zkteco", DisplayName = "ZKTeco", LegacySupportedTransports = "FileUpload, Sftp" };
+            var integration = new AttendanceIntegration { Provider = provider, DisplayName = "Uploads" };
+            db.AttendanceDevices.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "A", TimeZoneId = "UTC", LegacyDeviceType = "Facial" });
+            await db.SaveChangesAsync();
+        }
+
+        for (var run = 0; run < 2; run++)
+        {
+            await using var db = _database!.CreateContext("tenant-a");
+            await new SeedDataRunner(db, new ISeedContributor[] { new AttendanceSeedContributor() }, NullLogger<SeedDataRunner>.Instance)
+                .RunAsync(CancellationToken.None);
+        }
+
+        await using var check = _database!.CreateContext("tenant-a");
+        var zkteco = await check.AttendanceProviders.Include(p => p.Transports).ThenInclude(t => t.Transport).Include(p => p.DefaultFileFormat).SingleAsync(p => p.ProviderKey == "zkteco");
+        Assert.Equal(["Sftp"], zkteco.Transports.Select(t => t.Transport!.TransportKey));
+        Assert.Equal((string.Empty, "ZKTeco attendance export"), (zkteco.LegacySupportedTransports, zkteco.DefaultFileFormat!.Name));
+        Assert.Equal("ZKTeco attendance export", (await check.AttendanceIntegrations.Include(i => i.FileFormat).SingleAsync()).FileFormat!.Name);
+        var device = await check.AttendanceDevices.Include(d => d.DeviceType).SingleAsync();
+        Assert.Equal(("Facial", string.Empty), (device.DeviceType!.Name, device.LegacyDeviceType));
+        Assert.Equal(6, await check.AttendanceDeviceTypes.CountAsync());
+        Assert.Equal(6, await check.AttendanceTransportDefinitions.CountAsync());
+    }
+
+    [PostgresFact]
     public async Task InstantsAreStoredInUtc_AndLocalTimesAsTheyAre()
     {
         await MigrateAsync();
@@ -86,7 +117,9 @@ public sealed class PostgresMigrationTests : IAsyncLifetime
         }
 
         await using var check = _database!.CreateContext("tenant-a");
-        var raw = await check.RawAttendanceTransactions.SingleAsync();
+
+        // The fixture already holds one raw row (no parsed instant); this test's is the one that has one.
+        var raw = await check.RawAttendanceTransactions.SingleAsync(r => r.TransactionTimestampParsed != null);
         Assert.Equal(local, raw.TransactionTimestampParsed);
         Assert.Equal(TimeSpan.Zero, raw.TransactionTimestampParsed!.Value.Offset);
         Assert.Equal(new DateTime(2026, 10, 5, 6, 0, 0), raw.TransactionTimestampParsed.Value.DateTime);
@@ -188,7 +221,7 @@ public sealed class PostgresMigrationTests : IAsyncLifetime
         DeviceId = fixture.DeviceId,
         IntegrationId = fixture.IntegrationId,
         RawTransactionId = fixture.RawId,
-        AttendanceDate = bucket.UtcDateTime.Date,
+        AttendanceDate = DateTime.SpecifyKind(bucket.UtcDateTime.Date, DateTimeKind.Unspecified),
         EventTimestampUtc = bucket.AddSeconds(5),
         EventTimestampLocal = DateTime.SpecifyKind(bucket.UtcDateTime.AddSeconds(5), DateTimeKind.Unspecified),
         TimeZoneId = "UTC",

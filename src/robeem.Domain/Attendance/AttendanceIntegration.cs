@@ -11,7 +11,7 @@ namespace robeem.DataModel
     /// </summary>
     [Serializable]
     [Table(nameof(AttendanceIntegration), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceIntegration : Entity, ITenantScoped
+    public class AttendanceIntegration : Entity, ISeedData, ITenantScoped
     {
         [Required]
         [MaxLength(ITenantScoped.TenantIdMaxLength)]
@@ -36,13 +36,14 @@ namespace robeem.DataModel
 
         /// <summary>
         /// Gets or sets how this integration receives attendance. One of the provider's
-        /// <see cref="AttendanceProvider.SupportedTransports"/>; only <see cref="AttendanceTransport.FileUpload"/>
-        /// integrations are offered on the Upload attendance screen.
+        /// <see cref="AttendanceProvider.Transports"/>, or file upload, which any provider can be given; only
+        /// <see cref="AttendanceTransport.FileUpload"/> integrations are offered on the Upload attendance screen.
         /// </summary>
         public AttendanceTransport Transport { get; set; } = AttendanceTransport.FileUpload;
 
         /// <summary>
-        /// Gets or sets the custom file layout uploads are read by; null for the provider's own layout.
+        /// Gets or sets the file layout uploads are read by; null for the provider's
+        /// <see cref="AttendanceProvider.DefaultFileFormat"/>.
         /// Only meaningful when <see cref="Transport"/> is <see cref="AttendanceTransport.FileUpload"/>.
         /// </summary>
         public int? FileFormatId { get; set; }

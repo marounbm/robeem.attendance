@@ -1,0 +1,68 @@
+@model DeviceTypesIndexViewModel
+@{
+    ViewData["Title"] = "Device types";
+}
+
+<h1 class="h3 mb-3">Device types</h1>
+
+<p class="text-muted">
+    The kinds of punch device you can give a device: a fingerprint reader, a face terminal, a mobile app. They are only names for
+    your records; nothing is calculated differently by type. A type is deactivated, never deleted: devices that have it keep it.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-3">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" class="text-end">Devices</th>
+                    <th scope="col">Available for new devices</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Types)
+                {
+                    <tr>
+                        <td colspan="4">
+                            <form method="post" asp-action="Update" asp-route-id="@item.Id" class="row g-2 align-items-center">
+                                <div class="col-md-5">
+                                    <label class="visually-hidden" for="type-name-@item.Id">Name</label>
+                                    <input id="type-name-@item.Id" name="Name" value="@item.Name" class="form-control form-control-sm" required maxlength="100" />
+                                </div>
+                                <div class="col-md-2 text-end">@item.DeviceCount</div>
+                                <div class="col-md-3">
+                                    <div class="form-check">
+                                        <input type="checkbox" name="IsActive" value="true" class="form-check-input" id="type-active-@item.Id" checked="@item.IsActive" />
+                                        <input type="hidden" name="IsActive" value="false" />
+                                        <label class="form-check-label" for="type-active-@item.Id">Available</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-end"><button type="submit" class="btn btn-sm btn-outline-primary">Save</button></div>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Add a device type</div>
+    <div class="card-body">
+        <form method="post" asp-action="Create" class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label small mb-0" for="new-type-name">Name</label>
+                <input id="new-type-name" name="Name" class="form-control" required maxlength="100" placeholder="e.g. Palm reader" />
+            </div>
+            <div class="col-md-3">
+                <input type="hidden" name="IsActive" value="true" />
+                <button type="submit" class="btn btn-primary">Add</button>
+            </div>
+        </form>
+    </div>
+</div>

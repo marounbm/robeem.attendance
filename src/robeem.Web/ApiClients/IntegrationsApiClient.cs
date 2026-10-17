@@ -43,6 +43,12 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.ReadAsync<List<FileFormatOption>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync("api/attendance/device-types/options", cancellationToken);
+        return await ApiResponses.ReadAsync<List<DeviceTypeOption>>(response, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
     {
         using var response = await _http.GetAsync($"{Path}/employee-options", cancellationToken);

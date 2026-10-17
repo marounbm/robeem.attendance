@@ -21,7 +21,7 @@ namespace robeem.Tests.Web;
 
 /// <summary>
 /// The whole upload path for the real ZKTeco export, the way a browser takes it: the Web controller,
-/// then HTTP multipart to the Api controller, then the real ingestion service and the ZKTeco reader,
+/// then HTTP multipart to the Api controller, then the real ingestion service and the seeded ZKTeco file format,
 /// on a database seeded with the real catalog.
 /// </summary>
 public sealed class ZktecoUploadScreenTests : IAsyncDisposable
@@ -41,7 +41,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
 
             var integration = new AttendanceIntegration
             {
-                Provider = db.AttendanceProviders.Single(p => p.ProviderKey == ZktecoProvider.ProviderKey),
+                Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
                 DisplayName = "Head office U350",
             };
             db.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" });
@@ -51,8 +51,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
 
         _api = TestApi.Start(services =>
         {
-            services.AddKeyedSingleton<IAttendanceProvider, ZktecoProvider>(ZktecoProvider.ProviderKey);
-            services.AddKeyedSingleton<IAttendanceEventInterpreter, ZktecoInterpreter>(ZktecoProvider.ProviderKey);
+            services.AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>();
             services.AddSingleton<IRawPayloadSanitizer>(new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())));
             services.AddScoped<IRobeemDbContext>(_ => _database.CreateContext(TestDatabase.TenantA));
             services.AddScoped<IIngestionService, IngestionService>();
@@ -74,9 +73,9 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
         var model = (UploadViewModel)((ViewResult)await controller.Index(_integrationId, CancellationToken.None)).Model!;
 
         var target = Assert.IsType<robeem.Contracts.Attendance.UploadTarget>(model.Selected);
-        Assert.Equal([".xls", ".xlsx", ".csv"], target.FileFormats);
+        Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], target.FileFormats);
         Assert.Contains(target.Layout.Fields, f => f.Source == "Date/Time");
-        Assert.Contains(target.Layout.Fields, f => f.Source == "No.");
+        Assert.Contains(target.Layout.Fields, f => f.Source == "No. / ID Number");
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
     private const string NewYork = "America/New_York";
 
     private readonly ServiceProvider _interpreters = new ServiceCollection()
-        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericCsvInterpreter>(GenericCsvProvider.ProviderKey)
+        .AddKeyedSingleton<IAttendanceEventInterpreter, GenericWebhookInterpreter>("generic-csv")
         .BuildServiceProvider();
 
     [Fact]
@@ -351,7 +351,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         new(new DateTime(year, month, day, hour, minute, 0), null);
 
     private AttendanceIntegrationService CreateIntegrationService(RobeemDbContext db) =>
-        new(db, new NoSync(), CreateAudit(db), new ServiceCollection().BuildServiceProvider());
+        new(db, new NoSync(), CreateAudit(db), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
 
     private int AddDeviceForUploads(string timeZoneId)
     {
@@ -391,7 +391,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
             TransactionTimestampRaw = timestamp,
             TransactionTypeRaw = "IN",
             RawPayload = "{}",
-            SourceSystem = GenericCsvProvider.ProviderKey,
+            SourceSystem = "generic-csv",
             RecordHash = Guid.NewGuid().ToString("N"),
         };
         db.RawAttendanceTransactions.Add(raw);
@@ -408,7 +408,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
             ImportBatchId = db.AttendanceProcessingBatches.Single().Id,
             TransactionTimestampRaw = "x",
             RawPayload = "{}",
-            SourceSystem = GenericCsvProvider.ProviderKey,
+            SourceSystem = "generic-csv",
             RecordHash = Guid.NewGuid().ToString("N"),
             ProcessingStatus = RawTransactionProcessingStatus.Failed,
             ProcessingError = error,
@@ -455,7 +455,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
             TransactionTimestampRaw = timestamp,
             TransactionTypeRaw = type,
             RawPayload = "{}",
-            SourceSystem = GenericCsvProvider.ProviderKey,
+            SourceSystem = "generic-csv",
             RecordHash = Guid.NewGuid().ToString("N"),
         };
         db.RawAttendanceTransactions.Add(raw);

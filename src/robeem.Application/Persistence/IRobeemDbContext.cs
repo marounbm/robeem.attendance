@@ -30,6 +30,12 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceDevice> AttendanceDevices { get; }
 
+    DbSet<AttendanceDeviceType> AttendanceDeviceTypes { get; }
+
+    DbSet<AttendanceTransportDefinition> AttendanceTransportDefinitions { get; }
+
+    DbSet<AttendanceProviderTransport> AttendanceProviderTransports { get; }
+
     DbSet<AttendanceFileFormat> AttendanceFileFormats { get; }
 
     DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes { get; }

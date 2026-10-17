@@ -204,13 +204,13 @@ public sealed class NormalizationService : INormalizationService
 
         var integration = await _db.AttendanceIntegrations
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.Provider!.ProviderKey, i.FileFormatId, i.TimeZoneId, i.Transport, i.DefaultDeviceId })
+            .Select(i => new { i.Provider!.ProviderKey, i.FileFormatId, ProviderFileFormatId = i.Provider.DefaultFileFormatId, i.TimeZoneId, i.Transport, i.DefaultDeviceId })
             .SingleAsync(cancellationToken);
         var providerKey = integration.ProviderKey;
 
-        // An integration that reads its uploads by a custom format is interpreted by that format's own patterns and labels.
+        // An integration that reads its uploads by a file format (its own, else its provider's default) is interpreted by that format's own patterns and labels.
         IAttendanceEventInterpreter interpreter;
-        if (integration.FileFormatId is { } formatId)
+        if (FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.ProviderFileFormatId) is { } formatId)
         {
             var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
             interpreter = _services.GetRequiredService<ICustomFormatInterpreterFactory>().Create(format);

@@ -19,20 +19,34 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     private readonly IIntegrationSyncService _sync;
     private readonly IAttendanceAuditTrail _audit;
     private readonly IServiceProvider _services;
+    private readonly IAttendanceAdapterCatalog _adapters;
 
-    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit, IServiceProvider services)
+    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit, IServiceProvider services, IAttendanceAdapterCatalog adapters)
     {
         _db = db;
         _sync = sync;
         _audit = audit;
         _services = services;
+        _adapters = adapters;
     }
 
-    public async Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken) =>
-        await Items(_db, _db.AttendanceIntegrations.AsNoTracking()).OrderBy(i => i.DisplayName).ToListAsync(cancellationToken);
+    public async Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken)
+    {
+        var items = await Items(_db, _db.AttendanceIntegrations.AsNoTracking()).OrderBy(i => i.DisplayName).ToListAsync(cancellationToken);
+        await NameTransportsAsync(items, cancellationToken);
+        return items;
+    }
 
-    public async Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken) =>
-        await Items(_db, _db.AttendanceIntegrations.AsNoTracking().Where(i => i.Id == id)).SingleOrDefaultAsync(cancellationToken);
+    public async Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken)
+    {
+        var item = await Items(_db, _db.AttendanceIntegrations.AsNoTracking().Where(i => i.Id == id)).SingleOrDefaultAsync(cancellationToken);
+        if (item is not null)
+        {
+            await NameTransportsAsync([item], cancellationToken);
+        }
+
+        return item;
+    }
 
     public async Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken)
     {
@@ -53,14 +67,25 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             };
     }
 
-    public async Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken) =>
-        (await _db.AttendanceProviders
-            .AsNoTracking()
+    public async Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken)
+    {
+        var providers = await _db.AttendanceProviders.AsNoTracking().Include(p => p.Transports).ToListAsync(cancellationToken);
+        var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
+        return providers
+            .Select(p => new ProviderOption
+            {
+                Id = p.Id,
+                Key = p.ProviderKey,
+                DisplayName = p.DisplayName,
+                Manufacturer = p.Manufacturer,
+                WebsiteUrl = p.WebsiteUrl,
+                SupportedTransports = SupportedTransportsOf(p.Transports.Select(t => t.TransportId), definitions),
+                IsActive = ProviderUsability.IsUsable(p, _adapters),
+            })
             .OrderByDescending(p => p.IsActive)
             .ThenBy(p => p.DisplayName)
-            .ToListAsync(cancellationToken))
-        .Select(p => new ProviderOption { Id = p.Id, Key = p.ProviderKey, DisplayName = p.DisplayName, Manufacturer = p.Manufacturer, WebsiteUrl = p.WebsiteUrl, SupportedTransports = SupportedTransportsOf(p), IsActive = p.IsActive })
-        .ToList();
+            .ToList();
+    }
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
     {
@@ -83,14 +108,16 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         {
             errors[nameof(IntegrationInput.ProviderId)] = "The selected provider does not exist.";
         }
-        else if (!provider.IsActive)
+        else if (!ProviderUsability.IsUsable(provider, _adapters))
         {
-            errors[nameof(IntegrationInput.ProviderId)] = "This provider has no adapter yet, so it can't be used.";
+            errors[nameof(IntegrationInput.ProviderId)] = provider.IsActive
+                ? "This provider has neither a default file format nor a code adapter, so nothing can read what it delivers."
+                : "This provider is not active, so it can't be used.";
         }
 
         if (provider is not null)
         {
-            ValidateTransport(input, provider, errors);
+            await ValidateTransportAsync(input, provider, null, errors, cancellationToken);
         }
 
         await ValidateFileFormatAsync(input, null, errors, cancellationToken);
@@ -101,7 +128,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         var integration = new AttendanceIntegration { ProviderId = input.ProviderId };
-        Apply(input, integration);
+        Apply(input, integration, await IsPullAsync(input.Transport, cancellationToken));
         _db.AttendanceIntegrations.Add(integration);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -126,7 +153,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         else
         {
             var provider = await _db.AttendanceProviders.AsNoTracking().SingleAsync(p => p.Id == integration.ProviderId, cancellationToken);
-            ValidateTransport(input, provider, errors);
+            await ValidateTransportAsync(input, provider, integration.Transport.ToString(), errors, cancellationToken);
         }
 
         await ValidateFileFormatAsync(input, integration.FileFormatId, errors, cancellationToken);
@@ -137,7 +164,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         var before = $"{integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'";
-        Apply(input, integration);
+        Apply(input, integration, await IsPullAsync(input.Transport, cancellationToken));
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Changed. Before: {before}. After: {integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(integration.Id);
@@ -152,11 +179,12 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 
         var devices = await _db.AttendanceDevices
             .AsNoTracking()
+            .Include(d => d.DeviceType)
             .Where(d => d.IntegrationId == integrationId)
             .OrderBy(d => d.Name)
             .ToListAsync(cancellationToken);
         return devices
-            .Select(d => new DeviceItem { Id = d.Id, ExternalDeviceId = d.ExternalDeviceId, Name = d.Name, DeviceType = d.DeviceType.ToString(), Model = d.Model, SoftwareVersion = d.SoftwareVersion, SdkVersion = d.SdkVersion, TimeZoneId = d.TimeZoneId, LastSeenAt = d.LastSeenAt })
+            .Select(d => new DeviceItem { Id = d.Id, ExternalDeviceId = d.ExternalDeviceId, Name = d.Name, DeviceTypeId = d.DeviceTypeId, DeviceType = d.DeviceType?.Name ?? string.Empty, Model = d.Model, SoftwareVersion = d.SoftwareVersion, SdkVersion = d.SdkVersion, TimeZoneId = d.TimeZoneId, LastSeenAt = d.LastSeenAt })
             .ToList();
     }
 
@@ -167,7 +195,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return SaveResult.Missing();
         }
 
-        var errors = await ValidateDeviceAsync(integrationId, null, input, cancellationToken);
+        var errors = await ValidateDeviceAsync(integrationId, null, null, input, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
@@ -191,7 +219,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return SaveResult.Missing();
         }
 
-        var errors = await ValidateDeviceAsync(integrationId, deviceId, input, cancellationToken);
+        var errors = await ValidateDeviceAsync(integrationId, deviceId, device.DeviceTypeId, input, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
@@ -390,6 +418,10 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             Unresolved = flagged.Count - resolvable.Count,
             HasDeviceForUploads = defaultDeviceInForce,
             Transport = integration.Transport.ToString(),
+            TransportName = await _db.AttendanceTransportDefinitions.AsNoTracking()
+                .Where(t => t.TransportKey == integration.Transport.ToString())
+                .Select(t => t.DisplayName)
+                .SingleOrDefaultAsync(cancellationToken) ?? integration.Transport.ToString(),
         };
     }
 
@@ -488,17 +520,24 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 
     public async Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken)
     {
-        var providerKey = await _db.AttendanceIntegrations.AsNoTracking()
+        var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
-            .Select(i => i.Provider!.ProviderKey)
+            .Select(i => new { i.Transport, i.FileFormatId, ProviderKey = i.Provider!.ProviderKey, ProviderFileFormatId = i.Provider.DefaultFileFormatId })
             .SingleOrDefaultAsync(cancellationToken);
-        if (providerKey is null)
+        if (integration is null)
         {
             return null;
         }
 
-        return (_services.GetKeyedService<IAttendanceProvider>(providerKey) as IAttendanceMappingGuide)?.DescribeMapping()
-            ?? new ProviderMappingGuide { ProviderKey = providerKey, Summary = "This provider's adapter does not describe its mapping." };
+        // What reads the integration's data: its file format (own, else its provider's default), else the provider's code adapter.
+        if (FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.ProviderFileFormatId) is { } formatId)
+        {
+            var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+            return FileFormatLayout.Describe(format, integration.ProviderKey);
+        }
+
+        return (_services.GetKeyedService<IAttendanceProvider>(integration.ProviderKey) as IAttendanceMappingGuide)?.DescribeMapping()
+            ?? new ProviderMappingGuide { ProviderKey = integration.ProviderKey, Summary = "Nothing describes how this integration's data is mapped: it has no file format, and its provider's adapter does not describe its mapping." };
     }
 
     private static IQueryable<IntegrationListItem> Items(IRobeemDbContext db, IQueryable<AttendanceIntegration> integrations) =>
@@ -524,7 +563,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             MappingCount = db.ExternalEmployeeIdMappings.Count(m => m.IntegrationId == i.Id),
         });
 
-    private static void Apply(IntegrationInput input, AttendanceIntegration integration)
+    private static void Apply(IntegrationInput input, AttendanceIntegration integration, bool isPull)
     {
         integration.DisplayName = input.DisplayName.Trim();
         integration.ConnectionConfigRef = (input.ConnectionConfigRef ?? string.Empty).Trim();
@@ -534,7 +573,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         integration.TimeZoneId = string.IsNullOrWhiteSpace(input.TimeZoneId) ? null : input.TimeZoneId.Trim();
 
         // Only an integration that pulls has a schedule; an upload or a webhook is pushed to robeem.
-        integration.PollingScheduleCron = string.IsNullOrWhiteSpace(input.PollingScheduleCron) || !IsPull(integration.Transport) ? null : input.PollingScheduleCron.Trim();
+        integration.PollingScheduleCron = string.IsNullOrWhiteSpace(input.PollingScheduleCron) || !isPull ? null : input.PollingScheduleCron.Trim();
         integration.Status = Enum.Parse<AttendanceIntegrationStatus>(input.Status, ignoreCase: true);
     }
 
@@ -542,39 +581,24 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     {
         device.ExternalDeviceId = input.ExternalDeviceId.Trim();
         device.Name = input.Name.Trim();
-        device.DeviceType = Enum.Parse<AttendanceDeviceType>(input.DeviceType, ignoreCase: true);
+        device.DeviceTypeId = input.DeviceTypeId;
         device.Model = (input.Model ?? string.Empty).Trim();
         device.SoftwareVersion = (input.SoftwareVersion ?? string.Empty).Trim();
         device.SdkVersion = (input.SdkVersion ?? string.Empty).Trim();
         device.TimeZoneId = input.TimeZoneId.Trim();
     }
 
-    private static bool IsPull(AttendanceTransport transport) =>
-        transport is AttendanceTransport.Sftp or AttendanceTransport.RestApi or AttendanceTransport.Database or AttendanceTransport.DeviceSdk;
-
-    /// <summary>The provider's own transports first, then manual file upload, which any provider can be given (the file is read by a custom format, or the generic layout).</summary>
-    private static IReadOnlyList<string> SupportedTransportsOf(AttendanceProvider provider)
+    /// <summary>The provider's own transports first, then manual file upload, which any provider can be given (its files are read by a file format).</summary>
+    private static IReadOnlyList<TransportOption> SupportedTransportsOf(IEnumerable<int> providerTransportIds, IReadOnlyList<AttendanceTransportDefinition> definitions)
     {
-        var transports = Enum.GetValues<AttendanceTransport>().Where(provider.SupportsTransport).Select(t => t.ToString()).ToList();
-        if (!transports.Contains(nameof(AttendanceTransport.FileUpload)))
-        {
-            transports.Add(nameof(AttendanceTransport.FileUpload));
-        }
-
-        return transports;
-    }
-
-    private static void ValidateTransport(IntegrationInput input, AttendanceProvider provider, Dictionary<string, string> errors)
-    {
-        if (!Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport) || !Enum.IsDefined(transport))
-        {
-            errors[nameof(IntegrationInput.Transport)] = $"Choose how the integration receives attendance: {string.Join(", ", Enum.GetNames<AttendanceTransport>())}.";
-        }
-        else if (!SupportedTransportsOf(provider).Contains(transport.ToString()))
-        {
-            var supported = SupportedTransportsOf(provider);
-            errors[nameof(IntegrationInput.Transport)] = $"{provider.DisplayName} can't receive attendance by {transport}. It supports: {(supported.Count == 0 ? "nothing yet" : string.Join(", ", supported))}.";
-        }
+        var own = providerTransportIds.ToHashSet();
+        var fileUpload = nameof(AttendanceTransport.FileUpload);
+        return definitions
+            .Where(t => t.TransportKey == fileUpload || own.Contains(t.Id))
+            .OrderBy(t => t.TransportKey == fileUpload ? 1 : 0)
+            .ThenBy(t => Enum.TryParse<AttendanceTransport>(t.TransportKey, out var transport) ? (int)transport : int.MaxValue)
+            .Select(t => new TransportOption { Key = t.TransportKey, DisplayName = t.DisplayName, IsPull = t.IsPull, UsesFileFormat = t.UsesFileFormat, IsActive = t.IsActive })
+            .ToList();
     }
 
     private static Dictionary<string, string> Validate(IntegrationInput input)
@@ -619,6 +643,49 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         return errors;
     }
 
+    /// <summary>Sets each item's transport display name from the transport definitions.</summary>
+    private async Task NameTransportsAsync(IReadOnlyCollection<IntegrationListItem> items, CancellationToken cancellationToken)
+    {
+        var names = await _db.AttendanceTransportDefinitions.AsNoTracking().ToDictionaryAsync(t => t.TransportKey, t => t.DisplayName, StringComparer.Ordinal, cancellationToken);
+        foreach (var item in items)
+        {
+            item.TransportName = names.TryGetValue(item.Transport, out var name) ? name : item.Transport;
+        }
+    }
+
+    /// <summary>Whether robeem fetches the attendance itself, on a schedule, for a transport: from its definition.</summary>
+    private async Task<bool> IsPullAsync(string transport, CancellationToken cancellationToken)
+    {
+        var key = Enum.Parse<AttendanceTransport>(transport, ignoreCase: true).ToString();
+        return await _db.AttendanceTransportDefinitions.AsNoTracking().Where(t => t.TransportKey == key).Select(t => t.IsPull).SingleOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The chosen transport must be defined, supported by the provider (or be file upload), and available: a
+    /// retired one can't be chosen, but an integration that already has it keeps it.
+    /// </summary>
+    private async Task ValidateTransportAsync(IntegrationInput input, AttendanceProvider provider, string? currentTransport, Dictionary<string, string> errors, CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport) || !Enum.IsDefined(transport))
+        {
+            errors[nameof(IntegrationInput.Transport)] = $"Choose how the integration receives attendance: {string.Join(", ", Enum.GetNames<AttendanceTransport>())}.";
+            return;
+        }
+
+        var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
+        var ownIds = await _db.AttendanceProviderTransports.AsNoTracking().Where(t => t.ProviderId == provider.Id).Select(t => t.TransportId).ToListAsync(cancellationToken);
+        var supported = SupportedTransportsOf(ownIds, definitions);
+        var chosen = supported.FirstOrDefault(t => t.Key == transport.ToString());
+        if (chosen is null)
+        {
+            errors[nameof(IntegrationInput.Transport)] = $"{provider.DisplayName} can't receive attendance by {transport}. It supports: {(supported.Count == 0 ? "nothing yet" : string.Join(", ", supported.Select(t => t.DisplayName)))}.";
+        }
+        else if (!chosen.IsActive && chosen.Key != currentTransport)
+        {
+            errors[nameof(IntegrationInput.Transport)] = $"{chosen.DisplayName} is not available for new integrations.";
+        }
+    }
+
     private async Task ValidateFileFormatAsync(IntegrationInput input, int? currentFormatId, Dictionary<string, string> errors, CancellationToken cancellationToken)
     {
         // A format only applies to manual uploads; for any other transport it is dropped, not refused.
@@ -657,7 +724,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
     }
 
-    private async Task<Dictionary<string, string>> ValidateDeviceAsync(int integrationId, int? existingId, DeviceInput input, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> ValidateDeviceAsync(int integrationId, int? existingId, int? currentTypeId, DeviceInput input, CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string>();
 
@@ -677,9 +744,10 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             errors[nameof(DeviceInput.Name)] = "A name is required (at most 255 characters).";
         }
 
-        if (!Enum.TryParse<AttendanceDeviceType>(input.DeviceType, ignoreCase: true, out var type) || !Enum.IsDefined(type))
+        // A device may keep a type that has since been retired; a new choice must be an active one.
+        if (!await _db.AttendanceDeviceTypes.AnyAsync(t => t.Id == input.DeviceTypeId && (t.IsActive || t.Id == currentTypeId), cancellationToken))
         {
-            errors[nameof(DeviceInput.DeviceType)] = $"The type must be one of: {string.Join(", ", Enum.GetNames<AttendanceDeviceType>())}.";
+            errors[nameof(DeviceInput.DeviceTypeId)] = "Choose one of the active device types.";
         }
 
         if ((input.Model ?? string.Empty).Trim().Length > 100)

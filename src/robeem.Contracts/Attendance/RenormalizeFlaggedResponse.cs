@@ -14,4 +14,7 @@ public sealed class RenormalizeFlaggedResponse
 
     /// <summary>Gets how the integration receives attendance: an AttendanceTransport name such as FileUpload.</summary>
     public string Transport { get; init; } = string.Empty;
+
+    /// <summary>Gets the transport's display name.</summary>
+    public string TransportName { get; init; } = string.Empty;
 }

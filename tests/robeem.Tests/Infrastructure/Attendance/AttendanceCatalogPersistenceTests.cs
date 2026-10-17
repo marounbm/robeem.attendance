@@ -14,27 +14,29 @@ public sealed class AttendanceCatalogPersistenceTests : IDisposable
     {
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV", SupportedTransports = "FileUpload, Sftp" };
+            var provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV" };
+            provider.Transports.Add(new AttendanceProviderTransport { Transport = new AttendanceTransportDefinition { TransportKey = "Sftp", DisplayName = "SFTP drop", IsPull = true } });
             var integration = new AttendanceIntegration { Provider = provider, DisplayName = "HQ", HealthStatus = AttendanceIntegrationHealth.Degraded };
             db.AttendanceDevices.Add(new AttendanceDevice
             {
                 Integration = integration,
                 ExternalDeviceId = "DEV-1",
                 Name = "Front door",
-                DeviceType = AttendanceDeviceType.RFID,
+                DeviceType = new AttendanceDeviceType { Name = "RFID" },
                 TimeZoneId = "Asia/Beirut",
             });
             db.SaveChanges();
         }
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        var device = check.AttendanceDevices.Include(d => d.Integration).ThenInclude(i => i!.Provider).Single();
+        var device = check.AttendanceDevices.Include(d => d.DeviceType).Include(d => d.Integration).ThenInclude(i => i!.Provider).ThenInclude(p => p!.Transports).ThenInclude(t => t.Transport).Single();
         Assert.Equal(TestDatabase.TenantA, device.TenantId);
-        Assert.Equal(AttendanceDeviceType.RFID, device.DeviceType);
+        Assert.Equal("RFID", device.DeviceType!.Name);
+        Assert.Equal(TestDatabase.TenantA, device.DeviceType.TenantId);
         Assert.Equal(AttendanceIntegrationHealth.Degraded, device.Integration!.HealthStatus);
         Assert.Equal("Generic CSV", device.Integration.Provider!.Title);
-        Assert.True(device.Integration.Provider.SupportsTransport(AttendanceTransport.Sftp));
-        Assert.False(device.Integration.Provider.SupportsTransport(AttendanceTransport.Webhook));
+        var transport = Assert.Single(device.Integration.Provider.Transports);
+        Assert.Equal(("Sftp", TestDatabase.TenantA), (transport.Transport!.TransportKey, transport.TenantId));
 
         var storedHealth = check.Database.SqlQueryRaw<string>("SELECT \"HealthStatus\" AS \"Value\" FROM \"AttendanceIntegration\"").Single();
         Assert.Equal("Degraded", storedHealth);

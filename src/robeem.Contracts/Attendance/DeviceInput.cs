@@ -13,9 +13,10 @@ public sealed class DeviceInput
     [StringLength(255)]
     public string Name { get; set; } = string.Empty;
 
-    [Required]
+    /// <summary>Gets or sets the id of one of the active device types.</summary>
+    [Range(1, int.MaxValue, ErrorMessage = "Choose the device's type.")]
     [Display(Name = "Type")]
-    public string DeviceType { get; set; } = "Biometric";
+    public int DeviceTypeId { get; set; }
 
     [StringLength(100)]
     [Display(Name = "Model")]

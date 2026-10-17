@@ -88,6 +88,7 @@ public sealed class AttendanceFileFormatService : IAttendanceFileFormatService
                 DirectionColumn = format.DirectionColumn,
                 DeviceColumn = format.DeviceColumn,
                 TransactionIdColumn = format.TransactionIdColumn,
+                PayloadColumns = format.PayloadColumns,
                 TimestampFormats = string.Join(Environment.NewLine, FileFormatLayout.Patterns(format.TimestampFormats)),
                 EventCodes = format.EventCodes.OrderBy(c => c.Code, StringComparer.OrdinalIgnoreCase).Select(c => new FileFormatEventCodeInput { Code = c.Code, EventType = c.EventType.ToString() }).ToList(),
             };
@@ -235,6 +236,9 @@ public sealed class AttendanceFileFormatService : IAttendanceFileFormatService
 
     private static string Clean(string? value) => (value ?? string.Empty).Trim();
 
+    /// <summary>A column setting as it is stored: its headers, trimmed, separated by <c>|</c>, none empty.</summary>
+    private static string Headers(string? value) => string.Join("|", FileFormatLayout.Aliases(Clean(value)));
+
     private static void Apply(FileFormatInput input, AttendanceFileFormat format)
     {
         format.Name = Clean(input.Name);
@@ -244,14 +248,15 @@ public sealed class AttendanceFileFormatService : IAttendanceFileFormatService
         format.HasHeaderRow = input.HasHeaderRow;
         format.SheetNumber = input.SheetNumber;
         format.IsActive = input.IsActive;
-        format.EmployeeColumn = Clean(input.EmployeeColumn);
-        format.TimestampColumn = Clean(input.TimestampColumn);
-        format.DateColumn = Clean(input.DateColumn);
-        format.TimeColumn = Clean(input.TimeColumn);
-        format.TypeColumn = Clean(input.TypeColumn);
-        format.DirectionColumn = Clean(input.DirectionColumn);
-        format.DeviceColumn = Clean(input.DeviceColumn);
-        format.TransactionIdColumn = Clean(input.TransactionIdColumn);
+        format.EmployeeColumn = Headers(input.EmployeeColumn);
+        format.TimestampColumn = Headers(input.TimestampColumn);
+        format.DateColumn = Headers(input.DateColumn);
+        format.TimeColumn = Headers(input.TimeColumn);
+        format.TypeColumn = Headers(input.TypeColumn);
+        format.DirectionColumn = Headers(input.DirectionColumn);
+        format.DeviceColumn = Headers(input.DeviceColumn);
+        format.TransactionIdColumn = Headers(input.TransactionIdColumn);
+        format.PayloadColumns = Headers(input.PayloadColumns);
         format.TimestampFormats = string.Join(";", FileFormatLayout.Patterns(input.TimestampFormats ?? string.Empty));
     }
 
@@ -321,6 +326,23 @@ public sealed class AttendanceFileFormatService : IAttendanceFileFormatService
             else if (BiometricWords.Any(word => value.Contains(word, StringComparison.OrdinalIgnoreCase)))
             {
                 errors[field] = $"The {label} looks like a biometric column. Biometric data is never read.";
+            }
+        }
+
+        var kept = FileFormatLayout.Aliases(Clean(input.PayloadColumns));
+        if (kept.Count > 0)
+        {
+            if (!input.HasHeaderRow)
+            {
+                errors[nameof(FileFormatInput.PayloadColumns)] = "Columns can be chosen by name only when the file has a header row.";
+            }
+            else if (string.Join("|", kept).Length > 1000)
+            {
+                errors[nameof(FileFormatInput.PayloadColumns)] = "The columns to keep can be at most 1000 characters in all.";
+            }
+            else if (kept.Any(name => BiometricWords.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase))))
+            {
+                errors[nameof(FileFormatInput.PayloadColumns)] = "A column to keep looks like a biometric column. Biometric data is never read.";
             }
         }
 

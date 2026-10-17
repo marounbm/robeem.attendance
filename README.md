@@ -109,7 +109,7 @@ Implements the interfaces Application declared.
 
 - `Persistence/` — `RobeemDbContext` (EF Core + Npgsql), entity configurations, migrations, `TenantDatabaseInitializer` (migrates and seeds every tenant database at startup in Development).
 - `Tenancy/` — `TenantRegistry` (tenants from configuration), `TenantContext` (the current tenant of a scope), `TenantScopeFactory` (a DI scope bound to one tenant, used by background jobs).
-- `Attendance/Providers/` — the vendor adapters, each an `IAttendanceProvider` plus an `IAttendanceEventInterpreter`: `GenericCsv`, `Zkteco` (reads the clock's `.xls` export as is, through `TabularFile`), `SupremaBiostar` (HTTPS pull), `GenericWebhook` (push).
+- `Attendance/Providers/` — the code adapters, each an `IAttendanceProvider` plus an `IAttendanceEventInterpreter`, only for a vendor that is not read from files: `SupremaBiostar` (HTTPS pull) and `GenericWebhook` (push). A vendor of exported files (generic CSV, ZKTeco's `.xls` export) has no adapter: it is a provider row plus an `AttendanceFileFormat` row, read by `CustomFormatFileReader` through `TabularFile`. Providers, file formats, device types and the names of the transports are tenant data, managed on the Integrations screens.
 - `Security/` — `ConfigurationSecretStore` (resolves a secret reference to the secret; never logs it).
 - `Seeding/` — `SeedDataRunner`, which runs `ISeedContributor`s and rejects any that touch an entity not marked `ISeedData`.
 
