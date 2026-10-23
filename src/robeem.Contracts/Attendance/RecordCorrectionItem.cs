@@ -5,7 +5,13 @@ public sealed class RecordCorrectionItem
 {
     public int Id { get; init; }
 
-    /// <summary>Gets the punch it supplies: CheckIn, CheckOut, BreakOut or BreakIn.</summary>
+    /// <summary>Gets what it does: SupplyPunch or ChangePunchType.</summary>
+    public string Kind { get; init; } = "SupplyPunch";
+
+    /// <summary>Gets the type the punch had before a change of type; null for a supplied punch.</summary>
+    public string? OriginalEventType { get; init; }
+
+    /// <summary>Gets the punch it supplies, or the type the existing punch becomes: CheckIn, CheckOut, BreakOut or BreakIn.</summary>
     public string CorrectedEventType { get; init; } = string.Empty;
 
     public DateTime ProposedValue { get; init; }

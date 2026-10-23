@@ -18,6 +18,14 @@ public interface IAttendanceCorrectionService
     Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Proposes giving the out-of-order punch of an open <c>InvalidSequence</c> exception another type (for example, a check-out
+    /// that follows a check-out was really a check-in). Only a type the exception lists as settling it can be proposed. The correction is
+    /// Pending and the exception moves to PendingCorrection; once approved, the engine reads the same punch with its new type, and
+    /// the normalized punch is never edited. Only the exception's own employee can propose.
+    /// </summary>
+    Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records the manager's or HR's decision, whichever <paramref name="isHrDecision"/> says. The
     /// correction is Applied only once every approval the policy asks for is in (Manager, HR, or
     /// the manager and then HR); then the day is recalculated with the corrected punch and the

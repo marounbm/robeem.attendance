@@ -99,7 +99,7 @@ public sealed class AttendanceExceptionQueryTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task AnInvalidSequence_IsNeverProposable_AndTheShiftIsNamed()
+    public async Task AnInvalidSequence_IsProposable_OnlyForATypeThatWouldSettleIt_AndTheShiftIsNamed()
     {
         AssignSchedule(StandardDay);
         AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
@@ -113,7 +113,11 @@ public sealed class AttendanceExceptionQueryTests : AttendanceEngineTestBase
         var items = await ListAsync(new ExceptionViewer(EmployeeId, true, false, false), ExceptionStatusFilter.Active);
 
         var invalid = items.Single(e => e.ExceptionType == "InvalidSequence");
-        Assert.Equal(("08:00-17:00", false), (invalid.ShiftTitle, invalid.CanPropose));
+
+        // The second check-out can only be a check-in: any other type leaves it out of order.
+        Assert.Equal(("08:00-17:00", true), (invalid.ShiftTitle, invalid.CanPropose));
+        Assert.Equal(["CheckIn"], invalid.SuggestedEventTypes);
+        Assert.Equal(("CheckOut", Monday.At(17, 30)), (invalid.RelatedPunchType, invalid.RelatedPunchAt));
         Assert.Null(invalid.MissingEventType);
         Assert.False(invalid.ShiftIsOvernight);
     }

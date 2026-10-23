@@ -47,7 +47,7 @@
                         <th scope="col">Employee</th>
                         <th scope="col">Day</th>
                         <th scope="col">Punch</th>
-                        <th scope="col">Proposed time</th>
+                        <th scope="col">Time</th>
                         <th scope="col">Reason</th>
                         <th scope="col">Who decides</th>
                         <th scope="col"><span class="visually-hidden">Decide</span></th>
@@ -59,8 +59,17 @@
                         <tr>
                             <td>@item.EmployeeName</td>
                             <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
-                            <td>@DisplayFormats.Words(item.CorrectedEventType)</td>
-                            <td class="text-nowrap">@DisplayFormats.DateTime(item.ProposedValue)</td>
+                            <td>
+                                @if (item.Kind == "ChangePunchType")
+                                {
+                                    <span>Change <strong>@DisplayFormats.Words(item.OriginalEventType).ToLowerInvariant()</strong> to <strong>@DisplayFormats.Words(item.CorrectedEventType).ToLowerInvariant()</strong></span>
+                                }
+                                else
+                                {
+                                    @DisplayFormats.Words(item.CorrectedEventType)
+                                }
+                            </td>
+                            <td class="text-nowrap">@DisplayFormats.DateTime(item.ProposedValue)@(item.Kind == "ChangePunchType" ? " (the punch's time)" : string.Empty)</td>
                             <td>@item.Justification<div class="small text-muted">Asked @DisplayFormats.DateTime(item.RequestedAt)</div></td>
                             <td>
                                 @item.ApprovalWorkflow

@@ -125,6 +125,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime?>("ManagerDecidedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -140,6 +145,13 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("ModifiedOn")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("NormalizedTransactionId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OriginalEventType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTime>("ProposedValue")
                         .HasColumnType("timestamp without time zone");
@@ -174,6 +186,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasIndex("HrDecidedById");
 
                     b.HasIndex("ManagerDecidedById");
+
+                    b.HasIndex("NormalizedTransactionId");
 
                     b.HasIndex("RequestedByEmployeeId");
 
@@ -431,6 +445,13 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ModifiedOn")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("RelatedEventAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("RelatedEventType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<int?>("RelatedNormalizedTransactionId")
                         .HasColumnType("integer");
 
@@ -452,6 +473,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SuggestedEventTypes")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
@@ -2035,6 +2061,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ManagerDecidedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("robeem.DataModel.NormalizedAttendanceTransaction", "NormalizedTransaction")
+                        .WithMany()
+                        .HasForeignKey("NormalizedTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("robeem.DataModel.Profile", "RequestedByEmployee")
                         .WithMany()
                         .HasForeignKey("RequestedByEmployeeId")
@@ -2048,6 +2079,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("HrDecidedBy");
 
                     b.Navigation("ManagerDecidedBy");
+
+                    b.Navigation("NormalizedTransaction");
 
                     b.Navigation("RequestedByEmployee");
                 });

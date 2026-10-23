@@ -325,6 +325,9 @@ public sealed class ApiAuthenticationTests
         public Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken) =>
             Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = 1 }, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
 
+        public Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken) =>
+            Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = 1 }, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
+
         public Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken) =>
             Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = correctionId, Status = robeem.DataModel.AttendanceCorrectionStatus.Applied }, robeem.DataModel.AttendanceExceptionStatus.Closed));
 

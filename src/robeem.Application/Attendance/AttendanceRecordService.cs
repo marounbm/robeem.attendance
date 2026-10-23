@@ -210,13 +210,18 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     ResolvedAt = x.e.ResolvedAt,
                     ResolutionMethod = x.e.ResolutionMethod?.ToString(),
                     ResolutionNote = x.e.ResolutionNote,
-                    CanPropose = x.e.EmployeeId == viewer.EmployeeId && x.e.ExceptionType == AttendanceExceptionType.MissingPunch && x.e.Status == AttendanceExceptionStatus.Open,
+                    RelatedPunchType = x.e.RelatedEventType?.ToString(),
+                    RelatedPunchAt = x.e.RelatedEventAt,
+                    SuggestedEventTypes = AttendanceExceptionRules.Suggested(x.e.SuggestedEventTypes),
+                    CanPropose = AttendanceExceptionRules.CanPropose(x.e.ExceptionType, x.e.Status, x.e.EmployeeId, viewer.EmployeeId, x.e.SuggestedEventTypes),
                 })
                 .ToList(),
             Corrections = corrections
                 .Select(x => new RecordCorrectionItem
                 {
                     Id = x.Correction.Id,
+                    Kind = x.Correction.Kind.ToString(),
+                    OriginalEventType = x.Correction.OriginalEventType?.ToString(),
                     CorrectedEventType = x.Correction.CorrectedEventType.ToString(),
                     ProposedValue = x.Correction.ProposedValue,
                     Justification = x.Correction.Justification,

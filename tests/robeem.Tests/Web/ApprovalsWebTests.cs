@@ -48,7 +48,7 @@ public sealed class ApprovalsWebTests
 
         // The body carries what the user typed and nothing about who they are: the Api takes that from the token.
         using var body = JsonDocument.Parse(handler.Bodies.Single()!);
-        Assert.Equal(["exceptionId", "proposedValue", "justification"], body.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["exceptionId", "proposedValue", "newEventType", "justification"], body.RootElement.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]

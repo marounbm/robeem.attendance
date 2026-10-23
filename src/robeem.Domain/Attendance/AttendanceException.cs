@@ -46,6 +46,20 @@ namespace robeem.DataModel
 
         public NormalizedAttendanceTransaction? RelatedNormalizedTransaction { get; set; }
 
+        /// <summary>Gets or sets the type the out-of-order punch of an invalid sequence had when it was found; null for any other exception. Kept here so lists need not read the punch.</summary>
+        public NormalizedEventType? RelatedEventType { get; set; }
+
+        /// <summary>Gets or sets when the out-of-order punch happened, as local wall-clock time; null for any other exception.</summary>
+        public DateTime? RelatedEventAt { get; set; }
+
+        /// <summary>
+        /// Gets or sets the types the out-of-order punch of an <see cref="AttendanceExceptionType.InvalidSequence"/> can be changed to so that this
+        /// exception goes away: event type names separated by commas, kept up to date whenever the day is calculated. Empty for any other
+        /// exception, and when no other type would settle it.
+        /// </summary>
+        [MaxLength(100)]
+        public string SuggestedEventTypes { get; set; } = string.Empty;
+
         public AttendanceExceptionStatus Status { get; set; } = AttendanceExceptionStatus.Open;
 
         [MaxLength(500)]

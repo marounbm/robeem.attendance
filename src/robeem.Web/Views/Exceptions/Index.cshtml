@@ -95,7 +95,7 @@
                                 @if (item.CanPropose)
                                 {
                                     <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
-                                            data-bs-target="#propose-@item.Id" aria-expanded="false" aria-controls="propose-@item.Id">Propose correction</button>
+                                            data-bs-target="#propose-@item.Id" aria-expanded="false" aria-controls="propose-@item.Id">@(item.MissingEventType is null ? "Change punch" : "Propose correction")</button>
                                 }
                                 @if (item.CanAccept)
                                 {
@@ -121,7 +121,37 @@
                                 </td>
                             </tr>
                         }
-                        @if (item.CanPropose)
+                        @if (item.CanPropose && item.MissingEventType is null)
+                        {
+                            <tr class="collapse" id="propose-@item.Id">
+                                <td colspan="7" class="bg-light">
+                                    <form method="post" asp-action="ProposeChange" class="row g-2 align-items-end">
+                                        <input type="hidden" name="exceptionId" value="@item.Id" />
+                                        <div class="col-md-4">
+                                            <label class="form-label small mb-0" for="type-@item.Id">
+                                                The @(item.RelatedPunchType is null ? "punch" : DisplayFormats.Words(item.RelatedPunchType).ToLowerInvariant())@(item.RelatedPunchAt is { } at ? " at " + at.ToString("HH:mm") : string.Empty) was really a:
+                                            </label>
+                                            <select id="type-@item.Id" name="newEventType" class="form-select" required>
+                                                <option value="">— Choose —</option>
+                                                @foreach (var type in item.SuggestedEventTypes)
+                                                {
+                                                    <option value="@type">@DisplayFormats.Words(type)</option>
+                                                }
+                                            </select>
+                                            <div class="form-text">Only what would settle this problem is offered.</div>
+                                        </div>
+                                        <div class="col-md-5">
+                                            <label class="form-label small mb-0" for="why-type-@item.Id">Why was it recorded wrongly?</label>
+                                            <input id="why-type-@item.Id" type="text" name="justification" maxlength="1000" class="form-control" required />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="submit" class="btn btn-primary">Send for approval</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                        @if (item.CanPropose && item.MissingEventType is not null)
                         {
                             <tr class="collapse" id="propose-@item.Id">
                                 <td colspan="7" class="bg-light">

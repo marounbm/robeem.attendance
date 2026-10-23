@@ -40,6 +40,30 @@ public sealed class ExceptionsController : Controller
         });
     }
 
+    /// <summary>
+    /// The employee proposes the type an out-of-order punch of theirs should have (a check-out that follows a check-out is
+    /// really a check-in). Only the types the exception offers are accepted by the Api.
+    /// </summary>
+    [HttpPost]
+    [RequiresEmployee]
+    public async Task<IActionResult> ProposeChange(int exceptionId, string? newEventType, string? justification, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(newEventType))
+        {
+            TempData["ErrorMessage"] = "Choose what the punch should be.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var result = await _corrections.ProposeAsync(
+            new ProposeCorrectionRequest { ExceptionId = exceptionId, NewEventType = newEventType, Justification = justification ?? string.Empty },
+            cancellationToken);
+
+        TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
+            ? "Change proposed. It now waits for its approver's decision."
+            : result.MessageText;
+        return RedirectToAction(nameof(Index));
+    }
+
     /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>
     [HttpPost]
     [RequiresEmployee]

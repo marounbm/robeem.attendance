@@ -27,7 +27,7 @@ public sealed class AttendanceCorrectionsController : ControllerBase
         _user = user;
     }
 
-    /// <summary>An employee proposes the missing punch of their own open exception.</summary>
+    /// <summary>An employee proposes the missing punch of their own open exception, or the type an out-of-order punch of theirs should have.</summary>
     [HttpPost]
     [Authorize(Roles = AttendanceRoles.Employee)]
     public async Task<ActionResult<CreatedResponse>> Propose(ProposeCorrectionRequest request, CancellationToken cancellationToken)
@@ -37,7 +37,10 @@ public sealed class AttendanceCorrectionsController : ControllerBase
             return NoEmployeeIdentity();
         }
 
-        var result = await _corrections.ProposeCorrectionAsync(request.ExceptionId, request.ProposedValue, request.Justification, requestedBy, cancellationToken);
+        // A type is proposed for an out-of-order punch, a time for a missing one.
+        var result = string.IsNullOrWhiteSpace(request.NewEventType)
+            ? await _corrections.ProposeCorrectionAsync(request.ExceptionId, request.ProposedValue, request.Justification, requestedBy, cancellationToken)
+            : await _corrections.ProposeTypeChangeAsync(request.ExceptionId, request.NewEventType, request.Justification, requestedBy, cancellationToken);
         if (result.NotFound)
         {
             return NotFound();

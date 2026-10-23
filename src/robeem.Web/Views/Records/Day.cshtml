@@ -174,7 +174,14 @@ else
             {
                 <li class="list-group-item">
                     <span class="badge text-bg-@DisplayFormats.Badge(c.Status)">@DisplayFormats.Words(c.Status)</span>
-                    @DisplayFormats.Words(c.CorrectedEventType) at @DisplayFormats.Time(c.ProposedValue)
+                    @if (c.Kind == "ChangePunchType")
+                    {
+                        <span>Change the @DisplayFormats.Words(c.OriginalEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue) to a @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant()</span>
+                    }
+                    else
+                    {
+                        <span>@DisplayFormats.Words(c.CorrectedEventType) at @DisplayFormats.Time(c.ProposedValue)</span>
+                    }
                     <span class="text-muted"> · proposed by @c.RequestedByName on @DisplayFormats.DateTime(c.RequestedAt)</span>
                     <div class="small">@c.Justification</div>
                     <div class="small text-muted">

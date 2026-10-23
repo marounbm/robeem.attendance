@@ -284,6 +284,18 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnEmployee_ProposesAChangeOfTypeAsThemselves_WhenTheRequestNamesAType_AndATimeOtherwise()
+    {
+        var change = await Send(HttpMethod.Post, "api/attendance/corrections", As(7, AttendanceRoles.Employee), new { exceptionId = 3, newEventType = "CheckIn", justification = "I came back from lunch", requestedByEmployeeId = 999 });
+        var missing = await Send(HttpMethod.Post, "api/attendance/corrections", As(7, AttendanceRoles.Employee), new { exceptionId = 4, proposedValue = "2026-10-05T12:00:00", justification = "Reader missed it" });
+        var manager = await Send(HttpMethod.Post, "api/attendance/corrections", As(12, AttendanceRoles.Manager), new { exceptionId = 3, newEventType = "CheckIn", justification = "x" });
+
+        Assert.Equal((HttpStatusCode.Created, HttpStatusCode.Created, HttpStatusCode.Forbidden), (change.StatusCode, missing.StatusCode, manager.StatusCode));
+        Assert.Equal([(3, "CheckIn", 7)], _corrections.TypeChanges);
+        Assert.Equal([7], _corrections.Proposals);
+    }
+
+    [Fact]
     public async Task AManagerWhoIsNotAlsoAnEmployee_CanNotPropose_AndAnEmployeeWithoutAnIdentityCanNot_Either()
     {
         var body = new { exceptionId = 3, proposedValue = "2026-10-05T12:00:00", justification = "x" };
@@ -342,7 +354,15 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 
         public List<int> Proposals { get; } = [];
 
+        public List<(int ExceptionId, string NewEventType, int RequestedBy)> TypeChanges { get; } = [];
+
         public List<(CorrectionApprover Approver, int ApproverId)> Lists { get; } = [];
+
+        public Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
+        {
+            TypeChanges.Add((exceptionId, newEventType, requestedByEmployeeId));
+            return Task.FromResult(CorrectionResult.Success(new AttendanceCorrection { Id = 2 }, AttendanceExceptionStatus.PendingCorrection));
+        }
 
         public Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
         {

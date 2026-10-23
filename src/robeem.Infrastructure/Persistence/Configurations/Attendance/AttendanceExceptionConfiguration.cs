@@ -10,6 +10,7 @@ public sealed class AttendanceExceptionConfiguration : IEntityTypeConfiguration<
     {
         builder.Property(e => e.ExceptionType).HasConversion<string>().HasMaxLength(32);
         builder.Property(e => e.MissingEventType).HasConversion<string>().HasMaxLength(32);
+        builder.Property(e => e.RelatedEventType).HasConversion<string>().HasMaxLength(32);
         builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
         builder.Property(e => e.ResolutionMethod).HasConversion<string>().HasMaxLength(32);
 

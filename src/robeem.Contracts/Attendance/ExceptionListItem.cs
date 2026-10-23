@@ -23,6 +23,18 @@ public sealed class ExceptionListItem
     /// <summary>Gets the punch that is absent (CheckIn, CheckOut, BreakOut or BreakIn); null for an invalid sequence.</summary>
     public string? MissingEventType { get; init; }
 
+    /// <summary>Gets the type of the out-of-order punch of an invalid sequence (CheckIn, CheckOut, BreakOut or BreakIn); null for any other exception.</summary>
+    public string? RelatedPunchType { get; init; }
+
+    /// <summary>Gets when the out-of-order punch happened, as local wall-clock time; null for any other exception.</summary>
+    public DateTime? RelatedPunchAt { get; init; }
+
+    /// <summary>
+    /// Gets the types the out-of-order punch can be changed to so that this exception goes away (event type names, e.g. CheckIn).
+    /// Empty for any other exception, and when no other type would settle it.
+    /// </summary>
+    public IReadOnlyList<string> SuggestedEventTypes { get; init; } = Array.Empty<string>();
+
     /// <summary>Gets where it stands: Open, PendingCorrection or Closed.</summary>
     public string Status { get; init; } = string.Empty;
 

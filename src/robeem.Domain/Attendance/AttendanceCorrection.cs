@@ -34,10 +34,26 @@ namespace robeem.DataModel
         /// <summary>Gets or sets the date of the exception's shift.</summary>
         public DateTime AttendanceDate { get; set; }
 
-        /// <summary>Gets or sets the punch the correction supplies: the exception's missing punch.</summary>
+        public AttendanceCorrectionKind Kind { get; set; } = AttendanceCorrectionKind.SupplyPunch;
+
+        /// <summary>
+        /// Gets or sets the punch whose type is changed, for <see cref="AttendanceCorrectionKind.ChangePunchType"/>; null otherwise.
+        /// The normalized row is never edited: the engine reads this correction as the same punch with another type.
+        /// </summary>
+        public int? NormalizedTransactionId { get; set; }
+
+        public NormalizedAttendanceTransaction? NormalizedTransaction { get; set; }
+
+        /// <summary>Gets or sets the type the punch had when the change was proposed; null for a supplied punch.</summary>
+        public NormalizedEventType? OriginalEventType { get; set; }
+
+        /// <summary>
+        /// Gets or sets the punch the correction supplies (the exception's missing punch), or, for a change of type,
+        /// the type the existing punch becomes.
+        /// </summary>
         public NormalizedEventType CorrectedEventType { get; set; }
 
-        /// <summary>Gets or sets when the punch happened, as local wall-clock time.</summary>
+        /// <summary>Gets or sets when the punch happened, as local wall-clock time. For a change of type, the time of the punch that is changed.</summary>
         public DateTime ProposedValue { get; set; }
 
         /// <summary>Gets or sets the IANA zone <see cref="ProposedValue"/> is in, fixed when the correction is proposed so the instant never shifts.</summary>
@@ -82,7 +98,9 @@ namespace robeem.DataModel
 
         #region not mapped
         [NotMapped]
-        public override string Title => $"Correction {CorrectedEventType} — {AttendanceDate:d}";
+        public override string Title => Kind == AttendanceCorrectionKind.ChangePunchType
+            ? $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:d}"
+            : $"Correction {CorrectedEventType} — {AttendanceDate:d}";
         #endregion
     }
 }

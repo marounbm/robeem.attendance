@@ -51,15 +51,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             errors[CorrectionErrorKeys.RequestedBy] = "A correction can only be proposed by the employee the exception belongs to.";
         }
 
-        var trimmed = (justification ?? string.Empty).Trim();
-        if (trimmed.Length == 0)
-        {
-            errors[nameof(ProposeCorrectionRequest.Justification)] = "A justification is required.";
-        }
-        else if (trimmed.Length > JustificationMaxLength)
-        {
-            errors[nameof(ProposeCorrectionRequest.Justification)] = $"The justification can be at most {JustificationMaxLength} characters.";
-        }
+        var trimmed = ValidateJustification(justification, errors);
 
         var proposed = DateTime.SpecifyKind(proposedValue, DateTimeKind.Unspecified);
         var timeZoneId = string.Empty;
@@ -121,6 +113,82 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             exception.Id,
             "Open -> PendingCorrection: a correction was proposed.",
             ActorOf(requestedByEmployeeId));
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return CorrectionResult.Success(correction, exception.Status);
+    }
+
+    public async Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
+    {
+        var exception = await _db.AttendanceExceptions.SingleOrDefaultAsync(e => e.Id == exceptionId, cancellationToken);
+        if (exception is null)
+        {
+            return CorrectionResult.Missing();
+        }
+
+        var errors = new Dictionary<string, string>();
+        var suggested = exception.SuggestedEventTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (exception.Status != AttendanceExceptionStatus.Open)
+        {
+            errors[nameof(ProposeCorrectionRequest.ExceptionId)] = exception.Status == AttendanceExceptionStatus.PendingCorrection
+                ? "A correction for this exception is already waiting for a decision."
+                : "This exception is closed.";
+        }
+        else if (exception.ExceptionType != AttendanceExceptionType.InvalidSequence || exception.RelatedNormalizedTransactionId is null)
+        {
+            errors[nameof(ProposeCorrectionRequest.ExceptionId)] = "Only a punch that is out of order can be changed to another type. A missing punch is corrected with the time it happened.";
+        }
+        else if (requestedByEmployeeId != exception.EmployeeId)
+        {
+            errors[CorrectionErrorKeys.RequestedBy] = "A correction can only be proposed by the employee the exception belongs to.";
+        }
+        else if (!Enum.TryParse<NormalizedEventType>(newEventType, ignoreCase: true, out var chosen) || !suggested.Contains(chosen.ToString(), StringComparer.Ordinal))
+        {
+            errors[nameof(ProposeCorrectionRequest.NewEventType)] = suggested.Length == 0
+                ? "No other type would settle this exception."
+                : $"That type would not settle this exception. Choose one of: {string.Join(", ", suggested)}.";
+        }
+
+        var trimmed = ValidateJustification(justification, errors);
+        if (errors.Count > 0)
+        {
+            return CorrectionResult.Invalid(errors);
+        }
+
+        // Reading the punch is a direct read of normalized attendance outside the engine: audited, and saved first.
+        var actor = ActorOf(requestedByEmployeeId);
+        _audit.Record(AttendanceAuditActions.AttendanceDataRead, nameof(NormalizedAttendanceTransaction), exception.RelatedNormalizedTransactionId, $"The out-of-order punch of exception {exception.Id}, for a change of type.", actor);
+        await _db.SaveChangesAsync(cancellationToken);
+        var punch = await _db.NormalizedAttendanceTransactions
+            .AsNoTracking()
+            .SingleAsync(n => n.Id == exception.RelatedNormalizedTransactionId, cancellationToken);
+
+        var policy = await _policies.ResolveAsync(exception.EmployeeId, cancellationToken);
+        var correction = new AttendanceCorrection
+        {
+            AttendanceExceptionId = exception.Id,
+            EmployeeId = exception.EmployeeId,
+            AttendanceDate = exception.AttendanceDate,
+            Kind = AttendanceCorrectionKind.ChangePunchType,
+            NormalizedTransactionId = punch.Id,
+            OriginalEventType = punch.NormalizedEventType,
+            CorrectedEventType = Enum.Parse<NormalizedEventType>(newEventType, ignoreCase: true),
+            ProposedValue = punch.EventTimestampLocal,
+            TimeZoneId = punch.TimeZoneId,
+            Justification = trimmed,
+            RequestedByEmployeeId = requestedByEmployeeId,
+            RequestedAt = _clock.GetLocalNow().DateTime,
+            ApprovalWorkflow = policy.CorrectionApprovalWorkflow,
+            Status = AttendanceCorrectionStatus.Pending,
+        };
+        _db.AttendanceCorrections.Add(correction);
+        exception.Status = AttendanceExceptionStatus.PendingCorrection;
+        _audit.Record(
+            AttendanceAuditActions.ExceptionStatusChanged,
+            nameof(AttendanceException),
+            exception.Id,
+            $"Open -> PendingCorrection: a change of the punch from {punch.NormalizedEventType} to {correction.CorrectedEventType} was proposed.",
+            actor);
         await _db.SaveChangesAsync(cancellationToken);
 
         return CorrectionResult.Success(correction, exception.Status);
@@ -253,6 +321,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
                 c.Employee!.FirstName,
                 c.Employee.LastName,
                 c.AttendanceDate,
+                c.Kind,
+                c.OriginalEventType,
                 c.CorrectedEventType,
                 c.ProposedValue,
                 c.Justification,
@@ -270,6 +340,8 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
                 EmployeeId = r.EmployeeId,
                 EmployeeName = $"{r.FirstName} {r.LastName}",
                 AttendanceDate = r.AttendanceDate,
+                Kind = r.Kind.ToString(),
+                OriginalEventType = r.OriginalEventType?.ToString(),
                 CorrectedEventType = r.CorrectedEventType.ToString(),
                 ProposedValue = r.ProposedValue,
                 Justification = r.Justification,
@@ -281,6 +353,22 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
     }
 
     private static string ActorOf(int employeeId) => $"employee:{employeeId}";
+
+    /// <summary>Checks the justification a proposal needs, adding what is wrong with it to <paramref name="errors"/>; returns it trimmed.</summary>
+    private static string ValidateJustification(string? justification, Dictionary<string, string> errors)
+    {
+        var trimmed = (justification ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            errors[nameof(ProposeCorrectionRequest.Justification)] = "A justification is required.";
+        }
+        else if (trimmed.Length > JustificationMaxLength)
+        {
+            errors[nameof(ProposeCorrectionRequest.Justification)] = $"The justification can be at most {JustificationMaxLength} characters.";
+        }
+
+        return trimmed;
+    }
 
     /// <summary>An employee with no manager, or whose manager is inactive: HR decides for them.</summary>
     private static bool IsUnmanaged(Profile employee) => employee.ManagerId is null || employee.Manager is not { IsActive: true };

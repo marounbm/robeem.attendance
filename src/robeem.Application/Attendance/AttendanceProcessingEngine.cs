@@ -11,6 +11,15 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
     private static readonly TimeSpan EarlyArrivalWindow = TimeSpan.FromHours(4);
     private static readonly TimeSpan LateDepartureWindow = TimeSpan.FromHours(8);
 
+    // The types an out-of-order punch can be changed to.
+    private static readonly NormalizedEventType[] AttendanceTypes =
+    [
+        NormalizedEventType.CheckIn,
+        NormalizedEventType.BreakOut,
+        NormalizedEventType.BreakIn,
+        NormalizedEventType.CheckOut,
+    ];
+
     private readonly IRobeemDbContext _db;
     private readonly IScheduleResolutionService _schedules;
     private readonly IAttendancePolicyResolver _policies;
@@ -42,27 +51,36 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         // normalized rows stay as they are.
         punches.AddRange(await LoadCorrectedPunchesAsync(employeeId, day.AddDays(-1), day.AddDays(3), cancellationToken));
 
+        // An applied change of type makes a punch the type the employee proposed and the approver agreed: the normalized row stays as it is.
+        punches = await ApplyTypeChangesAsync(employeeId, punches, cancellationToken);
+
         // c. The policy: the employee's schedule's, else the tenant default (CLAUDE.md §3).
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
 
         // d. One calculation per shift starting that day, plus one for punches no shift claims.
-        var calculated = windows
+        var inputs = windows
             .Where(w => w.Date == day)
-            .Select(w => (Shift: (ResolvedShift?)w.Shift, Calculation: ShiftAttendanceCalculator.Calculate(w.Shift, punches.Where(w.Contains).ToList(), policy)))
+            .Select(w => (Shift: (ResolvedShift?)w.Shift, Punches: punches.Where(w.Contains).ToList()))
             .ToList();
         var unscheduled = punches.Where(p => p.Local.Date == day && !windows.Any(w => w.Contains(p))).ToList();
         if (unscheduled.Count > 0)
         {
-            calculated.Add((null, ShiftAttendanceCalculator.Calculate(null, unscheduled, policy)));
+            inputs.Add((null, unscheduled));
         }
+
+        var calculated = inputs
+            .Select(i => (i.Shift, Calculation: ShiftAttendanceCalculator.Calculate(i.Shift, i.Punches, policy)))
+            .ToList();
 
         // e. Exceptions, after the pairing: raised once, and closed when the problem is gone.
         var now = _clock.GetLocalNow().DateTime;
-        var detected = calculated
-            .SelectMany(c => AttendanceExceptionDetector
-                .Detect(c.Shift, day, c.Calculation, policy, now)
-                .Select(d => (ShiftId: c.Shift?.TimeScheduleShiftId, Detected: d)))
-            .ToList();
+        var detected = new List<(int? ShiftId, DetectedException Detected)>();
+        for (var i = 0; i < calculated.Count; i++)
+        {
+            var found = AttendanceExceptionDetector.Detect(calculated[i].Shift, day, calculated[i].Calculation, policy, now);
+            detected.AddRange(found.Select(d => (ShiftId: calculated[i].Shift?.TimeScheduleShiftId, Detected: WithSuggestions(d, found, inputs[i].Shift, inputs[i].Punches, day, policy, now))));
+        }
+
         var exceptions = await ReconcileExceptionsAsync(employeeId, day, detected, now, cancellationToken);
 
         // f. Records, versioned. A shift with an exception that isn't closed is never auto-Approved.
@@ -178,6 +196,50 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         : records.All(r => r.Status == AttendanceRecordStatus.Approved) ? AttendanceRecordStatus.Approved
         : AttendanceRecordStatus.PendingReview;
 
+    private static string SuggestedNames(DetectedException found) =>
+        found.SuggestedTypes is { Count: > 0 } types ? string.Join(",", types.Select(t => t.ToString())) : string.Empty;
+
+    /// <summary>
+    /// For an invalid sequence, finds the types its out-of-order punch could be given so that the exception goes away without making
+    /// another punch out of order: each type is tried by calculating the shift again with the punch changed. What a type leaves
+    /// undone (a check-out still missing, say) is a missing punch, which is another exception and handled as one.
+    /// </summary>
+    private static DetectedException WithSuggestions(
+        DetectedException found,
+        IReadOnlyList<DetectedException> allFound,
+        ResolvedShift? shift,
+        List<AttendancePunch> punches,
+        DateTime day,
+        AttendancePolicy policy,
+        DateTime now)
+    {
+        if (found.Type != AttendanceExceptionType.InvalidSequence || found.NormalizedTransactionId is not { } transactionId)
+        {
+            return found;
+        }
+
+        var offending = punches.FirstOrDefault(p => p.NormalizedTransactionId == transactionId);
+        if (offending is null)
+        {
+            return found;
+        }
+
+        var invalidNow = allFound.Count(d => d.Type == AttendanceExceptionType.InvalidSequence);
+        var suggested = new List<NormalizedEventType>();
+        foreach (var type in AttendanceTypes.Where(t => t != offending.Type))
+        {
+            var changed = punches.Select(p => p.NormalizedTransactionId == transactionId ? p with { Type = type } : p).ToList();
+            var detected = AttendanceExceptionDetector.Detect(shift, day, ShiftAttendanceCalculator.Calculate(shift, changed, policy), policy, now);
+            var invalid = detected.Where(d => d.Type == AttendanceExceptionType.InvalidSequence).ToList();
+            if (invalid.All(d => d.NormalizedTransactionId != transactionId) && invalid.Count < invalidNow)
+            {
+                suggested.Add(type);
+            }
+        }
+
+        return found with { SuggestedTypes = suggested, PunchType = offending.Type, PunchAt = offending.Local };
+    }
+
     private async Task<List<AttendancePunch>> LoadPunchesAsync(int employeeId, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         // Rows of an unknown device are left out: their local time is UTC, not the device's (P5),
@@ -198,11 +260,37 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .ToList();
     }
 
+    private async Task<List<AttendancePunch>> ApplyTypeChangesAsync(int employeeId, List<AttendancePunch> punches, CancellationToken cancellationToken)
+    {
+        var changes = await _db.AttendanceCorrections
+            .AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId
+                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.Kind == AttendanceCorrectionKind.ChangePunchType
+                && c.NormalizedTransactionId != null)
+            .OrderBy(c => c.Id)
+            .Select(c => new { c.Id, TransactionId = c.NormalizedTransactionId!.Value, c.CorrectedEventType })
+            .ToListAsync(cancellationToken);
+        if (changes.Count == 0)
+        {
+            return punches;
+        }
+
+        // The latest applied change of a punch is the one that counts.
+        var latest = changes.GroupBy(c => c.TransactionId).ToDictionary(g => g.Key, g => g.Last());
+        return punches
+            .Select(p => p.NormalizedTransactionId is { } id && latest.TryGetValue(id, out var change)
+                ? p with { Type = change.CorrectedEventType, Source = AttendancePunchSource.Corrected, CorrectionId = change.Id }
+                : p)
+            .ToList();
+    }
+
     private async Task<List<AttendancePunch>> LoadCorrectedPunchesAsync(int employeeId, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         var rows = await _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
+                && c.Kind == AttendanceCorrectionKind.SupplyPunch
                 && c.Status == AttendanceCorrectionStatus.Applied
                 && c.ProposedValue >= from
                 && c.ProposedValue < to)
@@ -354,6 +442,10 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             {
                 matched.Add(match);
                 active.Add(match);
+
+                // What would settle it can change as the day's punches do.
+                match.SuggestedEventTypes = SuggestedNames(found);
+                (match.RelatedEventType, match.RelatedEventAt) = (found.PunchType, found.PunchAt);
                 continue;
             }
 
@@ -365,6 +457,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 ExceptionType = found.Type,
                 MissingEventType = found.MissingEventType,
                 RelatedNormalizedTransactionId = found.NormalizedTransactionId,
+                SuggestedEventTypes = SuggestedNames(found),
+                RelatedEventType = found.PunchType,
+                RelatedEventAt = found.PunchAt,
                 Status = AttendanceExceptionStatus.Open,
                 Description = found.Description,
                 DetectedAt = now,

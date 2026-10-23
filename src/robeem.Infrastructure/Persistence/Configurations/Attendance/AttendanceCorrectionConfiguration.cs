@@ -8,6 +8,8 @@ public sealed class AttendanceCorrectionConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<AttendanceCorrection> builder)
     {
+        builder.Property(c => c.Kind).HasConversion<string>().HasMaxLength(32);
+        builder.Property(c => c.OriginalEventType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.CorrectedEventType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.ApprovalWorkflow).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
