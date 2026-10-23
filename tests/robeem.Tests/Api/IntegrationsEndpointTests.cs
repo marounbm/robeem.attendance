@@ -38,13 +38,15 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         ["GET", "api/attendance/integrations/1/input", null!],
         ["POST", "api/attendance/integrations", """{"providerId":1,"displayName":"x"}"""],
         ["PUT", "api/attendance/integrations/1", """{"providerId":1,"displayName":"x"}"""],
+        ["GET", "api/attendance/integrations/devices", null!],
         ["GET", "api/attendance/integrations/1/devices", null!],
+        ["GET", "api/attendance/integrations/1/devices/2", null!],
         ["POST", "api/attendance/integrations/1/devices", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeId":1}"""],
         ["PUT", "api/attendance/integrations/1/devices/2", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeId":1}"""],
         ["DELETE", "api/attendance/integrations/1/devices/2", null!],
-        ["GET", "api/attendance/integrations/1/mappings", null!],
-        ["POST", "api/attendance/integrations/1/mappings", """{"externalEmployeeId":"e","employeeId":1}"""],
-        ["DELETE", "api/attendance/integrations/1/mappings/2", null!],
+        ["GET", "api/attendance/integrations/1/devices/2/mappings", null!],
+        ["POST", "api/attendance/integrations/1/devices/2/mappings", """{"externalEmployeeId":"e","employeeId":1}"""],
+        ["DELETE", "api/attendance/integrations/1/devices/2/mappings/3", null!],
         ["POST", "api/attendance/integrations/1/sync", null!],
         ["POST", "api/attendance/integrations/1/reconcile", null!],
         ["POST", "api/attendance/integrations/1/retry-failed", null!],
@@ -101,7 +103,7 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
 
         _integrations.Result = SaveResult.Missing();
         Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/integrations/9", Admin, """{"providerId":1,"displayName":"HQ"}""")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Send("DELETE", "api/attendance/integrations/1/mappings/9", Admin, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("DELETE", "api/attendance/integrations/1/devices/2/mappings/9", Admin, null)).StatusCode);
 
         _integrations.Result = SaveResult.Invalid("id", "This device has punches on record, so it can't be deleted.");
         var refused = await Send("DELETE", "api/attendance/integrations/1/devices/2", Admin, null);
@@ -114,7 +116,7 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     {
         _integrations.Exists = false;
 
-        foreach (var url in new[] { "api/attendance/integrations/9", "api/attendance/integrations/9/input", "api/attendance/integrations/9/devices", "api/attendance/integrations/9/mappings", "api/attendance/integrations/9/health", "api/attendance/integrations/9/raw-mapping", "api/attendance/integrations/9/raw-mapping/guide" })
+        foreach (var url in new[] { "api/attendance/integrations/9", "api/attendance/integrations/9/input", "api/attendance/integrations/9/devices", "api/attendance/integrations/9/devices/2", "api/attendance/integrations/9/devices/2/mappings", "api/attendance/integrations/9/health", "api/attendance/integrations/9/raw-mapping", "api/attendance/integrations/9/raw-mapping/guide" })
         {
             Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", url, Admin, null)).StatusCode);
         }
@@ -216,17 +218,21 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
 
         public Task<IReadOnlyList<DeviceItem>?> ListDevicesAsync(int integrationId, CancellationToken cancellationToken) => Record<IReadOnlyList<DeviceItem>?>("devices", Exists ? [] : null);
 
+        public Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken) => Record<IReadOnlyList<DeviceItem>>("allDevices", []);
+
+        public Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Record<DeviceItem?>("device", Exists ? new DeviceItem { Id = deviceId } : null);
+
         public Task<SaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => Record("addDevice", Result);
 
         public Task<SaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => Record("updateDevice", Result);
 
         public Task<SaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Record("deleteDevice", Result);
 
-        public Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, CancellationToken cancellationToken) => Record<IReadOnlyList<MappingItem>?>("mappings", Exists ? [] : null);
+        public Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Record<IReadOnlyList<MappingItem>?>("mappings", Exists ? [] : null);
 
-        public Task<SaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping", Result);
+        public Task<SaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping", Result);
 
-        public Task<SaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping", Result);
+        public Task<SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping", Result);
 
         public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
         {

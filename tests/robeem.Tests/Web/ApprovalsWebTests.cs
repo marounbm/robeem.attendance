@@ -154,12 +154,32 @@ public sealed class ApprovalsWebTests
         var corrections = new FakeCorrections();
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections));
 
-        await controller.Propose(4, new DateTime(2026, 10, 5, 12, 0, 0), "Reader missed it", CancellationToken.None);
+        // Only a time is typed: the day is the exception's, or the day after when the person says it was after midnight.
+        await controller.Propose(4, new DateTime(2026, 10, 5), new TimeOnly(12, 0), false, "Reader missed it", CancellationToken.None);
+        await controller.Propose(4, new DateTime(2026, 10, 5, 14, 30, 0), new TimeOnly(5, 45), true, "Left late", CancellationToken.None);
         corrections.Refusal = ["The exception is closed."];
-        await controller.Propose(4, new DateTime(2026, 10, 5, 12, 0, 0), null, CancellationToken.None);
+        await controller.Propose(4, new DateTime(2026, 10, 5), new TimeOnly(12, 0), false, null, CancellationToken.None);
 
-        Assert.Equal([(4, new DateTime(2026, 10, 5, 12, 0, 0), "Reader missed it"), (4, new DateTime(2026, 10, 5, 12, 0, 0), string.Empty)], corrections.Proposals);
+        Assert.Equal(
+            [
+                (4, new DateTime(2026, 10, 5, 12, 0, 0), "Reader missed it"),
+                (4, new DateTime(2026, 10, 6, 5, 45, 0), "Left late"),
+                (4, new DateTime(2026, 10, 5, 12, 0, 0), string.Empty),
+            ],
+            corrections.Proposals);
         Assert.Equal("The exception is closed.", controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task ExceptionsProposal_WithoutATime_IsNeverSent()
+    {
+        var corrections = new FakeCorrections();
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections));
+
+        await controller.Propose(4, new DateTime(2026, 10, 5), null, false, "Reader missed it", CancellationToken.None);
+
+        Assert.Empty(corrections.Proposals);
+        Assert.Contains("Enter the time", (string)controller.TempData["ErrorMessage"]!);
     }
 
     [Theory]

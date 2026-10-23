@@ -70,7 +70,7 @@ public sealed class EmployeesController : Controller
 
         // Fetch recent attendance records (last 30 days)
         var from = DateTime.Today.AddDays(-30);
-        var recentRecords = await _records.ListAsync(from, DateTime.Today, id, null, false, 31, cancellationToken);
+        var recentRecords = (await _records.ListAsync(from, DateTime.Today, id, null, false, 1, 31, cancellationToken)).Items;
 
         return View(new EmployeeFormViewModel
         {

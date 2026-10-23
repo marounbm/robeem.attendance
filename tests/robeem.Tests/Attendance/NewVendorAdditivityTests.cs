@@ -36,7 +36,7 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
         var integration = db.AttendanceIntegrations.Single();
         db.AttendanceProviders.Single().ProviderKey = VendorKey;
         db.RawAttendanceTransactions.Single().ProcessingStatus = RawTransactionProcessingStatus.Normalized;
-        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { IntegrationId = integration.Id, ExternalEmployeeId = "A-77", EmployeeId = EmployeeId });
+        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Single(d => d.IntegrationId == integration.Id).Id, ExternalEmployeeId = "A-77", EmployeeId = EmployeeId });
         db.SaveChanges();
         _integrationId = integration.Id;
         Clock.Local = Monday.At(18, 0);

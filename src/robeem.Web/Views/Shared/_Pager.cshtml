@@ -1,0 +1,42 @@
+@model PagerModel
+
+@* One page of a list that is paged on the server. Every link keeps the filters; the action is the one being viewed. *@
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+    <div class="small text-muted">
+        @if (Model.Total == 0)
+        {
+            <span>No results</span>
+        }
+        else
+        {
+            <span>Showing @Model.FirstItem&ndash;@Model.LastItem of @Model.Total</span>
+        }
+    </div>
+
+    @if (Model.PageCount > 1)
+    {
+        <nav aria-label="Pages">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(Model.Page <= 1 ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-all-route-data="Model.For(Model.Page - 1)" aria-label="Previous page">&laquo;</a>
+                </li>
+                @{ var previous = 0; }
+                @foreach (var number in Model.Pages)
+                {
+                    if (number - previous > 1)
+                    {
+                        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    }
+
+                    <li class="page-item @(number == Model.Page ? "active" : string.Empty)">
+                        <a class="page-link" asp-all-route-data="Model.For(number)" aria-current="@(number == Model.Page ? "page" : null)">@number</a>
+                    </li>
+                    previous = number;
+                }
+                <li class="page-item @(Model.Page >= Model.PageCount ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-all-route-data="Model.For(Model.Page + 1)" aria-label="Next page">&raquo;</a>
+                </li>
+            </ul>
+        </nav>
+    }
+</div>

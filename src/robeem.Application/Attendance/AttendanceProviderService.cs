@@ -76,7 +76,7 @@ public sealed class AttendanceProviderService : IAttendanceProviderService
 
     public async Task<SaveResult> CreateAsync(ProviderInput input, CancellationToken cancellationToken)
     {
-        var errors = await ValidateAsync(input, null, null, cancellationToken);
+        var errors = await ValidateAsync(input, null, null, new HashSet<int>(), cancellationToken);
         var key = Clean(input.ProviderKey);
         if (key.Length > 0 && !errors.ContainsKey(nameof(ProviderInput.ProviderKey))
             && await _db.AttendanceProviders.AnyAsync(p => p.ProviderKey == key, cancellationToken))
@@ -107,7 +107,7 @@ public sealed class AttendanceProviderService : IAttendanceProviderService
             return SaveResult.Missing();
         }
 
-        var errors = await ValidateAsync(input, provider.DefaultFileFormatId, provider.ProviderKey, cancellationToken);
+        var errors = await ValidateAsync(input, provider.DefaultFileFormatId, provider.ProviderKey, provider.Transports.Select(t => t.TransportId).ToHashSet(), cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
@@ -162,7 +162,7 @@ public sealed class AttendanceProviderService : IAttendanceProviderService
         }
     }
 
-    private async Task<Dictionary<string, string>> ValidateAsync(ProviderInput input, int? currentFormatId, string? existingKey, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> ValidateAsync(ProviderInput input, int? currentFormatId, string? existingKey, IReadOnlySet<int> currentTransportIds, CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string>();
 
@@ -202,9 +202,18 @@ public sealed class AttendanceProviderService : IAttendanceProviderService
         {
             errors[nameof(ProviderInput.Transports)] = $"'{unknown}' is not a transport. Choose from: {string.Join(", ", Enum.GetNames<AttendanceTransport>())}.";
         }
-        else if (wanted.Count > 0 && await _db.AttendanceTransportDefinitions.CountAsync(t => wanted.Contains(t.TransportKey), cancellationToken) != wanted.Count)
+        else if (wanted.Count > 0)
         {
-            errors[nameof(ProviderInput.Transports)] = "A transport you chose has no definition in this tenant.";
+            var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().Where(t => wanted.Contains(t.TransportKey)).ToListAsync(cancellationToken);
+            if (definitions.Count != wanted.Count)
+            {
+                errors[nameof(ProviderInput.Transports)] = "A transport you chose has no definition in this tenant.";
+            }
+            else if (definitions.FirstOrDefault(t => !t.IsActive && !currentTransportIds.Contains(t.Id)) is { } retired)
+            {
+                // Like a retired file format: a provider may keep a transport that has since been switched off, but can't be given it.
+                errors[nameof(ProviderInput.Transports)] = $"{retired.DisplayName} is switched off, so it can't be added to a provider.";
+            }
         }
 
         // A provider may keep a format that has since been retired; a new choice must be an active one.

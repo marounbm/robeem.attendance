@@ -16,6 +16,16 @@
 
 <form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
     <div class="col-auto">
+        <label class="form-label small mb-0" for="employeeId">Employee</label>
+        <select id="employeeId" name="employeeId" class="form-select">
+            <option value="">All employees</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.EmployeeId)">@employee.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
         <label class="form-label small mb-0" for="status">Status</label>
         <select id="status" name="status" class="form-select">
             @foreach (var status in RecordsIndexViewModel.Statuses)
@@ -38,15 +48,18 @@
             <label class="form-check-label" for="onlyWithExceptions">Only days with an open exception</label>
         </div>
     </div>
-    @if (Model.EmployeeId is { } employeeId)
-    {
-        <input type="hidden" name="employeeId" value="@employeeId" />
-        <div class="col-auto">
-            <span class="badge text-bg-light border">One employee <a asp-action="Index" class="ms-1 text-decoration-none" title="Show everyone">&times;</a></span>
-        </div>
-    }
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select">
+            @foreach (var size in RecordsIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
+    </div>
     <div class="col-auto">
         <button type="submit" class="btn btn-outline-secondary">Filter</button>
+        <a asp-action="Index" class="btn btn-link">Clear</a>
     </div>
 </form>
 
@@ -93,3 +106,5 @@
         </div>
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

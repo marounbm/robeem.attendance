@@ -4,6 +4,7 @@ using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Application.Security;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Api.Controllers;
@@ -17,6 +18,8 @@ namespace robeem.Api.Controllers;
 [Route("api/attendance/records")]
 public sealed class AttendanceRecordsController : ControllerBase
 {
+    private const int DefaultPageSize = 25;
+
     private readonly IAttendanceRecordService _records;
     private readonly ICurrentUser _user;
 
@@ -31,10 +34,11 @@ public sealed class AttendanceRecordsController : ControllerBase
     /// <param name="employeeId">Only this employee (within what the user may see).</param>
     /// <param name="status">Only days with this status: Calculated, PendingReview, Approved or Rejected.</param>
     /// <param name="onlyWithExceptions">Only days with an exception that is not closed.</param>
-    /// <param name="take">At most this many, newest first (default 100, at most 500).</param>
+    /// <param name="page">The 1-based page, newest days first (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Days per page (default 25, at most 200).</param>
     [HttpGet]
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
-    public async Task<ActionResult<IReadOnlyList<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int take, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
     {
         if (AttendanceViewers.For(_user) is not { } viewer)
         {
@@ -53,7 +57,20 @@ public sealed class AttendanceRecordsController : ControllerBase
             parsed = value;
         }
 
-        return Ok(await _records.ListDaysAsync(new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, take == 0 ? 100 : take), viewer, cancellationToken));
+        return Ok(await _records.ListDaysAsync(new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, page <= 0 ? 1 : page, pageSize <= 0 ? DefaultPageSize : pageSize), viewer, cancellationToken));
+    }
+
+    /// <summary>The employees whose days the user may see, to filter the list by one of them.</summary>
+    [HttpGet("employee-options")]
+    [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
+    public async Task<ActionResult<IReadOnlyList<EmployeeOption>>> EmployeeOptions(CancellationToken cancellationToken)
+    {
+        if (AttendanceViewers.For(_user) is not { } viewer)
+        {
+            return NotLinked();
+        }
+
+        return Ok(await _records.ListEmployeeOptionsAsync(viewer, cancellationToken));
     }
 
     /// <summary>One employee's day in full. 404 when the employee doesn't exist or the user may not see them.</summary>

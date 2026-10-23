@@ -207,6 +207,31 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
         Assert.Contains("not available for new integrations", fresh.Errors[nameof(IntegrationInput.Transport)]);
     }
 
+    [Fact]
+    public async Task ASwitchedOffTransport_CanNotBeAddedToAProvider_ButAProviderKeepsItsOwn()
+    {
+        var id = (await Providers(db => db.CreateAsync(NewProvider(transports: ["Sftp"]), CancellationToken.None))).Id!.Value;
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").IsActive = false;
+            db.SaveChanges();
+        }
+
+        var keeps = await Providers(db => db.UpdateAsync(id, NewProvider(transports: ["Sftp"]), CancellationToken.None));
+        var anew = await Providers(db => db.CreateAsync(NewProvider(key: "second", transports: ["Sftp"]), CancellationToken.None));
+        var addsActive = await Providers(db => db.UpdateAsync(id, NewProvider(transports: ["Sftp", "RestApi"]), CancellationToken.None));
+        var dropsIt = await Providers(db => db.UpdateAsync(id, NewProvider(transports: ["RestApi"]), CancellationToken.None));
+        var takesItBack = await Providers(db => db.UpdateAsync(id, NewProvider(transports: ["Sftp", "RestApi"]), CancellationToken.None));
+
+        Assert.True(keeps.Succeeded);
+        Assert.Contains("switched off", anew.Errors[nameof(ProviderInput.Transports)]);
+        Assert.True(addsActive.Succeeded);
+        Assert.True(dropsIt.Succeeded);
+
+        // Once removed, a switched-off transport can't be added back until it is switched on again.
+        Assert.Contains("switched off", takesItBack.Errors[nameof(ProviderInput.Transports)]);
+    }
+
     private static ProviderInput NewProvider(string key = "acme-clock", int? formatId = null, string[]? transports = null, bool isActive = true) => new()
     {
         ProviderKey = key,

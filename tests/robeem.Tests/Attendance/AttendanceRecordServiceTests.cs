@@ -7,7 +7,7 @@ namespace robeem.Tests.Attendance;
 /// <summary>The records screens' queries (screens phase 5): scope, filters, a day in full, and reprocessing.</summary>
 public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
 {
-    private static readonly RecordFilter Everything = new(null, null, null, null, false, 100);
+    private static readonly RecordFilter Everything = new(null, null, null, null, false, 1, 100);
 
     [Fact]
     public async Task HrSeesEveryDay_AnEmployeeOnlyTheirOwn_AManagerOnlyTheirReports()
@@ -41,7 +41,7 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         var secondWeek = await ListAsync(Everything with { From = Monday.AddDays(1) }, hr);
         var withExceptions = await ListAsync(Everything with { OnlyWithExceptions = true }, hr);
         var otherEmployee = await ListAsync(Everything with { EmployeeId = otherId }, hr);
-        var taken = await ListAsync(Everything with { Take = 1 }, hr);
+        var taken = await ListAsync(Everything with { PageSize = 1 }, hr);
 
         Assert.Equal([Monday.AddDays(7), Monday], all.Select(d => d.AttendanceDate));
         Assert.Equal([Monday], firstWeek.Select(d => d.AttendanceDate));
@@ -51,6 +51,58 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         Assert.Single(taken);
         var day = firstWeek.Single();
         Assert.Equal(("E-1", "Ada Lovelace", TimeSpan.FromHours(8), 1, 0), (day.EmployeeNumber, day.EmployeeName, day.TotalWorkingHours, day.ShiftCount, day.ExceptionCount));
+    }
+
+    [Fact]
+    public async Task TheList_IsPagedOnTheServer_NewestFirst_WithTheTotalOfTheWholeList()
+    {
+        await ProcessFullDayAsync();
+        for (var week = 1; week <= 2; week++)
+        {
+            AddPunch(NormalizedEventType.CheckOut, Monday.AddDays(7 * week).AddHours(17));
+            await ProcessAsync(Monday.AddDays(7 * week));
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var first = await PageAsync(Everything with { PageSize = 2 }, hr);
+        var second = await PageAsync(Everything with { Page = 2, PageSize = 2 }, hr);
+        var pastTheEnd = await PageAsync(Everything with { Page = 9, PageSize = 2 }, hr);
+        var filtered = await PageAsync(Everything with { To = Monday, PageSize = 2 }, hr);
+
+        Assert.Equal((3, 1, 2, 2), (first.Total, first.Page, first.PageSize, first.PageCount));
+        Assert.Equal([Monday.AddDays(14), Monday.AddDays(7)], first.Items.Select(d => d.AttendanceDate));
+        Assert.Equal(2, second.Page);
+        Assert.Equal([Monday], second.Items.Select(d => d.AttendanceDate));
+
+        // A page past the end is answered with the last page, never an empty one.
+        Assert.Equal(2, pastTheEnd.Page);
+        Assert.Equal([Monday], pastTheEnd.Items.Select(d => d.AttendanceDate));
+
+        // The total follows the filters, not the whole table.
+        Assert.Equal((1, 1), (filtered.Total, filtered.PageCount));
+    }
+
+    [Fact]
+    public async Task AnEmptyList_IsPageOneOfNothing()
+    {
+        var page = await PageAsync(Everything with { Page = 5 }, new ExceptionViewer(900, false, false, true));
+
+        Assert.Equal((0, 1, 0), (page.Total, page.Page, page.Items.Count));
+    }
+
+    [Fact]
+    public async Task TheEmployeeOptions_AreTheEmployeesTheViewerMaySee()
+    {
+        var (managerId, otherId) = AddPeople();
+
+        var hr = await Options(new ExceptionViewer(900, false, false, true));
+        var ada = await Options(new ExceptionViewer(EmployeeId, true, false, false));
+        var manager = await Options(new ExceptionViewer(managerId, false, true, false));
+
+        Assert.Contains(otherId, hr.Select(o => o.Id));
+        Assert.Equal([EmployeeId], ada.Select(o => o.Id));
+        Assert.Equal("Ada Lovelace (E-1)", ada.Single().Name);
+        Assert.Equal([EmployeeId], manager.Select(o => o.Id));
     }
 
     [Fact]
@@ -210,7 +262,16 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         return exception.Id;
     }
 
-    private async Task<IReadOnlyList<robeem.Contracts.Attendance.RecordDayListItem>> ListAsync(RecordFilter filter, ExceptionViewer viewer)
+    private async Task<IReadOnlyList<robeem.Contracts.Attendance.RecordDayListItem>> ListAsync(RecordFilter filter, ExceptionViewer viewer) =>
+        (await PageAsync(filter, viewer)).Items;
+
+    private async Task<IReadOnlyList<robeem.Contracts.Attendance.EmployeeOption>> Options(ExceptionViewer viewer)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await Service(db).ListEmployeeOptionsAsync(viewer, CancellationToken.None);
+    }
+
+    private async Task<robeem.Contracts.Common.PagedResult<robeem.Contracts.Attendance.RecordDayListItem>> PageAsync(RecordFilter filter, ExceptionViewer viewer)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         return await Service(db).ListDaysAsync(filter, viewer, CancellationToken.None);

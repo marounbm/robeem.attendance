@@ -10,8 +10,8 @@ using robeem.DataModel;
 namespace robeem.Api.Controllers;
 
 /// <summary>
-/// Integrations: the tenant's connections to attendance providers, their devices and vendor-id
-/// mappings, run-now, and health. An integration is paused, never deleted (raw data points at it).
+/// Integrations: the tenant's connections to attendance providers, their devices and each device's
+/// vendor-id mappings, run-now, and health. An integration is paused, never deleted (raw data points at it).
 /// </summary>
 [ApiController]
 [Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
@@ -64,9 +64,18 @@ public sealed class AttendanceIntegrationsController : ControllerBase
         return result.Succeeded ? NoContent() : Failure(result);
     }
 
+    /// <summary>The devices of every integration, each with its integration and the number of employee ids mapped on it.</summary>
+    [HttpGet("devices")]
+    public async Task<IReadOnlyList<DeviceItem>> AllDevices(CancellationToken cancellationToken) =>
+        await _integrations.ListAllDevicesAsync(cancellationToken);
+
     [HttpGet("{id:int}/devices")]
     public async Task<ActionResult<IReadOnlyList<DeviceItem>>> Devices(int id, CancellationToken cancellationToken) =>
         await _integrations.ListDevicesAsync(id, cancellationToken) is { } devices ? Ok(devices) : NotFound();
+
+    [HttpGet("{id:int}/devices/{deviceId:int}")]
+    public async Task<ActionResult<DeviceItem>> Device(int id, int deviceId, CancellationToken cancellationToken) =>
+        await _integrations.GetDeviceAsync(id, deviceId, cancellationToken) is { } device ? device : NotFound();
 
     [HttpPost("{id:int}/devices")]
     public async Task<ActionResult<CreatedResponse>> AddDevice(int id, DeviceInput input, CancellationToken cancellationToken)
@@ -89,21 +98,22 @@ public sealed class AttendanceIntegrationsController : ControllerBase
         return result.Succeeded ? NoContent() : Failure(result);
     }
 
-    [HttpGet("{id:int}/mappings")]
-    public async Task<ActionResult<IReadOnlyList<MappingItem>>> Mappings(int id, CancellationToken cancellationToken) =>
-        await _integrations.ListMappingsAsync(id, cancellationToken) is { } mappings ? Ok(mappings) : NotFound();
+    /// <summary>A device's mappings: which employee each employee id from the vendor stands for on that device.</summary>
+    [HttpGet("{id:int}/devices/{deviceId:int}/mappings")]
+    public async Task<ActionResult<IReadOnlyList<MappingItem>>> Mappings(int id, int deviceId, CancellationToken cancellationToken) =>
+        await _integrations.ListMappingsAsync(id, deviceId, cancellationToken) is { } mappings ? Ok(mappings) : NotFound();
 
-    [HttpPost("{id:int}/mappings")]
-    public async Task<ActionResult<CreatedResponse>> AddMapping(int id, MappingInput input, CancellationToken cancellationToken)
+    [HttpPost("{id:int}/devices/{deviceId:int}/mappings")]
+    public async Task<ActionResult<CreatedResponse>> AddMapping(int id, int deviceId, MappingInput input, CancellationToken cancellationToken)
     {
-        var result = await _integrations.AddMappingAsync(id, input, cancellationToken);
+        var result = await _integrations.AddMappingAsync(id, deviceId, input, cancellationToken);
         return result.Succeeded ? StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value }) : Failure(result);
     }
 
-    [HttpDelete("{id:int}/mappings/{mappingId:int}")]
-    public async Task<IActionResult> DeleteMapping(int id, int mappingId, CancellationToken cancellationToken)
+    [HttpDelete("{id:int}/devices/{deviceId:int}/mappings/{mappingId:int}")]
+    public async Task<IActionResult> DeleteMapping(int id, int deviceId, int mappingId, CancellationToken cancellationToken)
     {
-        var result = await _integrations.DeleteMappingAsync(id, mappingId, cancellationToken);
+        var result = await _integrations.DeleteMappingAsync(id, deviceId, mappingId, cancellationToken);
         return result.Succeeded ? NoContent() : Failure(result);
     }
 

@@ -29,7 +29,7 @@ public sealed class AttendanceSeedTests : IDisposable
             db.AttendanceProviders.Select(p => p.ProviderKey).OrderBy(k => k).ToArray());
         Assert.Equal(["Database", "DeviceSdk", "FileUpload", "RestApi", "Sftp", "Webhook"], db.AttendanceTransportDefinitions.Select(t => t.TransportKey).AsEnumerable().Order(StringComparer.Ordinal));
         Assert.Equal(["Biometric", "Cloud", "Facial", "Mobile", "OnPrem", "RFID"], db.AttendanceDeviceTypes.Select(t => t.Name).OrderBy(n => n).ToArray());
-        Assert.Equal(["Generic CSV", "ZKTeco attendance export"], db.AttendanceFileFormats.Select(f => f.Name).OrderBy(n => n).ToArray());
+        Assert.Equal(["Generic CSV", "Suprema BioStar 2 export", "ZKTeco attendance export"], db.AttendanceFileFormats.Select(f => f.Name).OrderBy(n => n).ToArray());
 
         // A file-based vendor is read by its default format; an API or webhook vendor by its code adapter.
         var csv = db.AttendanceProviders.Include(p => p.DefaultFileFormat).Single(p => p.ProviderKey == "generic-csv");
@@ -92,7 +92,7 @@ public sealed class AttendanceSeedTests : IDisposable
         Assert.Equal("Secure FTP", check.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").DisplayName);
         Assert.False(check.AttendanceDeviceTypes.Single(t => t.Name == "RFID").IsActive);
         Assert.Equal("Name", check.AttendanceFileFormats.Single(f => f.Name == "ZKTeco attendance export").PayloadColumns);
-        Assert.Equal(2, check.AttendanceFileFormats.Count());
+        Assert.Equal(3, check.AttendanceFileFormats.Count());
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public sealed class AttendanceSeedTests : IDisposable
             using var db = _database.CreateContext(tenant);
             Assert.Equal(4, db.AttendanceProviders.Count());
             Assert.Equal(6, db.AttendanceTransportDefinitions.Count());
-            Assert.Equal(2, db.AttendanceFileFormats.Count());
+            Assert.Equal(3, db.AttendanceFileFormats.Count());
             Assert.Single(db.AttendancePolicies);
         }
     }

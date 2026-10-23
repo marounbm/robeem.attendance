@@ -1,0 +1,83 @@
+@model DevicesIndexViewModel
+@{
+    ViewData["Title"] = "Devices";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Devices</h1>
+    <a class="btn btn-primary" asp-action="Create" asp-route-integrationId="@Model.IntegrationId">Add device</a>
+</div>
+
+<p class="text-muted">
+    The punch devices of your integrations. A device carries the time zone its clock runs in (a punch without a UTC offset is
+    read in it) and the mapping of the vendor's employee ids to your employees: the same id can mean different people on
+    different devices. A device with punches on record can't be deleted.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label small mb-0" for="filter-integration">Integration</label>
+        <select id="filter-integration" name="integrationId" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All integrations</option>
+            @foreach (var integration in Model.Integrations)
+            {
+                <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.DisplayName</option>
+            }
+        </select>
+    </div>
+    <noscript><div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button></div></noscript>
+</form>
+
+<div class="card">
+    @if (Model.Devices.Count == 0)
+    {
+        <div class="card-body text-muted">
+            No devices@(Model.IntegrationId is null ? string.Empty : " for this integration") yet.
+            <a asp-action="Create" asp-route-integrationId="@Model.IntegrationId">Add the first one.</a>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Device id</th>
+                        <th scope="col">Integration</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Model</th>
+                        <th scope="col">Time zone</th>
+                        <th scope="col">Software</th>
+                        <th scope="col">SDK</th>
+                        <th scope="col" class="text-end">Mappings</th>
+                        <th scope="col">Last seen</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var device in Model.Devices)
+                    {
+                        <tr>
+                            <td><a asp-action="Edit" asp-route-integrationId="@device.IntegrationId" asp-route-id="@device.Id">@device.Name</a></td>
+                            <td><code>@device.ExternalDeviceId</code></td>
+                            <td><a asp-controller="Integrations" asp-action="Details" asp-route-id="@device.IntegrationId">@device.IntegrationName</a></td>
+                            <td>@(device.DeviceType.Length == 0 ? "—" : device.DeviceType)</td>
+                            <td>@(device.Model.Length == 0 ? "—" : device.Model)</td>
+                            <td class="text-nowrap"><code>@device.TimeZoneId</code></td>
+                            <td>@(device.SoftwareVersion.Length == 0 ? "—" : device.SoftwareVersion)</td>
+                            <td>@(device.SdkVersion.Length == 0 ? "—" : device.SdkVersion)</td>
+                            <td class="text-end">@device.MappingCount</td>
+                            <td class="text-nowrap">@DisplayFormats.DateTime(device.LastSeenAt)</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-secondary" asp-action="Edit" asp-route-integrationId="@device.IntegrationId" asp-route-id="@device.Id">Edit</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

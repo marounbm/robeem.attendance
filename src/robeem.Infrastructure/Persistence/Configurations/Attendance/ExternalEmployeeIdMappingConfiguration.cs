@@ -8,6 +8,6 @@ public sealed class ExternalEmployeeIdMappingConfiguration : IEntityTypeConfigur
 {
     public void Configure(EntityTypeBuilder<ExternalEmployeeIdMapping> builder)
     {
-        builder.HasIndex(m => new { m.TenantId, m.IntegrationId, m.ExternalEmployeeId }).IsUnique();
+        builder.HasIndex(m => new { m.TenantId, m.DeviceId, m.ExternalEmployeeId }).IsUnique();
     }
 }

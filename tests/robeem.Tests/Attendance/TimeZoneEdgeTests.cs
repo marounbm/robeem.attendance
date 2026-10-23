@@ -328,7 +328,9 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         // The file's device "99" is registered afterwards.
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            db.AttendanceDevices.Add(new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "99", Name = "Late", TimeZoneId = "Asia/Beirut" });
+            var late = new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "99", Name = "Late", TimeZoneId = "Asia/Beirut" };
+            db.AttendanceDevices.Add(late);
+            db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { Device = late, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
             db.SaveChanges();
         }
 
@@ -359,6 +361,9 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         var integration = db.AttendanceIntegrations.Single();
         var device = new AttendanceDevice { IntegrationId = integration.Id, ExternalDeviceId = "upload", Name = "Uploads", TimeZoneId = timeZoneId };
         db.AttendanceDevices.Add(device);
+
+        // Employees are mapped per device, so the device that takes the uploaded punches knows the file's employee id.
+        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { Device = device, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
         db.SaveChanges();
         integration.DefaultDeviceId = device.Id;
         db.SaveChanges();
@@ -436,7 +441,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         // The base fixture's seed row is not a punch of this test; normalization must leave it alone.
         db.RawAttendanceTransactions.Single().ProcessingStatus = RawTransactionProcessingStatus.Normalized;
         var integration = db.AttendanceIntegrations.Single();
-        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { IntegrationId = integration.Id, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
+        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Where(d => d.IntegrationId == integration.Id).OrderBy(d => d.Id).First().Id, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
         db.SaveChanges();
     }
 

@@ -5,6 +5,13 @@ public sealed class DeviceItem
 {
     public int Id { get; init; }
 
+    public int IntegrationId { get; init; }
+
+    public string IntegrationName { get; init; } = string.Empty;
+
+    /// <summary>Gets the number of vendor employee ids mapped to employees on this device.</summary>
+    public int MappingCount { get; init; }
+
     /// <summary>Gets the id the vendor reports for the device. Unique within the integration.</summary>
     public string ExternalDeviceId { get; init; } = string.Empty;
 

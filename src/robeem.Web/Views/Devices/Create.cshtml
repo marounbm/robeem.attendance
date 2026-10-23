@@ -1,0 +1,23 @@
+@model DeviceFormViewModel
+@{
+    ViewData["Title"] = "Add device";
+}
+
+<h1 class="h3 mb-3">Add device</h1>
+
+@if (Model.Integrations.Count == 0)
+{
+    <div class="alert alert-warning">A device belongs to an integration. <a asp-controller="Integrations" asp-action="Create">Add an integration</a> first.</div>
+}
+else
+{
+    <form method="post" asp-action="Create">
+        <partial name="_DeviceForm" model="Model" />
+        <button type="submit" class="btn btn-primary">Add device</button>
+        <a class="btn btn-link" asp-action="Index" asp-route-integrationId="@Model.IntegrationId">Cancel</a>
+    </form>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -39,7 +39,8 @@ public static class NavigationMenu
     private static readonly NavSection Integrations = new(
         "Integrations",
         [
-            new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: devices, employee-id mappings, health and sync.", Integration),
+            new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: health, schedule and sync.", Integration),
+            new NavItem("Devices", "Devices", "Index", "The punch devices of every integration, their time zones, and each device's employee-id mappings.", Integration),
             new NavItem("Providers", "Providers", "Index", "The vendors you receive attendance from: their transports and the file format their uploads are read by.", Integration),
             new NavItem("File formats", "FileFormats", "Index", "Define the layout of a file an integration reads on manual upload: columns, date patterns and type labels.", Integration),
             new NavItem("Device types", "DeviceTypes", "Index", "The kinds of punch device a device can be given.", Integration),

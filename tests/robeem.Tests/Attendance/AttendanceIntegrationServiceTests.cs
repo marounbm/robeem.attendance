@@ -238,9 +238,9 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     {
         var id = (await CreateAsync(Input(name: "B clock", reference: "b-ref", cron: "0 * * * *", transport: "RestApi"))).Id!.Value;
         await CreateAsync(Input(name: "A clock"));
-        await AddDeviceAsync(id, Device("DEV-1"));
+        var firstDevice = (await AddDeviceAsync(id, Device("DEV-1"))).Id!.Value;
         await AddDeviceAsync(id, Device("DEV-2"));
-        await AddMappingAsync(id, new MappingInput { ExternalEmployeeId = "X-1", EmployeeId = _employeeId });
+        await AddMappingAsync(id, firstDevice, new MappingInput { ExternalEmployeeId = "X-1", EmployeeId = _employeeId });
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = CreateService(db);
@@ -410,35 +410,76 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     public async Task AMapping_IsAdded_ListedWithTheEmployeesName_AndDeleted()
     {
         var integrationId = (await CreateAsync(Input())).Id!.Value;
+        var deviceId = (await AddDeviceAsync(integrationId, Device("DEV-1"))).Id!.Value;
 
-        var added = await AddMappingAsync(integrationId, new MappingInput { ExternalEmployeeId = " EXT-1 ", EmployeeId = _employeeId });
+        var added = await AddMappingAsync(integrationId, deviceId, new MappingInput { ExternalEmployeeId = " EXT-1 ", EmployeeId = _employeeId });
 
         Assert.True(added.Succeeded);
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var mapping = Assert.Single((await CreateService(db).ListMappingsAsync(integrationId, CancellationToken.None))!);
+            var mapping = Assert.Single((await CreateService(db).ListMappingsAsync(integrationId, deviceId, CancellationToken.None))!);
             Assert.Equal(("EXT-1", _employeeId, "Ada Lovelace"), (mapping.ExternalEmployeeId, mapping.EmployeeId, mapping.EmployeeName));
         }
 
-        Assert.True((await DeleteMappingAsync(integrationId, added.Id!.Value)).Succeeded);
+        Assert.True((await DeleteMappingAsync(integrationId, deviceId, added.Id!.Value)).Succeeded);
         using var check = _database.CreateContext(TestDatabase.TenantA);
         Assert.Empty(check.ExternalEmployeeIdMappings);
     }
 
     [Fact]
-    public async Task AMapping_NeedsAKnownEmployee_AndAnUnusedVendorId_PerIntegration_CaseSensitively()
+    public async Task AMapping_NeedsAKnownEmployee_AndAnUnusedVendorId_PerDevice_CaseSensitively()
+    {
+        var integrationId = (await CreateAsync(Input(name: "One"))).Id!.Value;
+        var first = (await AddDeviceAsync(integrationId, Device("DEV-1"))).Id!.Value;
+        var second = (await AddDeviceAsync(integrationId, Device("DEV-2"))).Id!.Value;
+        Assert.True((await AddMappingAsync(integrationId, first, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Succeeded);
+
+        Assert.Contains("already mapped on this device", (await AddMappingAsync(integrationId, first, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Errors[nameof(MappingInput.ExternalEmployeeId)]);
+        Assert.True((await AddMappingAsync(integrationId, first, new MappingInput { ExternalEmployeeId = "e-1", EmployeeId = _employeeId })).Succeeded);
+
+        // The same vendor id on another device of the same integration is a different mapping.
+        Assert.True((await AddMappingAsync(integrationId, second, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Succeeded);
+        Assert.Contains("does not exist", (await AddMappingAsync(integrationId, second, new MappingInput { ExternalEmployeeId = "Z", EmployeeId = 999 })).Errors[nameof(MappingInput.EmployeeId)]);
+        Assert.Contains("required", (await AddMappingAsync(integrationId, second, new MappingInput { ExternalEmployeeId = "  ", EmployeeId = _employeeId })).Errors[nameof(MappingInput.ExternalEmployeeId)]);
+        Assert.True((await AddMappingAsync(integrationId, 99999, new MappingInput { ExternalEmployeeId = "Q", EmployeeId = _employeeId })).NotFound);
+        Assert.True((await DeleteMappingAsync(integrationId, second, 99999)).NotFound);
+    }
+
+    [Fact]
+    public async Task ADeviceOfAnotherIntegration_HasNoMappingsToReadOrChange()
     {
         var first = (await CreateAsync(Input(name: "One"))).Id!.Value;
         var second = (await CreateAsync(Input(name: "Two"))).Id!.Value;
-        Assert.True((await AddMappingAsync(first, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Succeeded);
+        var deviceId = (await AddDeviceAsync(first, Device("DEV-1"))).Id!.Value;
+        var added = await AddMappingAsync(first, deviceId, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId });
 
-        Assert.Contains("already mapped", (await AddMappingAsync(first, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Errors[nameof(MappingInput.ExternalEmployeeId)]);
-        Assert.True((await AddMappingAsync(first, new MappingInput { ExternalEmployeeId = "e-1", EmployeeId = _employeeId })).Succeeded);
-        Assert.True((await AddMappingAsync(second, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Succeeded);
-        Assert.Contains("does not exist", (await AddMappingAsync(second, new MappingInput { ExternalEmployeeId = "Z", EmployeeId = 999 })).Errors[nameof(MappingInput.EmployeeId)]);
-        Assert.Contains("required", (await AddMappingAsync(second, new MappingInput { ExternalEmployeeId = "  ", EmployeeId = _employeeId })).Errors[nameof(MappingInput.ExternalEmployeeId)]);
-        Assert.True((await AddMappingAsync(999, new MappingInput { ExternalEmployeeId = "Q", EmployeeId = _employeeId })).NotFound);
-        Assert.True((await DeleteMappingAsync(second, 99999)).NotFound);
+        Assert.True((await AddMappingAsync(second, deviceId, new MappingInput { ExternalEmployeeId = "E-2", EmployeeId = _employeeId })).NotFound);
+        Assert.True((await DeleteMappingAsync(second, deviceId, added.Id!.Value)).NotFound);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Null(await CreateService(db).ListMappingsAsync(second, deviceId, CancellationToken.None));
+        Assert.Single(db.ExternalEmployeeIdMappings);
+    }
+
+    [Fact]
+    public async Task ADeviceWithMappings_IsKeptUntilTheyAreRemoved_AndTheGridCountsThem()
+    {
+        var integrationId = (await CreateAsync(Input())).Id!.Value;
+        var deviceId = (await AddDeviceAsync(integrationId, Device("DEV-1"))).Id!.Value;
+        var mappingId = (await AddMappingAsync(integrationId, deviceId, new MappingInput { ExternalEmployeeId = "E-1", EmployeeId = _employeeId })).Id!.Value;
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var listed = Assert.Single(await CreateService(db).ListAllDevicesAsync(CancellationToken.None));
+            Assert.Equal((deviceId, integrationId, 1), (listed.Id, listed.IntegrationId, listed.MappingCount));
+            Assert.Equal(listed.Id, (await CreateService(db).GetDeviceAsync(integrationId, deviceId, CancellationToken.None))!.Id);
+            Assert.Null(await CreateService(db).GetDeviceAsync(integrationId, 99999, CancellationToken.None));
+        }
+
+        var refused = await DeleteDeviceAsync(integrationId, deviceId);
+        Assert.Contains("1 employee-id mapping(s)", refused.Errors["id"]);
+
+        Assert.True((await DeleteMappingAsync(integrationId, deviceId, mappingId)).Succeeded);
+        Assert.True((await DeleteDeviceAsync(integrationId, deviceId)).Succeeded);
     }
 
     [Fact]
@@ -616,16 +657,16 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         return await CreateService(db).DeleteDeviceAsync(integrationId, deviceId, CancellationToken.None);
     }
 
-    private async Task<robeem.Application.Common.SaveResult> AddMappingAsync(int integrationId, MappingInput input)
+    private async Task<robeem.Application.Common.SaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await CreateService(db).AddMappingAsync(integrationId, input, CancellationToken.None);
+        return await CreateService(db).AddMappingAsync(integrationId, deviceId, input, CancellationToken.None);
     }
 
-    private async Task<robeem.Application.Common.SaveResult> DeleteMappingAsync(int integrationId, int mappingId)
+    private async Task<robeem.Application.Common.SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await CreateService(db).DeleteMappingAsync(integrationId, mappingId, CancellationToken.None);
+        return await CreateService(db).DeleteMappingAsync(integrationId, deviceId, mappingId, CancellationToken.None);
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>

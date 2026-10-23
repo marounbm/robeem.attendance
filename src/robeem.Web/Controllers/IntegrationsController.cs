@@ -6,8 +6,8 @@ using robeem.Web.Models;
 namespace robeem.Web.Controllers;
 
 /// <summary>
-/// Integrations: the connections to attendance providers, their devices and vendor-id mappings,
-/// health, and sync-now (file upload is the Uploads screen). An integration is paused, never deleted (raw data points at
+/// Integrations: the connections to attendance providers, health, and sync-now (file upload is the Uploads
+/// screen; devices and their vendor-id mappings are the Devices screen). An integration is paused, never deleted (raw data points at
 /// it). The connection secret is only ever a reference here; the secret lives in configuration.
 /// </summary>
 public sealed class IntegrationsController : Controller
@@ -47,7 +47,7 @@ public sealed class IntegrationsController : Controller
             var result = await _integrations.CreateAsync(model.Input, cancellationToken);
             if (result.Succeeded)
             {
-                TempData["StatusMessage"] = $"Integration '{model.Input.DisplayName}' was created. Add its devices and employee-id mappings next.";
+                TempData["StatusMessage"] = $"Integration '{model.Input.DisplayName}' was created. Add its devices next: each device carries its employee-id mappings.";
                 return RedirectToAction(nameof(Details), new { id = result.Id });
             }
 
@@ -116,10 +116,6 @@ public sealed class IntegrationsController : Controller
         {
             Integration = integration,
             Health = await _integrations.GetHealthAsync(id, cancellationToken),
-            Devices = await _integrations.ListDevicesAsync(id, cancellationToken),
-            DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken),
-            Mappings = await _integrations.ListMappingsAsync(id, cancellationToken),
-            Employees = await _integrations.ListEmployeeOptionsAsync(cancellationToken),
         });
     }
 
@@ -141,35 +137,6 @@ public sealed class IntegrationsController : Controller
 
         return View(new IntegrationRawMappingViewModel { Integration = integration, Guide = guide, Rows = rows, BatchId = batchId, Status = status, Take = take });
     }
-
-    [HttpPost]
-    public async Task<IActionResult> AddDevice(int id, DeviceInput input, CancellationToken cancellationToken)
-    {
-        var result = ModelState.IsValid ? await _integrations.AddDeviceAsync(id, input, cancellationToken) : Invalid();
-        return Done(id, result, $"Device '{input.Name}' was added.");
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> UpdateDevice(int id, int deviceId, DeviceInput input, CancellationToken cancellationToken)
-    {
-        var result = ModelState.IsValid ? await _integrations.UpdateDeviceAsync(id, deviceId, input, cancellationToken) : Invalid();
-        return Done(id, result, $"Device '{input.Name}' was saved.");
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> DeleteDevice(int id, int deviceId, CancellationToken cancellationToken) =>
-        Done(id, await _integrations.DeleteDeviceAsync(id, deviceId, cancellationToken), "The device was deleted.");
-
-    [HttpPost]
-    public async Task<IActionResult> AddMapping(int id, MappingInput input, CancellationToken cancellationToken)
-    {
-        var result = ModelState.IsValid ? await _integrations.AddMappingAsync(id, input, cancellationToken) : Invalid();
-        return Done(id, result, $"Vendor id '{input.ExternalEmployeeId}' was mapped.");
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> DeleteMapping(int id, int mappingId, CancellationToken cancellationToken) =>
-        Done(id, await _integrations.DeleteMappingAsync(id, mappingId, cancellationToken), "The mapping was removed.");
 
     [HttpPost]
     public async Task<IActionResult> Run(int id, bool reconcile, CancellationToken cancellationToken)
@@ -222,19 +189,6 @@ public sealed class IntegrationsController : Controller
                     : $"this integration receives attendance by {result.TransportName}, not manual file upload, so it has no device for uploaded files. Register the punches' devices instead.");
         }
 
-        return RedirectToAction(nameof(Details), new { id });
-    }
-
-    private static ApiSaveResult Invalid() => ApiSaveResult.Invalid(new Dictionary<string, string> { [string.Empty] = "Fill in every required field." });
-
-    private IActionResult Done(int id, ApiSaveResult result, string success)
-    {
-        if (result.NotFound)
-        {
-            return NotFound();
-        }
-
-        TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded ? success : result.MessageText;
         return RedirectToAction(nameof(Details), new { id });
     }
 

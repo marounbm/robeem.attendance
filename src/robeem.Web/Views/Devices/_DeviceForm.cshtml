@@ -1,0 +1,82 @@
+@model DeviceFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<datalist id="time-zones">
+    @foreach (var zone in DeviceFormViewModel.CommonTimeZones)
+    {
+        <option value="@zone"></option>
+    }
+</datalist>
+
+<div class="card mb-3">
+    <div class="card-header">Device</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label class="form-label" for="device-integration">Integration</label>
+            @if (Model.Id is null)
+            {
+                <select id="device-integration" name="integrationId" class="form-select">
+                    @foreach (var integration in Model.Integrations)
+                    {
+                        <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.DisplayName (@integration.ProviderName)</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <input id="device-integration" class="form-control" value="@Model.Device?.IntegrationName" disabled />
+                <div class="form-text">The integration can't be changed: the device's punches belong to it.</div>
+            }
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ExternalDeviceId" class="form-label"></label>
+            <input asp-for="Input.ExternalDeviceId" class="form-control" autocomplete="off" maxlength="100" />
+            <span asp-validation-for="Input.ExternalDeviceId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Name" class="form-label"></label>
+            <input asp-for="Input.Name" class="form-control" autocomplete="off" maxlength="255" />
+            <span asp-validation-for="Input.Name" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.DeviceTypeId" class="form-label"></label>
+            <select asp-for="Input.DeviceTypeId" class="form-select">
+                @if (Model.Device?.DeviceTypeId is { } currentTypeId && Model.DeviceTypes.All(t => t.Id != currentTypeId))
+                {
+                    @* The device's type has been retired: it keeps it until someone picks another. *@
+                    <option value="@currentTypeId" selected>@Model.Device.DeviceType (retired)</option>
+                }
+                @foreach (var type in Model.DeviceTypes)
+                {
+                    <option value="@type.Id" selected="@(type.Id == Model.Input.DeviceTypeId)">@type.Name</option>
+                }
+            </select>
+            <span asp-validation-for="Input.DeviceTypeId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.TimeZoneId" class="form-label"></label>
+            <input asp-for="Input.TimeZoneId" class="form-control" list="time-zones" autocomplete="off" maxlength="64" />
+            <span asp-validation-for="Input.TimeZoneId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.Model" class="form-label"></label>
+            <input asp-for="Input.Model" class="form-control" autocomplete="off" maxlength="100" placeholder="e.g. U350" />
+            <span asp-validation-for="Input.Model" class="text-danger small"></span>
+        </div>
+        <div class="col-md-5">
+            <label asp-for="Input.SoftwareVersion" class="form-label"></label>
+            <input asp-for="Input.SoftwareVersion" class="form-control" autocomplete="off" maxlength="100" placeholder="e.g. 4.8.7" />
+            <span asp-validation-for="Input.SoftwareVersion" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.SdkVersion" class="form-label"></label>
+            <input asp-for="Input.SdkVersion" class="form-control" autocomplete="off" maxlength="50" placeholder="e.g. 6.2.5.5" />
+            <span asp-validation-for="Input.SdkVersion" class="text-danger small"></span>
+        </div>
+        <div class="col-12 form-text">
+            The model and the software and SDK versions are for your records. The time zone is the one the device's clock runs in:
+            a punch without a UTC offset is read in it.
+        </div>
+    </div>
+</div>

@@ -41,7 +41,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         var integration = db.AttendanceIntegrations.Single();
         integration.SyncCursor = StartCursor.Value;
         integration.PollingScheduleCron = "*/5 * * * *";
-        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { IntegrationId = integration.Id, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
+        db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Single(d => d.IntegrationId == integration.Id).Id, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
         db.SaveChanges();
         _integrationId = integration.Id;
     }

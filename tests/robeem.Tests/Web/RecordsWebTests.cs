@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
@@ -17,20 +18,35 @@ public sealed class RecordsWebTests
     [Fact]
     public async Task TheRecordsClient_SendsOnlyTheFiltersThatWereGiven_AndUsesTheDayRoutes()
     {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, "[]");
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[],"total":0,"page":1,"pageSize":25}""");
         var client = new RecordsApiClient(handler.CreateClient());
 
-        await client.ListAsync(null, null, null, null, false, 200, CancellationToken.None);
-        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 50, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, false, 1, 25, CancellationToken.None);
+        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, CancellationToken.None);
 
         var day = new StubHttpHandler(HttpStatusCode.OK, """{"employeeId":7,"employeeName":"Ada Lovelace","processed":true,"versions":[{"id":3,"version":2,"isCurrent":true,"workingHours":"08:00:00"}]}""");
         var detail = await new RecordsApiClient(day.CreateClient()).GetDayAsync(7, new DateTime(2026, 10, 5, 9, 0, 0), CancellationToken.None);
 
         Assert.Equal(
-            ["/api/attendance/records?take=200", "/api/attendance/records?take=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true"],
+            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true"],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
         Assert.Equal("/api/attendance/records/7/2026-10-05", day.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal(TimeSpan.FromHours(8), Assert.Single(detail!.Versions).WorkingHours);
+    }
+
+    [Fact]
+    public async Task TheRecordsClient_ReadsAPageWithItsTotal_AndTheEmployeeOptions()
+    {
+        var page = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"employeeId":7,"employeeName":"Ada Lovelace"}],"total":61,"page":2,"pageSize":25}""");
+        var options = new StubHttpHandler(HttpStatusCode.OK, """[{"id":7,"name":"Ada Lovelace (E-1)"}]""");
+
+        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, CancellationToken.None);
+        var employees = await new RecordsApiClient(options.CreateClient()).ListEmployeeOptionsAsync(CancellationToken.None);
+
+        Assert.Equal((61, 2, 25, 3), (result.Total, result.Page, result.PageSize, result.PageCount));
+        Assert.Equal(7, Assert.Single(result.Items).EmployeeId);
+        Assert.Equal("/api/attendance/records/employee-options", options.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal("Ada Lovelace (E-1)", Assert.Single(employees).Name);
     }
 
     [Fact]
@@ -53,14 +69,62 @@ public sealed class RecordsWebTests
         var records = new FakeRecords();
         var controller = Controller(records, ["Employee"]);
 
-        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, null, CancellationToken.None)).Model!;
+        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, null, 0, 0, CancellationToken.None)).Model!;
         var askedForAny = records.Status;
-        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, 12, CancellationToken.None)).Model!;
+        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, 12, 1, 25, CancellationToken.None)).Model!;
 
         Assert.Equal(("Any", null), (any.Status, askedForAny));
         Assert.Equal("PendingReview", pending.Status);
         Assert.Equal(("PendingReview", true, new DateTime(2026, 10, 1), 12), (records.Status, records.OnlyWithExceptions, records.From, records.EmployeeId));
         Assert.Equal(12, pending.EmployeeId);
+    }
+
+    [Fact]
+    public async Task ThePage_IsAskedFromTheServer_WithASizeFromTheOfferedOnes_AndShowsWhatTheServerAnswered()
+    {
+        var records = new FakeRecords { Total = 61, ServerPage = 2 };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var model = (RecordsIndexViewModel)((ViewResult)await controller.Index(null, null, null, false, 12, 9, 7, CancellationToken.None)).Model!;
+
+        // 7 is not a size on offer, and page 9 was past the end: the server's page is the one shown.
+        Assert.Equal((9, RecordsIndexViewModel.DefaultPageSize), (records.PageAsked, records.PageSizeAsked));
+        Assert.Equal((2, RecordsIndexViewModel.DefaultPageSize, 61, 12), (model.Page, model.PageSize, model.Total, model.EmployeeId));
+        Assert.Equal("Ada Lovelace (E-1)", Assert.Single(model.Employees).Name);
+
+        await controller.Index(null, null, null, false, null, -4, 100, CancellationToken.None);
+        Assert.Equal((1, 100), (records.PageAsked, records.PageSizeAsked));
+    }
+
+    [Fact]
+    public void ThePager_KeepsTheFilters_OnEveryPageLink_AndLinksOnlyTheNearbyPages()
+    {
+        var model = new RecordsIndexViewModel
+        {
+            Page = 6,
+            PageSize = 10,
+            Total = 200,
+            Status = "Approved",
+            From = new DateTime(2026, 10, 1),
+            OnlyWithExceptions = true,
+            EmployeeId = 12,
+        };
+
+        var pager = model.Pager;
+
+        Assert.Equal((20, 51, 60), (pager.PageCount, pager.FirstItem, pager.LastItem));
+        Assert.Equal([1, 4, 5, 6, 7, 8, 20], pager.Pages);
+        Assert.Equal(
+            new Dictionary<string, string?>
+            {
+                ["pageSize"] = "10",
+                ["status"] = "Approved",
+                ["from"] = "2026-10-01",
+                ["onlyWithExceptions"] = "true",
+                ["employeeId"] = "12",
+                ["page"] = "7",
+            },
+            pager.For(7));
     }
 
     [Fact]
@@ -150,11 +214,23 @@ public sealed class RecordsWebTests
 
         public ReprocessResponse Result { get; set; } = new();
 
-        public Task<IReadOnlyList<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int take, CancellationToken cancellationToken)
+        public int PageAsked { get; private set; }
+
+        public int PageSizeAsked { get; private set; }
+
+        public int Total { get; set; }
+
+        public int ServerPage { get; set; } = 1;
+
+        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
         {
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
-            return Task.FromResult<IReadOnlyList<RecordDayListItem>>([]);
+            (PageAsked, PageSizeAsked) = (page, pageSize);
+            return Task.FromResult(new PagedResult<RecordDayListItem> { Total = Total, Page = ServerPage, PageSize = pageSize });
         }
+
+        public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<EmployeeOption>>([new EmployeeOption { Id = 12, Name = "Ada Lovelace (E-1)" }]);
 
         public Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken) =>
             Task.FromResult<RecordDayDetail?>(Missing ? null : new RecordDayDetail { EmployeeId = employeeId, AttendanceDate = date });

@@ -6,8 +6,9 @@ using SmartEnum = robeem.System.Contract.SmartEnum;
 namespace robeem.DataModel
 {
     /// <summary>
-    /// Which employee a vendor's employee id stands for, per integration. Normalization resolves
-    /// <see cref="RawAttendanceTransaction.ExternalEmployeeId"/> through it.
+    /// Which employee a vendor's employee id stands for, per device: the same id can mean different people on
+    /// different devices. Normalization resolves the punch's device first, then
+    /// <see cref="RawAttendanceTransaction.ExternalEmployeeId"/> through that device's mappings.
     /// </summary>
     [Serializable]
     [Table(nameof(ExternalEmployeeIdMapping), Schema = nameof(SmartEnum.Module.Attendance))]
@@ -18,11 +19,11 @@ namespace robeem.DataModel
         public string TenantId { get; set; } = string.Empty;
 
         [Required]
-        public int IntegrationId { get; set; }
+        public int DeviceId { get; set; }
 
-        public AttendanceIntegration? Integration { get; set; }
+        public AttendanceDevice? Device { get; set; }
 
-        /// <summary>Gets or sets the employee id exactly as the vendor sends it (compared case-sensitively).</summary>
+        /// <summary>Gets or sets the employee id exactly as the vendor sends it (compared case-sensitively). Unique per device.</summary>
         [Required]
         [MaxLength(255)]
         public string ExternalEmployeeId { get; set; } = string.Empty;

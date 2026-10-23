@@ -191,17 +191,21 @@ public sealed class CatalogWebTests
 
         public Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<ApiSaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<ApiSaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ApiSaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken) => throw new NotSupportedException();
 

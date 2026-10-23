@@ -31,7 +31,7 @@ public sealed class NormalizationServiceTests : IDisposable
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };
         var batch = new AttendanceProcessingBatch { Integration = integration, BatchType = AttendanceBatchType.ManualUpload };
-        db.AddRange(device, batch, new ExternalEmployeeIdMapping { Integration = integration, ExternalEmployeeId = "EXT-1", Employee = employee });
+        db.AddRange(device, batch, new ExternalEmployeeIdMapping { Device = device, ExternalEmployeeId = "EXT-1", Employee = employee });
         db.SaveChanges();
 
         _employeeId = employee.Id;
@@ -101,12 +101,41 @@ public sealed class NormalizationServiceTests : IDisposable
         Assert.Equal(new NormalizationResult(1, 0, 1, 0), result);
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var row = db.NormalizedAttendanceTransactions.Single();
-        Assert.Equal(_employeeId, row.EmployeeId);
+
+        // Employees are mapped per device, so a punch of a device nobody registered has no employee either.
+        Assert.Null(row.EmployeeId);
         Assert.Null(row.DeviceId);
         Assert.Equal(TransactionExceptionStatus.FlaggedUnrecognizedDevice, row.ExceptionStatus);
         Assert.Equal(NormalizedEventType.CheckOut, row.NormalizedEventType);
         Assert.Equal(new DateTimeOffset(2026, 10, 4, 5, 58, 0, TimeSpan.Zero), row.EventTimestampUtc);
         Assert.Equal("UTC", row.TimeZoneId);
+    }
+
+    [Fact]
+    public async Task TheSameVendorId_IsADifferentEmployeeOnEachDevice_AndAnUnmappedOneIsFlagged()
+    {
+        int otherEmployeeId;
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var other = new Profile { EmployeeNumber = "E-2", FirstName = "Grace", LastName = "Hopper", Title = "Grace Hopper" };
+            var branch = new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "DEV-2", Name = "Branch door", TimeZoneId = "Asia/Beirut" };
+            var unmapped = new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "DEV-3", Name = "Back door", TimeZoneId = "Asia/Beirut" };
+            db.AddRange(other, branch, unmapped, new ExternalEmployeeIdMapping { Device = branch, ExternalEmployeeId = "EXT-1", Employee = other });
+            db.SaveChanges();
+            otherEmployeeId = other.Id;
+        }
+
+        AddRaw("EXT-1", "DEV-1", "2026-10-04T08:00:00+03:00", "IN");
+        AddRaw("EXT-1", "DEV-2", "2026-10-04T08:30:00+03:00", "IN");
+        AddRaw("EXT-1", "DEV-3", "2026-10-04T09:00:00+03:00", "IN");
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(3, 0, 1, 0), result);
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var rows = check.NormalizedAttendanceTransactions.OrderBy(n => n.RawTransactionId).ToList();
+        Assert.Equal([_employeeId, otherEmployeeId, (int?)null], rows.Select(n => n.EmployeeId));
+        Assert.Equal([TransactionExceptionStatus.None, TransactionExceptionStatus.None, TransactionExceptionStatus.FlaggedUnrecognizedEmployee], rows.Select(n => n.ExceptionStatus));
     }
 
     [Fact]

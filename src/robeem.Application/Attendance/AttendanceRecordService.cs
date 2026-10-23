@@ -1,13 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
 
 public sealed class AttendanceRecordService : IAttendanceRecordService
 {
-    private const int MaxTake = 500;
+    private const int MaxPageSize = 200;
 
     private readonly IRobeemDbContext _db;
     private readonly IAttendanceProcessingEngine _engine;
@@ -20,7 +21,27 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
         _audit = audit;
     }
 
-    public async Task<IReadOnlyList<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(ExceptionViewer viewer, CancellationToken cancellationToken)
+    {
+        var employees = _db.Profiles.AsNoTracking();
+        if (!viewer.IsHr)
+        {
+            var me = viewer.EmployeeId;
+            var own = viewer.IsEmployee;
+            var reports = viewer.IsManager;
+            employees = employees.Where(p => (own && p.Id == me) || (reports && p.ManagerId == me));
+        }
+
+        var rows = await employees
+            .OrderBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .ThenBy(p => p.EmployeeNumber)
+            .Select(p => new { p.Id, p.FirstName, p.LastName, p.EmployeeNumber })
+            .ToListAsync(cancellationToken);
+        return rows.Select(p => new EmployeeOption { Id = p.Id, Name = $"{p.FirstName} {p.LastName} ({p.EmployeeNumber})" }).ToList();
+    }
+
+    public async Task<PagedResult<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
     {
         var days = _db.AttendanceDaySummaries.AsNoTracking();
 
@@ -60,12 +81,19 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             days = days.Where(d => d.ExceptionCount > 0);
         }
 
+        var pageSize = Math.Clamp(filter.PageSize, 1, MaxPageSize);
+        var total = await days.CountAsync(cancellationToken);
+
+        // A page past the end (a filter that narrowed the list since the link was made) is answered with the last page.
+        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
+
         var rows = await days
             .OrderByDescending(d => d.AttendanceDate)
             .ThenBy(d => d.Employee!.LastName)
             .ThenBy(d => d.Employee!.FirstName)
             .ThenBy(d => d.EmployeeId)
-            .Take(Math.Clamp(filter.Take, 1, MaxTake))
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(d => new RecordDayListItem
             {
                 EmployeeId = d.EmployeeId,
@@ -81,7 +109,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             })
             .ToListAsync(cancellationToken);
 
-        return rows;
+        return new PagedResult<RecordDayListItem> { Items = rows, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, ExceptionViewer viewer, CancellationToken cancellationToken)

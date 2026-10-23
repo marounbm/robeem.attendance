@@ -6,7 +6,7 @@ namespace robeem.Application.Attendance;
 
 /// <summary>
 /// Setting up the tenant's connections to attendance providers: integrations, their devices, and
-/// the mapping of the vendor's employee ids to employees. An integration is paused, never deleted:
+/// the mapping of the vendor's employee ids to employees, which is kept per device. An integration is paused, never deleted:
 /// raw transactions point at it (CLAUDE.md §1.2). The connection secret is only ever a reference
 /// (<c>ConnectionConfigRef</c>); the secret itself lives in configuration.
 /// </summary>
@@ -33,19 +33,25 @@ public interface IAttendanceIntegrationService
     /// <summary>Lists an integration's devices; null when the integration does not exist.</summary>
     Task<IReadOnlyList<DeviceItem>?> ListDevicesAsync(int integrationId, CancellationToken cancellationToken);
 
+    /// <summary>Lists the devices of every integration, by integration and name, each with its mapping count.</summary>
+    Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Gets one device of an integration; null when there is none.</summary>
+    Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
+
     Task<SaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken);
 
     Task<SaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken);
 
-    /// <summary>Deletes a device that no punch refers to; one with punches on record is refused (raw data is never touched).</summary>
+    /// <summary>Deletes a device that no punch and no mapping refers to; one with punches on record is refused (raw data is never touched).</summary>
     Task<SaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
 
-    /// <summary>Lists an integration's vendor-id mappings; null when the integration does not exist.</summary>
-    Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, CancellationToken cancellationToken);
+    /// <summary>Lists a device's vendor-id mappings; null when the device does not exist in the integration.</summary>
+    Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
 
-    Task<SaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken);
+    Task<SaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken);
 
-    Task<SaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken);
+    Task<SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Lists the integration's raw punches, newest first, each with the normalized punch it produced

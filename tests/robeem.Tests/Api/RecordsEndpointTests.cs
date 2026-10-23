@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Tests.Api;
@@ -52,22 +53,39 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
     [Fact]
     public async Task TheViewer_IsBuiltFromTheTokensRolesAndEmployee_AndTheFilterFromTheQuery()
     {
-        await _api.Send(HttpMethod.Get, "api/attendance/records?from=2026-10-01&to=2026-10-31&employeeId=5&status=pendingreview&onlyWithExceptions=true&take=20", TestApi.As(12, AttendanceRoles.Employee, AttendanceRoles.Manager));
+        await _api.Send(HttpMethod.Get, "api/attendance/records?from=2026-10-01&to=2026-10-31&employeeId=5&status=pendingreview&onlyWithExceptions=true&page=3&pageSize=20", TestApi.As(12, AttendanceRoles.Employee, AttendanceRoles.Manager));
 
         Assert.Equal(new ExceptionViewer(12, true, true, false), _records.Viewer);
-        Assert.Equal(new RecordFilter(new DateTime(2026, 10, 1), new DateTime(2026, 10, 31), 5, AttendanceRecordStatus.PendingReview, true, 20), _records.Filter);
+        Assert.Equal(new RecordFilter(new DateTime(2026, 10, 1), new DateTime(2026, 10, 31), 5, AttendanceRecordStatus.PendingReview, true, 3, 20), _records.Filter);
     }
 
     [Fact]
-    public async Task TheListDefaultsToAHundred_AndRefusesAnUnknownStatus()
+    public async Task TheListDefaultsToTheFirstPageOfTwentyFive_AndRefusesAnUnknownStatus()
     {
         await _api.Send(HttpMethod.Get, "api/attendance/records", Hr);
-        var take = _records.Filter!.Take;
+        var asked = _records.Filter!;
         var refused = await _api.Send(HttpMethod.Get, "api/attendance/records?status=Weird", Hr);
 
-        Assert.Equal(100, take);
+        Assert.Equal((1, 25), (asked.Page, asked.PageSize));
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("status", await refused.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TheEmployeeOptions_AreForTheSameViewersAsTheList_ScopedToWhoIsAsking()
+    {
+        var employee = await _api.Send(HttpMethod.Get, "api/attendance/records/employee-options", TestApi.As(12, AttendanceRoles.Employee));
+        var viewer = _records.Viewer;
+        var payroll = await _api.Send(HttpMethod.Get, "api/attendance/records/employee-options", TestApi.As(12, AttendanceRoles.PayrollAdministrator));
+        var anonymous = await _api.Send(HttpMethod.Get, "api/attendance/records/employee-options", null);
+        var unlinked = await _api.Send(HttpMethod.Get, "api/attendance/records/employee-options", TestApi.As(null, AttendanceRoles.Manager));
+
+        Assert.Equal(HttpStatusCode.OK, employee.StatusCode);
+        Assert.Equal(new ExceptionViewer(12, true, false, false), viewer);
+        Assert.Equal("Ada Lovelace (E-1)", (await employee.Content.ReadFromJsonAsync<List<EmployeeOption>>())!.Single().Name);
+        Assert.Equal(HttpStatusCode.Forbidden, payroll.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, unlinked.StatusCode);
     }
 
     [Fact]
@@ -127,11 +145,17 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
 
         public List<(int EmployeeId, DateTime Date)> Reprocessed { get; } = [];
 
-        public Task<IReadOnlyList<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
+        public Task<PagedResult<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
         {
             Filter = filter;
             Viewer = viewer;
-            return Task.FromResult<IReadOnlyList<RecordDayListItem>>([]);
+            return Task.FromResult(new PagedResult<RecordDayListItem> { Page = filter.Page, PageSize = filter.PageSize });
+        }
+
+        public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(ExceptionViewer viewer, CancellationToken cancellationToken)
+        {
+            Viewer = viewer;
+            return Task.FromResult<IReadOnlyList<EmployeeOption>>([new EmployeeOption { Id = 7, Name = "Ada Lovelace (E-1)" }]);
         }
 
         public Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, ExceptionViewer viewer, CancellationToken cancellationToken)

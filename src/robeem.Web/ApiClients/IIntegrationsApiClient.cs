@@ -32,17 +32,23 @@ public interface IIntegrationsApiClient
 
     Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(int integrationId, CancellationToken cancellationToken);
 
+    /// <summary>Lists the devices of every integration, each with its integration and mapping count.</summary>
+    Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Gets one device of an integration, or null when there is none.</summary>
+    Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
+
     Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken);
 
     Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken);
 
     Task<ApiSaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken);
 
-    Task<ApiSaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken);
+    Task<ApiSaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken);
 
-    Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken);
+    Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Lists the integration's raw punches, newest first, each beside the normalized punch it produced;

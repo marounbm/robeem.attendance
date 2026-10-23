@@ -1351,6 +1351,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedOn")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("EmployeeId")
                         .HasColumnType("integer");
 
@@ -1361,9 +1364,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("GUID")
                         .HasColumnType("uuid");
-
-                    b.Property<int>("IntegrationId")
-                        .HasColumnType("integer");
 
                     b.Property<int>("ModifiedBy")
                         .HasColumnType("integer");
@@ -1378,11 +1378,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DeviceId");
+
                     b.HasIndex("EmployeeId");
 
-                    b.HasIndex("IntegrationId");
-
-                    b.HasIndex("TenantId", "IntegrationId", "ExternalEmployeeId")
+                    b.HasIndex("TenantId", "DeviceId", "ExternalEmployeeId")
                         .IsUnique();
 
                     b.ToTable("ExternalEmployeeIdMapping", "Attendance");
@@ -2250,21 +2250,21 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>
                 {
+                    b.HasOne("robeem.DataModel.AttendanceDevice", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("robeem.DataModel.Profile", "Employee")
                         .WithMany()
                         .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("robeem.DataModel.AttendanceIntegration", "Integration")
-                        .WithMany()
-                        .HasForeignKey("IntegrationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Navigation("Device");
 
                     b.Navigation("Employee");
-
-                    b.Navigation("Integration");
                 });
 
             modelBuilder.Entity("robeem.DataModel.NormalizedAttendanceTransaction", b =>

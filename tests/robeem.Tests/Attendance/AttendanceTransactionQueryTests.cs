@@ -39,18 +39,19 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
         {
             var integration = new AttendanceIntegration { Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"), DisplayName = "Head office clock" };
             var other = new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = "other", DisplayName = "Other" }, DisplayName = "Branch clock" };
+            var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
             db.AddRange(
                 other,
-                new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" },
+                device,
                 new ExternalEmployeeIdMapping
                 {
-                    Integration = integration,
+                    Device = device,
                     ExternalEmployeeId = "21001",
                     Employee = new Profile { EmployeeNumber = "21001", FirstName = "Hiba", LastName = "Rahme", Title = "Hiba Rahme" },
                 },
                 new ExternalEmployeeIdMapping
                 {
-                    Integration = integration,
+                    Device = device,
                     ExternalEmployeeId = "22002",
                     Employee = new Profile { EmployeeNumber = "22002", FirstName = "Yara", LastName = "Jabbour", Title = "Yara Jabbour" },
                 });

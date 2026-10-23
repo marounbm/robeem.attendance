@@ -14,8 +14,6 @@ namespace robeem.Web.Controllers;
 [RequiresEmployee(HrExempt = true)]
 public sealed class RecordsController : Controller
 {
-    private const int PageSize = 200;
-
     private readonly IRecordsApiClient _records;
     private readonly ICurrentActor _actor;
 
@@ -26,12 +24,18 @@ public sealed class RecordsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, int? employeeId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
     {
         var chosen = RecordsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status! : "Any";
+        var size = RecordsIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : RecordsIndexViewModel.DefaultPageSize;
+        var result = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, Math.Max(page, 1), size, cancellationToken);
         return View(new RecordsIndexViewModel
         {
-            Items = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, PageSize, cancellationToken),
+            Items = result.Items,
+            Page = result.Page,
+            PageSize = size,
+            Total = result.Total,
+            Employees = await _records.ListEmployeeOptionsAsync(cancellationToken),
             EmployeeId = employeeId,
             Status = chosen,
             From = from,

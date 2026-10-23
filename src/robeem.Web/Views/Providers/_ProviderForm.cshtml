@@ -59,15 +59,22 @@
                 <input class="form-check-input" type="checkbox" checked disabled id="transport-FileUpload" />
                 <label class="form-check-label" for="transport-FileUpload">Manual file upload <span class="text-muted">(every provider has it)</span></label>
             </div>
-            @foreach (var transport in Model.Transports.Where(t => t.Key != "FileUpload"))
+            @* A transport an administrator switched off is offered only to the provider that already has it. *@
+            @foreach (var transport in Model.Transports.Where(t => t.Key != "FileUpload" && (t.IsActive || Model.Input.Transports.Contains(t.Key))))
             {
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="Input.Transports" value="@transport.Key" id="transport-@transport.Key"
                            checked="@Model.Input.Transports.Contains(transport.Key)" />
-                    <label class="form-check-label" for="transport-@transport.Key">@transport.DisplayName</label>
+                    <label class="form-check-label" for="transport-@transport.Key">
+                        @transport.DisplayName
+                        @if (!transport.IsActive)
+                        {
+                            <span class="text-muted">(switched off: untick to remove it, it can't be added back)</span>
+                        }
+                    </label>
                 </div>
             }
-            <div class="form-text">The other ways an integration of this provider can receive attendance. Each needs code behind it.</div>
+            <div class="form-text">The other ways an integration of this provider can receive attendance. Each needs code behind it. A switched-off transport is not offered; <a asp-controller="Transports" asp-action="Index">switch it on again</a> to use it.</div>
             <span asp-validation-for="Input.Transports" class="text-danger small"></span>
         </div>
         <div class="col-md-4">

@@ -69,6 +69,47 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task AProposal_MustBeOnTheDayOfThePunch_AndOnlyAnOvernightShiftMayUseTheDayAfter()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        Clock.Local = Monday.AddDays(2).At(12, 0);
+
+        // The day of the exception's shift is the only day, whatever time is typed.
+        var nextDay = await ProposeAsync(exceptionId, Monday.AddDays(1).At(5, 0));
+        var dayBefore = await ProposeAsync(exceptionId, Monday.AddDays(-1).At(12, 0));
+        Assert.Contains("the day of the punch", nextDay.Errors[nameof(ProposeCorrectionRequest.ProposedValue)]);
+        Assert.Contains("2026-10-05", dayBefore.Errors[nameof(ProposeCorrectionRequest.ProposedValue)]);
+        Assert.DoesNotContain("after midnight", nextDay.Errors[nameof(ProposeCorrectionRequest.ProposedValue)]);
+
+        // A shift that ends after midnight may have the punch on the day after.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var shift = db.TimeScheduleShifts.Single();
+            shift.StartTime = "22:00";
+            shift.EndTime = "06:00";
+            db.SaveChanges();
+        }
+
+        var overnight = await ProposeAsync(exceptionId, Monday.AddDays(1).At(5, 0));
+        var twoDaysAfter = await ProposeAsync(exceptionId, Monday.AddDays(2).At(5, 0));
+        Assert.True(overnight.Succeeded);
+        Assert.Contains("the shift ends after midnight", twoDaysAfter.Errors[nameof(ProposeCorrectionRequest.ProposedValue)]);
+    }
+
+    [Fact]
+    public async Task AProposal_CanNotBeLaterThanNow()
+    {
+        var exceptionId = await GivenMissingBreakOutAsync();
+        Clock.Local = Monday.At(11, 30);
+
+        var later = await ProposeAsync(exceptionId, Monday.At(12, 0));
+        var earlier = await ProposeAsync(exceptionId, Monday.At(11, 0));
+
+        Assert.Contains("future", later.Errors[nameof(ProposeCorrectionRequest.ProposedValue)]);
+        Assert.True(earlier.Succeeded);
+    }
+
+    [Fact]
     public async Task AnAppliedCorrection_SurvivesReprocessing()
     {
         var exceptionId = await GivenMissingBreakOutAsync();

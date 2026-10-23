@@ -73,6 +73,15 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.ReadAsync<List<DeviceItem>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync($"{Path}/devices", cancellationToken);
+        return await ApiResponses.ReadAsync<List<DeviceItem>>(response, cancellationToken);
+    }
+
+    public Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) =>
+        GetOrNullAsync<DeviceItem>($"{IntegrationPath(integrationId)}/devices/{Number(deviceId)}", cancellationToken);
+
     public async Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsJsonAsync($"{IntegrationPath(integrationId)}/devices", input, cancellationToken);
@@ -91,21 +100,21 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.SaveAsync<DeviceInput>(response, deviceId, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync($"{IntegrationPath(integrationId)}/mappings", cancellationToken);
+        using var response = await _http.GetAsync($"{IntegrationPath(integrationId)}/devices/{Number(deviceId)}/mappings", cancellationToken);
         return await ApiResponses.ReadAsync<List<MappingItem>>(response, cancellationToken);
     }
 
-    public async Task<ApiSaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken)
+    public async Task<ApiSaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken)
     {
-        using var response = await _http.PostAsJsonAsync($"{IntegrationPath(integrationId)}/mappings", input, cancellationToken);
+        using var response = await _http.PostAsJsonAsync($"{IntegrationPath(integrationId)}/devices/{Number(deviceId)}/mappings", input, cancellationToken);
         return await ApiResponses.SaveAsync<MappingInput>(response, null, cancellationToken);
     }
 
-    public async Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken)
+    public async Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken)
     {
-        using var response = await _http.DeleteAsync($"{IntegrationPath(integrationId)}/mappings/{Number(mappingId)}", cancellationToken);
+        using var response = await _http.DeleteAsync($"{IntegrationPath(integrationId)}/devices/{Number(deviceId)}/mappings/{Number(mappingId)}", cancellationToken);
         return await ApiResponses.SaveAsync<MappingInput>(response, mappingId, cancellationToken);
     }
 

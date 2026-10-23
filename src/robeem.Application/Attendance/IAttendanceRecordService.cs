@@ -1,4 +1,5 @@
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Application.Attendance;
 
@@ -9,8 +10,14 @@ namespace robeem.Application.Attendance;
 /// </summary>
 public interface IAttendanceRecordService
 {
-    /// <summary>Lists the days the viewer may see, newest first.</summary>
-    Task<IReadOnlyList<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken);
+    /// <summary>
+    /// Lists one page of the days the viewer may see, newest first, with the number of days that match. A page past
+    /// the end is answered with the last page.
+    /// </summary>
+    Task<PagedResult<RecordDayListItem>> ListDaysAsync(RecordFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken);
+
+    /// <summary>Lists the employees whose days the viewer may see, by name, to filter the list by one of them.</summary>
+    Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(ExceptionViewer viewer, CancellationToken cancellationToken);
 
     /// <summary>One employee's day in full, or null when the employee doesn't exist or the viewer may not see them.</summary>
     Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, ExceptionViewer viewer, CancellationToken cancellationToken);

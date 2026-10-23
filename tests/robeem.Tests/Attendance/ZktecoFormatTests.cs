@@ -50,12 +50,13 @@ public sealed class ZktecoFormatTests : IDisposable
             Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
             DisplayName = "Head office clock",
         };
+        var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
         db.AddRange(
-            new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" },
-            new ExternalEmployeeIdMapping { Integration = integration, ExternalEmployeeId = "21001", Employee = hiba },
+            device,
+            new ExternalEmployeeIdMapping { Device = device, ExternalEmployeeId = "21001", Employee = hiba },
             new ExternalEmployeeIdMapping
             {
-                Integration = integration,
+                Device = device,
                 ExternalEmployeeId = "22002",
                 Employee = new Profile { EmployeeNumber = "22002", FirstName = "Yara", LastName = "Jabbour", Title = "Yara Jabbour" },
             });

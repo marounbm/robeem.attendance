@@ -1,6 +1,6 @@
 namespace robeem.Contracts.Attendance;
 
-/// <summary>Which employee a vendor's employee id stands for, within one integration.</summary>
+/// <summary>Which employee a vendor's employee id stands for, on one device.</summary>
 public sealed class MappingItem
 {
     public int Id { get; init; }

@@ -39,10 +39,19 @@ public sealed class ExceptionsController : Controller
 
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> Propose(int exceptionId, DateTime proposedValue, string? justification, CancellationToken cancellationToken)
+    public async Task<IActionResult> Propose(int exceptionId, DateTime attendanceDate, TimeOnly? proposedTime, bool afterMidnight, string? justification, CancellationToken cancellationToken)
     {
+        if (proposedTime is not { } time)
+        {
+            TempData["ErrorMessage"] = "Enter the time the punch happened, as hours and minutes.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // The person enters a time only. The day is the exception's day, or the day after when they say the
+        // punch was after midnight (only offered for a shift that ends then); the Api refuses any other day.
+        var proposed = attendanceDate.Date.AddDays(afterMidnight ? 1 : 0).Add(time.ToTimeSpan());
         var result = await _corrections.ProposeAsync(
-            new ProposeCorrectionRequest { ExceptionId = exceptionId, ProposedValue = proposedValue, Justification = justification ?? string.Empty },
+            new ProposeCorrectionRequest { ExceptionId = exceptionId, ProposedValue = proposed, Justification = justification ?? string.Empty },
             cancellationToken);
 
         if (result.Succeeded)

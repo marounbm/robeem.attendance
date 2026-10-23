@@ -89,161 +89,17 @@
 
 <div class="card mb-3">
     <div class="card-header">Devices</div>
-    <div class="card-body">
-        <p class="small text-muted">
-            The vendor's device ids and the time zone each device's clock runs in: a punch without a UTC offset is read in
-            its device's zone. The model and the software and SDK versions are for your records (for example U350, 4.8.7,
-            6.2.5.5). A device with punches on record can't be deleted.
-        </p>
-        <datalist id="time-zones">
-            @foreach (var zone in IntegrationDetailsViewModel.CommonTimeZones)
-            {
-                <option value="@zone"></option>
-            }
-        </datalist>
-
-        @foreach (var device in Model.Devices)
-        {
-            <form method="post" asp-action="UpdateDevice" asp-route-id="@integration.Id" class="row g-2 align-items-end border-bottom pb-2 mb-2">
-                <input type="hidden" name="deviceId" value="@device.Id" />
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="dev-id-@device.Id">Device id</label>
-                    <input id="dev-id-@device.Id" name="ExternalDeviceId" value="@device.ExternalDeviceId" class="form-control form-control-sm" required maxlength="100" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small mb-0" for="dev-name-@device.Id">Name</label>
-                    <input id="dev-name-@device.Id" name="Name" value="@device.Name" class="form-control form-control-sm" required maxlength="255" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="dev-type-@device.Id">Type</label>
-                    <select id="dev-type-@device.Id" name="DeviceTypeId" class="form-select form-select-sm">
-                        @if (device.DeviceTypeId is { } currentTypeId && Model.DeviceTypes.All(t => t.Id != currentTypeId))
-                        {
-                            @* The device's type has been retired: it keeps it until someone picks another. *@
-                            <option value="@currentTypeId" selected>@device.DeviceType (retired)</option>
-                        }
-                        @foreach (var type in Model.DeviceTypes)
-                        {
-                            <option value="@type.Id" selected="@(type.Id == device.DeviceTypeId)">@type.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="dev-zone-@device.Id">Time zone</label>
-                    <input id="dev-zone-@device.Id" name="TimeZoneId" value="@device.TimeZoneId" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small mb-0" for="dev-model-@device.Id">Model</label>
-                    <input id="dev-model-@device.Id" name="Model" value="@device.Model" class="form-control form-control-sm" maxlength="100" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small mb-0" for="dev-software-@device.Id">Software version</label>
-                    <input id="dev-software-@device.Id" name="SoftwareVersion" value="@device.SoftwareVersion" class="form-control form-control-sm" maxlength="100" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small mb-0" for="dev-sdk-@device.Id">SDK version</label>
-                    <input id="dev-sdk-@device.Id" name="SdkVersion" value="@device.SdkVersion" class="form-control form-control-sm" maxlength="50" />
-                </div>
-                <div class="col-md-3 d-flex gap-1 justify-content-end">
-                    <span class="small text-muted align-self-center me-1">Last seen @DisplayFormats.DateTime(device.LastSeenAt)</span>
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
-                    <button type="submit" class="btn btn-sm btn-outline-danger" formaction="@Url.Action("DeleteDevice", new { id = integration.Id })"
-                            onclick="return confirm('Delete this device?');">Delete</button>
-                </div>
-            </form>
-        }
-
-        <form method="post" asp-action="AddDevice" asp-route-id="@integration.Id" class="row g-2 align-items-end mt-2">
-            <div class="col-md-2">
-                <label class="form-label small mb-0" for="new-dev-id">New device id</label>
-                <input id="new-dev-id" name="ExternalDeviceId" class="form-control form-control-sm" required maxlength="100" />
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            This integration has <strong>@integration.DeviceCount</strong> device(s) and <strong>@integration.MappingCount</strong> employee-id mapping(s).
+            <div class="small text-muted">
+                Devices, their time zones and the mapping of the vendor's employee ids to employees are kept per device, on the Devices page.
             </div>
-            <div class="col-md-3">
-                <label class="form-label small mb-0" for="new-dev-name">Name</label>
-                <input id="new-dev-name" name="Name" class="form-control form-control-sm" required maxlength="255" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small mb-0" for="new-dev-type">Type</label>
-                <select id="new-dev-type" name="DeviceTypeId" class="form-select form-select-sm">
-                    @foreach (var type in Model.DeviceTypes)
-                    {
-                        <option value="@type.Id">@type.Name</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small mb-0" for="new-dev-zone">Time zone</label>
-                <input id="new-dev-zone" name="TimeZoneId" value="@(integration.TimeZoneId ?? "UTC")" class="form-control form-control-sm" list="time-zones" required maxlength="64" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label small mb-0" for="new-dev-model">Model</label>
-                <input id="new-dev-model" name="Model" class="form-control form-control-sm" maxlength="100" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label small mb-0" for="new-dev-software">Software version</label>
-                <input id="new-dev-software" name="SoftwareVersion" class="form-control form-control-sm" maxlength="100" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small mb-0" for="new-dev-sdk">SDK version</label>
-                <input id="new-dev-sdk" name="SdkVersion" class="form-control form-control-sm" maxlength="50" />
-            </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-sm btn-primary">Add device</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-header">Employee-id mappings</div>
-    <div class="card-body">
-        <p class="small text-muted">
-            Which of your employees each employee id from the vendor stands for. A punch whose id isn't mapped is still stored,
-            and flagged until it is.
-        </p>
-        @if (Model.Mappings.Count > 0)
-        {
-            <table class="table table-sm align-middle">
-                <thead>
-                    <tr><th scope="col">Vendor employee id</th><th scope="col">Employee</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var mapping in Model.Mappings)
-                    {
-                        <tr>
-                            <td><code>@mapping.ExternalEmployeeId</code></td>
-                            <td>@mapping.EmployeeName</td>
-                            <td class="text-end">
-                                <form method="post" asp-action="DeleteMapping" asp-route-id="@integration.Id" class="d-inline">
-                                    <input type="hidden" name="mappingId" value="@mapping.Id" />
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this mapping?');">Remove</button>
-                                </form>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-
-        <form method="post" asp-action="AddMapping" asp-route-id="@integration.Id" class="row g-2 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label small mb-0" for="new-ext">Vendor employee id</label>
-                <input id="new-ext" name="ExternalEmployeeId" class="form-control form-control-sm" required maxlength="255" autocomplete="off" />
-            </div>
-            <div class="col-md-5">
-                <label class="form-label small mb-0" for="new-emp">Employee</label>
-                <select id="new-emp" name="EmployeeId" class="form-select form-select-sm" required>
-                    <option value="">— Choose —</option>
-                    @foreach (var employee in Model.Employees)
-                    {
-                        <option value="@employee.Id">@employee.Name</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-sm btn-primary">Add mapping</button>
-            </div>
-        </form>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-primary" asp-controller="Devices" asp-action="Index" asp-route-integrationId="@integration.Id">Devices</a>
+            <a class="btn btn-outline-secondary" asp-controller="Devices" asp-action="Create" asp-route-integrationId="@integration.Id">Add device</a>
+        </div>
     </div>
 </div>
 

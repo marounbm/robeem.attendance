@@ -26,7 +26,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
     public async Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
     {
-        var exception = await _db.AttendanceExceptions.SingleOrDefaultAsync(e => e.Id == exceptionId, cancellationToken);
+        var exception = await _db.AttendanceExceptions.Include(e => e.TimeScheduleShift).SingleOrDefaultAsync(e => e.Id == exceptionId, cancellationToken);
         if (exception is null)
         {
             return CorrectionResult.Missing();
@@ -63,10 +63,15 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
         var proposed = DateTime.SpecifyKind(proposedValue, DateTimeKind.Unspecified);
         var timeZoneId = string.Empty;
-        if (proposed.Date < exception.AttendanceDate.Date || proposed.Date >= exception.AttendanceDate.Date.AddDays(2))
+        var day = exception.AttendanceDate.Date;
+
+        // The punch belongs to the exception's day. Only a shift that runs past midnight has punches on the day after.
+        var overnight = exception.TimeScheduleShift is { } shift && shift.IsOvernight();
+        if (proposed.Date != day && !(overnight && proposed.Date == day.AddDays(1)))
         {
-            // An overnight shift ends the next day, so that day is allowed too.
-            errors[nameof(ProposeCorrectionRequest.ProposedValue)] = "The time must be on the day of the shift, or the day after.";
+            errors[nameof(ProposeCorrectionRequest.ProposedValue)] = overnight
+                ? $"The time must be on {day:yyyy-MM-dd}, the day of the punch, or on the day after (the shift ends after midnight)."
+                : $"The time must be on {day:yyyy-MM-dd}, the day of the punch.";
         }
         else
         {

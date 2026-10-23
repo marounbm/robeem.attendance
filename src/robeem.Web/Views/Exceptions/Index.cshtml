@@ -99,12 +99,33 @@
                         {
                             <tr class="collapse" id="propose-@item.Id">
                                 <td colspan="7" class="bg-light">
-                                    <form method="post" asp-action="Propose" class="row g-2 align-items-end">
+                                    @{
+                                        // The day is fixed: the exception's day. Nothing later than now can be proposed, so on today's
+                                        // date the time stops at the current time; the day after is offered only for a shift that ends
+                                        // after midnight, and only once that day has begun.
+                                        var day = item.AttendanceDate.Date;
+                                        var nowTime = DateTime.Now.ToString("HH:mm");
+                                        var sameDayMax = day == DateTime.Today ? nowTime : string.Empty;
+                                        var nextDayMax = day.AddDays(1) == DateTime.Today ? nowTime : string.Empty;
+                                        var offerNextDay = item.ShiftIsOvernight && day.AddDays(1) <= DateTime.Today;
+                                    }
+                                    <form method="post" asp-action="Propose" class="row g-2 align-items-end"
+                                          data-propose data-max-same-day="@sameDayMax" data-max-next-day="@nextDayMax">
                                         <input type="hidden" name="exceptionId" value="@item.Id" />
+                                        <input type="hidden" name="attendanceDate" value="@day.ToString("yyyy-MM-dd")" />
                                         <div class="col-md-3">
-                                            <label class="form-label small mb-0" for="time-@item.Id">When did the @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant() happen?</label>
-                                            <input id="time-@item.Id" type="datetime-local" name="proposedValue" class="form-control"
-                                                   value="@item.AttendanceDate.ToString("yyyy-MM-dd")T12:00" required />
+                                            <label class="form-label small mb-0" for="time-@item.Id">
+                                                What time did the @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant() happen on @DisplayFormats.Date(item.AttendanceDate)?
+                                            </label>
+                                            <input id="time-@item.Id" type="time" name="proposedTime" class="form-control" required
+                                                   max="@(sameDayMax.Length == 0 ? null : sameDayMax)" />
+                                            @if (offerNextDay)
+                                            {
+                                                <div class="form-check mt-1">
+                                                    <input id="after-midnight-@item.Id" type="checkbox" name="afterMidnight" value="true" class="form-check-input" />
+                                                    <label class="form-check-label small" for="after-midnight-@item.Id">After midnight (the next day)</label>
+                                                </div>
+                                            }
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label small mb-0" for="why-@item.Id">Why was it missed?</label>
@@ -123,3 +144,25 @@
         </div>
     }
 </div>
+
+@section Scripts {
+    <script>
+        // After midnight, the time belongs to the next day: it may not be later than now on that day either.
+        document.querySelectorAll('form[data-propose]').forEach(function (form) {
+            var time = form.querySelector('input[type="time"]');
+            var after = form.querySelector('input[name="afterMidnight"]');
+            if (!time || !after) {
+                return;
+            }
+
+            after.addEventListener('change', function () {
+                var max = after.checked ? form.dataset.maxNextDay : form.dataset.maxSameDay;
+                if (max) {
+                    time.setAttribute('max', max);
+                } else {
+                    time.removeAttribute('max');
+                }
+            });
+        });
+    </script>
+}

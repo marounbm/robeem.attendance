@@ -84,17 +84,21 @@ public sealed class NormalizationService : INormalizationService
     {
         var integration = await GetIntegrationAsync(raw.IntegrationId, run, cancellationToken);
 
-        // a. Employee, through the integration's id mapping.
-        int? employeeId = raw.ExternalEmployeeId is { } externalEmployeeId && integration.Employees.TryGetValue(externalEmployeeId, out var mapped)
-            ? mapped
-            : null;
-
         // b. Device: an uploaded file has no physical device, so the integration's own device takes every
         // punch of it; otherwise resolved at ingestion when it was already known, else by its external id.
         var device = integration.DefaultDevice
             ?? (raw.DeviceId is { } knownDeviceId
                 ? integration.Devices.Values.FirstOrDefault(d => d.Id == knownDeviceId)
                 : raw.DeviceExternalId is { } externalDeviceId && integration.Devices.TryGetValue(externalDeviceId, out var found) ? found : null);
+
+        // a. Employee, through the id mapping of the punch's device: the same vendor id can mean different
+        // people on different devices, so a punch of an unrecognized device has no employee either.
+        int? employeeId = device is not null
+            && raw.ExternalEmployeeId is { } externalEmployeeId
+            && integration.Employees.TryGetValue(device.Id, out var onDevice)
+            && onDevice.TryGetValue(externalEmployeeId, out var mapped)
+                ? mapped
+                : null;
 
         // e. Timestamp: a structurally unusable one fails the raw row; no normalized row is made.
         var timestamp = integration.Interpreter.ParseTimestamp(raw.TransactionTimestampRaw);
@@ -168,8 +172,8 @@ public sealed class NormalizationService : INormalizationService
             OriginalEventType = OriginalEventType(raw),
             EventSource = AttendanceEventSource.Device,
             ConfidenceStatus = confidence,
-            ExceptionStatus = employeeId is null ? TransactionExceptionStatus.FlaggedUnrecognizedEmployee
-                : device is null ? TransactionExceptionStatus.FlaggedUnrecognizedDevice
+            ExceptionStatus = device is null ? TransactionExceptionStatus.FlaggedUnrecognizedDevice
+                : employeeId is null ? TransactionExceptionStatus.FlaggedUnrecognizedEmployee
                 : TransactionExceptionStatus.None,
 
             // f. The duplicate key's time bucket.
@@ -224,9 +228,12 @@ public sealed class NormalizationService : INormalizationService
             .AsNoTracking()
             .Where(d => d.IntegrationId == integrationId)
             .ToDictionaryAsync(d => d.ExternalDeviceId, StringComparer.Ordinal, cancellationToken);
-        var employees = await _db.ExternalEmployeeIdMappings
-            .Where(m => m.IntegrationId == integrationId)
-            .ToDictionaryAsync(m => m.ExternalEmployeeId, m => m.EmployeeId, StringComparer.Ordinal, cancellationToken);
+        var employees = (await _db.ExternalEmployeeIdMappings
+                .Where(m => m.Device!.IntegrationId == integrationId)
+                .Select(m => new { m.DeviceId, m.ExternalEmployeeId, m.EmployeeId })
+                .ToListAsync(cancellationToken))
+            .GroupBy(m => m.DeviceId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyDictionary<string, int>)g.ToDictionary(m => m.ExternalEmployeeId, m => m.EmployeeId, StringComparer.Ordinal));
 
         // Only a manual upload has a device of its own for the file; any other transport reports its devices itself.
         var defaultDevice = integration.Transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is { } defaultDeviceId
@@ -252,7 +259,7 @@ public sealed class NormalizationService : INormalizationService
         string ProviderKey,
         IAttendanceEventInterpreter Interpreter,
         IReadOnlyDictionary<string, AttendanceDevice> Devices,
-        IReadOnlyDictionary<string, int> Employees,
+        IReadOnlyDictionary<int, IReadOnlyDictionary<string, int>> Employees,
         string? TimeZoneId,
         AttendanceDevice? DefaultDevice);
 

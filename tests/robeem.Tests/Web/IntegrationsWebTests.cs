@@ -75,7 +75,7 @@ public sealed class IntegrationsWebTests
 
         Assert.Equal((true, 3), ((await ok.UpdateAsync(3, new IntegrationInput(), CancellationToken.None)).Succeeded, (await ok.UpdateAsync(3, new IntegrationInput(), CancellationToken.None)).Id));
         Assert.True((await ok.DeleteDeviceAsync(1, 2, CancellationToken.None)).Succeeded);
-        Assert.True((await gone.DeleteMappingAsync(1, 2, CancellationToken.None)).NotFound);
+        Assert.True((await gone.DeleteMappingAsync(1, 2, 3, CancellationToken.None)).NotFound);
         var no = await refused.DeleteDeviceAsync(1, 2, CancellationToken.None);
         Assert.False(no.Succeeded);
 
@@ -93,11 +93,35 @@ public sealed class IntegrationsWebTests
         await client.RunAsync(5, reconcile: false, CancellationToken.None);
         await client.RunAsync(5, reconcile: true, CancellationToken.None);
         await client.UpdateDeviceAsync(5, 8, new DeviceInput(), CancellationToken.None);
-        await client.AddMappingAsync(5, new MappingInput(), CancellationToken.None);
+        await client.AddMappingAsync(5, 8, new MappingInput(), CancellationToken.None);
+        await client.DeleteMappingAsync(5, 8, 3, CancellationToken.None);
 
         Assert.Equal(
-            [("POST", "/api/attendance/integrations/5/sync"), ("POST", "/api/attendance/integrations/5/reconcile"), ("PUT", "/api/attendance/integrations/5/devices/8"), ("POST", "/api/attendance/integrations/5/mappings")],
+            [
+                ("POST", "/api/attendance/integrations/5/sync"),
+                ("POST", "/api/attendance/integrations/5/reconcile"),
+                ("PUT", "/api/attendance/integrations/5/devices/8"),
+                ("POST", "/api/attendance/integrations/5/devices/8/mappings"),
+                ("DELETE", "/api/attendance/integrations/5/devices/8/mappings/3"),
+            ],
             handler.Requests.Select(r => (r.Method.Method, r.RequestUri!.PathAndQuery)));
+    }
+
+    [Fact]
+    public async Task TheClient_ReadsTheGridOfAllDevices_ADevice_AndADevicesMappings()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, "[]");
+        var client = new IntegrationsApiClient(handler.CreateClient());
+        var single = new StubHttpHandler(HttpStatusCode.OK, """{"id":8,"integrationId":5,"integrationName":"HQ","mappingCount":2}""");
+
+        Assert.Empty(await client.ListAllDevicesAsync(CancellationToken.None));
+        Assert.Empty(await client.ListMappingsAsync(5, 8, CancellationToken.None));
+        var device = await new IntegrationsApiClient(single.CreateClient()).GetDeviceAsync(5, 8, CancellationToken.None);
+        Assert.Null(await new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient()).GetDeviceAsync(5, 9, CancellationToken.None));
+
+        Assert.Equal(["/api/attendance/integrations/devices", "/api/attendance/integrations/5/devices/8/mappings"], handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
+        Assert.Equal("/api/attendance/integrations/5/devices/8", single.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((8, 5, "HQ", 2), (device!.Id, device.IntegrationId, device.IntegrationName, device.MappingCount));
     }
 
     [Fact]
@@ -130,23 +154,60 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
+    public async Task TheDevicesGrid_ListsEveryDevice_OrOnlyThoseOfTheChosenIntegration()
+    {
+        var integrations = new FakeIntegrations();
+        integrations.Devices.AddRange([new DeviceItem { Id = 1, IntegrationId = 5 }, new DeviceItem { Id = 2, IntegrationId = 6 }]);
+        var controller = WithTempData(new DevicesController(integrations));
+
+        var all = Assert.IsType<DevicesIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index(null, CancellationToken.None)).Model);
+        var one = Assert.IsType<DevicesIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index(6, CancellationToken.None)).Model);
+
+        Assert.Equal([1, 2], all.Devices.Select(d => d.Id));
+        Assert.Equal([2], one.Devices.Select(d => d.Id));
+        Assert.Equal(6, one.IntegrationId);
+    }
+
+    [Fact]
     public async Task ADeviceAction_ReportsItsOutcome_AndABadFormIsNeverSent()
     {
         var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(1) };
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new DevicesController(integrations));
 
-        await controller.AddDevice(5, new DeviceInput { Name = "Front door" }, CancellationToken.None);
-        Assert.Equal("Device 'Front door' was added.", controller.TempData["StatusMessage"]);
+        var added = Assert.IsType<RedirectToActionResult>(await controller.Create(5, new DeviceFormViewModel { Input = new DeviceInput { Name = "Front door" } }, CancellationToken.None));
+        Assert.Equal(("Edit", 1), (added.ActionName, added.RouteValues!["id"]));
+        Assert.Contains("'Front door' was added", (string)controller.TempData["StatusMessage"]!);
 
         integrations.Save = ApiSaveResult.Invalid(new Dictionary<string, string> { [string.Empty] = "This device has punches on record." });
-        await controller.DeleteDevice(5, 2, CancellationToken.None);
+        var refused = Assert.IsType<RedirectToActionResult>(await controller.Delete(5, 2, CancellationToken.None));
+        Assert.Equal("Edit", refused.ActionName);
         Assert.Equal("This device has punches on record.", controller.TempData["ErrorMessage"]);
 
         controller.ModelState.AddModelError("Name", "required");
         var calls = integrations.Calls.Count;
-        await controller.AddDevice(5, new DeviceInput(), CancellationToken.None);
+        Assert.IsType<ViewResult>(await controller.Create(5, new DeviceFormViewModel(), CancellationToken.None));
+        await controller.AddMapping(5, 2, new MappingInput(), CancellationToken.None);
         Assert.Equal(calls, integrations.Calls.Count);
         Assert.Equal("Fill in every required field.", controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task AMapping_IsAddedAndRemovedOnItsDevice_AndAnUnknownDeviceIsNotFound()
+    {
+        var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(1) };
+        var controller = WithTempData(new DevicesController(integrations));
+
+        var added = Assert.IsType<RedirectToActionResult>(await controller.AddMapping(5, 2, new MappingInput { ExternalEmployeeId = "21001", EmployeeId = 7 }, CancellationToken.None));
+        Assert.Equal(("Edit", 5, 2), (added.ActionName, added.RouteValues!["integrationId"], added.RouteValues["id"]));
+        Assert.Equal("Vendor id '21001' was mapped.", controller.TempData["StatusMessage"]);
+
+        await controller.DeleteMapping(5, 2, 3, CancellationToken.None);
+        Assert.Equal("The mapping was removed.", controller.TempData["StatusMessage"]);
+        Assert.Equal(["addMapping", "deleteMapping"], integrations.Calls);
+
+        integrations.Save = ApiSaveResult.Missing();
+        Assert.IsType<NotFoundResult>(await controller.Edit(5, 9, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.AddMapping(5, 9, new MappingInput { ExternalEmployeeId = "1", EmployeeId = 1 }, CancellationToken.None));
     }
 
     [Theory]
@@ -313,6 +374,8 @@ public sealed class IntegrationsWebTests
 
         public List<int> RawMappingTakes { get; } = [];
 
+        public List<DeviceItem> Devices { get; } = [];
+
         public Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IntegrationListItem>>([]);
 
         public Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken) => Task.FromResult<IntegrationListItem?>(Save.NotFound ? null : new IntegrationListItem { Id = id });
@@ -335,17 +398,22 @@ public sealed class IntegrationsWebTests
 
         public Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(int integrationId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DeviceItem>>([]);
 
+        public Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DeviceItem>>(Devices);
+
+        public Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) =>
+            Task.FromResult<DeviceItem?>(Save.NotFound ? null : new DeviceItem { Id = deviceId, IntegrationId = integrationId, IntegrationName = "HQ", Name = "Front door", ExternalDeviceId = "1", TimeZoneId = "Asia/Beirut" });
+
         public Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => Record("addDevice");
 
         public Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => Record("updateDevice");
 
         public Task<ApiSaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Record("deleteDevice");
 
-        public Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MappingItem>>([]);
+        public Task<IReadOnlyList<MappingItem>> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MappingItem>>([]);
 
-        public Task<ApiSaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping");
+        public Task<ApiSaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken) => Record("addMapping");
 
-        public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping");
+        public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping");
 
         public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken)
         {

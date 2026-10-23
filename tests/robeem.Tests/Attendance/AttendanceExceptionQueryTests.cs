@@ -115,6 +115,21 @@ public sealed class AttendanceExceptionQueryTests : AttendanceEngineTestBase
         var invalid = items.Single(e => e.ExceptionType == "InvalidSequence");
         Assert.Equal(("08:00-17:00", false), (invalid.ShiftTitle, invalid.CanPropose));
         Assert.Null(invalid.MissingEventType);
+        Assert.False(invalid.ShiftIsOvernight);
+    }
+
+    [Fact]
+    public async Task AnExceptionOfAShiftThatEndsAfterMidnight_SaysSo_SoThePunchMayBeOnTheNextDay()
+    {
+        AssignSchedule(new ShiftSpec("22:00", "06:00"));
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(22, 0));
+        Clock.Local = Monday.AddDays(1).At(12, 0);
+        await ProcessAsync(Monday);
+
+        var items = await ListAsync(new ExceptionViewer(EmployeeId, true, false, false), ExceptionStatusFilter.Active);
+
+        var missing = items.Single(e => e.MissingEventType == "CheckOut");
+        Assert.True(missing.ShiftIsOvernight);
     }
 
     private async Task<IReadOnlyList<robeem.Contracts.Attendance.ExceptionListItem>> ListAsync(

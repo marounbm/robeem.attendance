@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Microsoft.AspNetCore.WebUtilities;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -16,9 +17,19 @@ public sealed class RecordsApiClient : IRecordsApiClient
         _http = http;
     }
 
-    public async Task<IReadOnlyList<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int take, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
     {
-        var query = new Dictionary<string, string?> { ["take"] = take.ToString(CultureInfo.InvariantCulture) };
+        using var response = await _http.GetAsync($"{Path}/employee-options", cancellationToken);
+        return await ApiResponses.ReadAsync<List<EmployeeOption>>(response, cancellationToken);
+    }
+
+    public async Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["page"] = page.ToString(CultureInfo.InvariantCulture),
+            ["pageSize"] = pageSize.ToString(CultureInfo.InvariantCulture),
+        };
         if (from is { } first)
         {
             query["from"] = first.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -45,7 +56,7 @@ public sealed class RecordsApiClient : IRecordsApiClient
         }
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(Path, query), cancellationToken);
-        return await ApiResponses.ReadAsync<List<RecordDayListItem>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<RecordDayListItem>>(response, cancellationToken);
     }
 
     public async Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken)

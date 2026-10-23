@@ -14,6 +14,9 @@ public sealed class ExceptionListItem
     /// <summary>Gets the shift's title; null for work outside any shift.</summary>
     public string? ShiftTitle { get; init; }
 
+    /// <summary>Gets a value indicating whether the shift ends after midnight, so a missing punch may fall on the day after <see cref="AttendanceDate"/>.</summary>
+    public bool ShiftIsOvernight { get; init; }
+
     /// <summary>Gets the kind: MissingPunch or InvalidSequence.</summary>
     public string ExceptionType { get; init; } = string.Empty;
 

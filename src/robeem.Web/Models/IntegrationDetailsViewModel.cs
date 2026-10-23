@@ -14,13 +14,4 @@ public sealed class IntegrationDetailsViewModel
     public required IntegrationListItem Integration { get; init; }
 
     public IntegrationHealthReport? Health { get; init; }
-
-    public IReadOnlyList<DeviceItem> Devices { get; init; } = Array.Empty<DeviceItem>();
-
-    /// <summary>Gets the active device types, to choose a device's type from.</summary>
-    public IReadOnlyList<DeviceTypeOption> DeviceTypes { get; init; } = Array.Empty<DeviceTypeOption>();
-
-    public IReadOnlyList<MappingItem> Mappings { get; init; } = Array.Empty<MappingItem>();
-
-    public IReadOnlyList<EmployeeOption> Employees { get; init; } = Array.Empty<EmployeeOption>();
 }

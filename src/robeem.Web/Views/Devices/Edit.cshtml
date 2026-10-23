@@ -1,0 +1,78 @@
+@model DeviceFormViewModel
+@{
+    ViewData["Title"] = "Edit device";
+    var device = Model.Device!;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Edit device <span class="text-muted">@device.Name</span></h1>
+    <form method="post" asp-action="Delete" asp-route-integrationId="@Model.IntegrationId" asp-route-id="@Model.Id">
+        <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Delete this device?');"
+                title="A device with punches on record, or with mappings, can't be deleted.">Delete device</button>
+    </form>
+</div>
+
+<partial name="_StatusMessage" />
+
+<form method="post" asp-action="Edit" asp-route-integrationId="@Model.IntegrationId" asp-route-id="@Model.Id">
+    <partial name="_DeviceForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-integrationId="@Model.IntegrationId">Back to devices</a>
+</form>
+
+<div class="card my-3">
+    <div class="card-header">Employee-id mappings on this device</div>
+    <div class="card-body">
+        <p class="small text-muted">
+            Which of your employees each employee id from the vendor stands for <strong>on this device</strong>. A punch whose id isn't
+            mapped here is still stored, and flagged until it is. A punch of a device that isn't registered has no employee at all.
+        </p>
+        @if (Model.Mappings.Count > 0)
+        {
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th scope="col">Vendor employee id</th><th scope="col">Employee</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var mapping in Model.Mappings)
+                    {
+                        <tr>
+                            <td><code>@mapping.ExternalEmployeeId</code></td>
+                            <td>@mapping.EmployeeName</td>
+                            <td class="text-end">
+                                <form method="post" asp-action="DeleteMapping" asp-route-integrationId="@Model.IntegrationId" asp-route-id="@Model.Id" class="d-inline">
+                                    <input type="hidden" name="mappingId" value="@mapping.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this mapping?');">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <form method="post" asp-action="AddMapping" asp-route-integrationId="@Model.IntegrationId" asp-route-id="@Model.Id" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="new-ext">Vendor employee id</label>
+                <input id="new-ext" name="ExternalEmployeeId" class="form-control form-control-sm" required maxlength="255" autocomplete="off" />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small mb-0" for="new-emp">Employee</label>
+                <select id="new-emp" name="EmployeeId" class="form-select form-select-sm" required>
+                    <option value="">— Choose —</option>
+                    @foreach (var employee in Model.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary">Add mapping</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

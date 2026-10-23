@@ -35,12 +35,13 @@ public sealed class ZktecoXlsUploadTests : IDisposable
             Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
             DisplayName = "Head office clock",
         };
-        db.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" });
+        var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
+        db.Add(device);
         foreach (var number in EmployeeNumbers)
         {
             db.Add(new ExternalEmployeeIdMapping
             {
-                Integration = integration,
+                Device = device,
                 ExternalEmployeeId = number,
                 Employee = new Profile { EmployeeNumber = number, FirstName = "E", LastName = number, Title = $"E {number}" },
             });

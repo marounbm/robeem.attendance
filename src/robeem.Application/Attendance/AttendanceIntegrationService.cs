@@ -177,16 +177,14 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return null;
         }
 
-        var devices = await _db.AttendanceDevices
-            .AsNoTracking()
-            .Include(d => d.DeviceType)
-            .Where(d => d.IntegrationId == integrationId)
-            .OrderBy(d => d.Name)
-            .ToListAsync(cancellationToken);
-        return devices
-            .Select(d => new DeviceItem { Id = d.Id, ExternalDeviceId = d.ExternalDeviceId, Name = d.Name, DeviceTypeId = d.DeviceTypeId, DeviceType = d.DeviceType?.Name ?? string.Empty, Model = d.Model, SoftwareVersion = d.SoftwareVersion, SdkVersion = d.SdkVersion, TimeZoneId = d.TimeZoneId, LastSeenAt = d.LastSeenAt })
-            .ToList();
+        return await QueryDevicesAsync(integrationId, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<DeviceItem>> ListAllDevicesAsync(CancellationToken cancellationToken) =>
+        await QueryDevicesAsync(null, cancellationToken);
+
+    public async Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) =>
+        (await QueryDevicesAsync(integrationId, cancellationToken)).FirstOrDefault(d => d.Id == deviceId);
 
     public async Task<SaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken)
     {
@@ -245,6 +243,13 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return SaveResult.Invalid("id", "This is the integration's device for uploaded files. Choose another device for uploaded files first, then delete it.");
         }
 
+        // No cascade (CLAUDE.md §8): the mappings a person typed in are removed on purpose, not by deleting the device.
+        var mappings = await _db.ExternalEmployeeIdMappings.CountAsync(m => m.DeviceId == deviceId, cancellationToken);
+        if (mappings > 0)
+        {
+            return SaveResult.Invalid("id", $"This device has {mappings} employee-id mapping(s). Remove them first, then delete the device.");
+        }
+
         _db.AttendanceDevices.Remove(device);
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceDevice), device.Id, $"Device '{device.Name}' ({device.ExternalDeviceId}) removed from integration {integrationId}.");
         try
@@ -262,25 +267,25 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         return SaveResult.Success(deviceId);
     }
 
-    public async Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<MappingItem>?> ListMappingsAsync(int integrationId, int deviceId, CancellationToken cancellationToken)
     {
-        if (!await _db.AttendanceIntegrations.AnyAsync(i => i.Id == integrationId, cancellationToken))
+        if (!await _db.AttendanceDevices.AnyAsync(d => d.Id == deviceId && d.IntegrationId == integrationId, cancellationToken))
         {
             return null;
         }
 
         var rows = await _db.ExternalEmployeeIdMappings
             .AsNoTracking()
-            .Where(m => m.IntegrationId == integrationId)
+            .Where(m => m.DeviceId == deviceId)
             .OrderBy(m => m.ExternalEmployeeId)
             .Select(m => new { m.Id, m.ExternalEmployeeId, m.EmployeeId, m.Employee!.FirstName, m.Employee.LastName })
             .ToListAsync(cancellationToken);
         return rows.Select(m => new MappingItem { Id = m.Id, ExternalEmployeeId = m.ExternalEmployeeId, EmployeeId = m.EmployeeId, EmployeeName = $"{m.FirstName} {m.LastName}" }).ToList();
     }
 
-    public async Task<SaveResult> AddMappingAsync(int integrationId, MappingInput input, CancellationToken cancellationToken)
+    public async Task<SaveResult> AddMappingAsync(int integrationId, int deviceId, MappingInput input, CancellationToken cancellationToken)
     {
-        if (!await _db.AttendanceIntegrations.AnyAsync(i => i.Id == integrationId, cancellationToken))
+        if (!await _db.AttendanceDevices.AnyAsync(d => d.Id == deviceId && d.IntegrationId == integrationId, cancellationToken))
         {
             return SaveResult.Missing();
         }
@@ -291,9 +296,9 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         {
             errors[nameof(MappingInput.ExternalEmployeeId)] = "The vendor employee id is required (at most 255 characters).";
         }
-        else if (await _db.ExternalEmployeeIdMappings.AnyAsync(m => m.IntegrationId == integrationId && m.ExternalEmployeeId == external, cancellationToken))
+        else if (await _db.ExternalEmployeeIdMappings.AnyAsync(m => m.DeviceId == deviceId && m.ExternalEmployeeId == external, cancellationToken))
         {
-            errors[nameof(MappingInput.ExternalEmployeeId)] = "This vendor employee id is already mapped in this integration.";
+            errors[nameof(MappingInput.ExternalEmployeeId)] = "This vendor employee id is already mapped on this device.";
         }
 
         if (!await _db.Profiles.AnyAsync(p => p.Id == input.EmployeeId, cancellationToken))
@@ -306,25 +311,25 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return SaveResult.Invalid(errors);
         }
 
-        var mapping = new ExternalEmployeeIdMapping { IntegrationId = integrationId, ExternalEmployeeId = external, EmployeeId = input.EmployeeId };
+        var mapping = new ExternalEmployeeIdMapping { DeviceId = deviceId, ExternalEmployeeId = external, EmployeeId = input.EmployeeId };
         _db.ExternalEmployeeIdMappings.Add(mapping);
         await _db.SaveChangesAsync(cancellationToken);
 
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(ExternalEmployeeIdMapping), mapping.Id, $"Vendor id '{external}' mapped to employee {input.EmployeeId} in integration {integrationId}.");
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(ExternalEmployeeIdMapping), mapping.Id, $"Vendor id '{external}' mapped to employee {input.EmployeeId} on device {deviceId} of integration {integrationId}.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(mapping.Id);
     }
 
-    public async Task<SaveResult> DeleteMappingAsync(int integrationId, int mappingId, CancellationToken cancellationToken)
+    public async Task<SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken)
     {
-        var mapping = await _db.ExternalEmployeeIdMappings.SingleOrDefaultAsync(m => m.Id == mappingId && m.IntegrationId == integrationId, cancellationToken);
+        var mapping = await _db.ExternalEmployeeIdMappings.SingleOrDefaultAsync(m => m.Id == mappingId && m.DeviceId == deviceId && m.Device!.IntegrationId == integrationId, cancellationToken);
         if (mapping is null)
         {
             return SaveResult.Missing();
         }
 
         _db.ExternalEmployeeIdMappings.Remove(mapping);
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(ExternalEmployeeIdMapping), mapping.Id, $"Mapping of vendor id '{mapping.ExternalEmployeeId}' to employee {mapping.EmployeeId} removed from integration {integrationId}.");
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(ExternalEmployeeIdMapping), mapping.Id, $"Mapping of vendor id '{mapping.ExternalEmployeeId}' to employee {mapping.EmployeeId} removed from device {deviceId} of integration {integrationId}.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(mappingId);
     }
@@ -560,7 +565,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             PollingScheduleCron = i.PollingScheduleCron,
             LastSuccessfulSyncAt = i.LastSuccessfulSyncAt,
             DeviceCount = db.AttendanceDevices.Count(d => d.IntegrationId == i.Id),
-            MappingCount = db.ExternalEmployeeIdMappings.Count(m => m.IntegrationId == i.Id),
+            MappingCount = db.ExternalEmployeeIdMappings.Count(m => m.Device!.IntegrationId == i.Id),
         });
 
     private static void Apply(IntegrationInput input, AttendanceIntegration integration, bool isPull)
@@ -641,6 +646,42 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         return errors;
+    }
+
+    private async Task<IReadOnlyList<DeviceItem>> QueryDevicesAsync(int? integrationId, CancellationToken cancellationToken)
+    {
+        var devices = await _db.AttendanceDevices
+            .AsNoTracking()
+            .Include(d => d.DeviceType)
+            .Include(d => d.Integration)
+            .Where(d => integrationId == null || d.IntegrationId == integrationId)
+            .OrderBy(d => d.Integration!.DisplayName)
+            .ThenBy(d => d.Name)
+            .ToListAsync(cancellationToken);
+        var mappingCounts = await _db.ExternalEmployeeIdMappings
+            .AsNoTracking()
+            .Where(m => integrationId == null || m.Device!.IntegrationId == integrationId)
+            .GroupBy(m => m.DeviceId)
+            .Select(g => new { DeviceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.DeviceId, g => g.Count, cancellationToken);
+        return devices
+            .Select(d => new DeviceItem
+            {
+                Id = d.Id,
+                IntegrationId = d.IntegrationId,
+                IntegrationName = d.Integration?.DisplayName ?? string.Empty,
+                MappingCount = mappingCounts.GetValueOrDefault(d.Id),
+                ExternalDeviceId = d.ExternalDeviceId,
+                Name = d.Name,
+                DeviceTypeId = d.DeviceTypeId,
+                DeviceType = d.DeviceType?.Name ?? string.Empty,
+                Model = d.Model,
+                SoftwareVersion = d.SoftwareVersion,
+                SdkVersion = d.SdkVersion,
+                TimeZoneId = d.TimeZoneId,
+                LastSeenAt = d.LastSeenAt,
+            })
+            .ToList();
     }
 
     /// <summary>Sets each item's transport display name from the transport definitions.</summary>

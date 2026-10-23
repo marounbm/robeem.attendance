@@ -46,7 +46,7 @@ public sealed class CustomFileFormatTests : IDisposable
         var employee = new Profile { EmployeeNumber = "P-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         var integration = new AttendanceIntegration { Provider = provider, DisplayName = "Branch upload", Transport = AttendanceTransport.FileUpload };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Door", TimeZoneId = "Asia/Beirut" };
-        db.AddRange(device, new ExternalEmployeeIdMapping { Integration = integration, ExternalEmployeeId = "E-1", Employee = employee });
+        db.AddRange(device, new ExternalEmployeeIdMapping { Device = device, ExternalEmployeeId = "E-1", Employee = employee });
         db.SaveChanges();
         (_integrationId, _deviceId, _employeeId) = (integration.Id, device.Id, employee.Id);
     }
