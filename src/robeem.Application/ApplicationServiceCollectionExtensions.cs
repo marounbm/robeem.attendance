@@ -39,6 +39,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IJobRunLog, JobRunLog>();
         services.AddScoped<IAttendanceCorrectionService, AttendanceCorrectionService>();
         services.AddScoped<IAttendanceReviewService, AttendanceReviewService>();
+        services.AddScoped<IAttendanceExceptionService, AttendanceExceptionService>();
         services.AddScoped<IAttendanceExceptionQuery, AttendanceExceptionQuery>();
         services.AddScoped<IAttendanceTransactionQuery, AttendanceTransactionQuery>();
         services.AddScoped<IAttendanceIntegrationService, AttendanceIntegrationService>();

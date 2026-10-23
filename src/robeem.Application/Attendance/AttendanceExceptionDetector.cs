@@ -1,3 +1,4 @@
+using System.Globalization;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -125,14 +126,16 @@ internal static class AttendanceExceptionDetector
         }
 
         // A shift with a break, worked without a single break punch: either one can't have been
-        // missed for sure while the shift is still running.
+        // missed for sure while the shift is still running. The policy decides whether that is a problem at all.
         var hasCheckOut = punches.Any(p => p.Type == NormalizedEventType.CheckOut);
         var hasBreakPunch = punches.Any(p => p.Type is NormalizedEventType.BreakOut or NormalizedEventType.BreakIn);
-        if (breakExpected && !hasBreakPunch && (hasCheckOut || graceOver))
+        if (breakExpected && !hasBreakPunch && (hasCheckOut || graceOver) && policy.RaiseExceptionOnNoBreak)
         {
             found.Add(Missing(NormalizedEventType.BreakOut, "The shift has a break, but no break-out was recorded."));
             found.Add(Missing(NormalizedEventType.BreakIn, "The shift has a break, but no break-in was recorded."));
         }
+
+        AddBreakFindings(found, calculation, shift, policy);
 
         // One report per problem: a repeated cause (two stray break-ins) is still one missing break-out.
         return found
@@ -140,6 +143,49 @@ internal static class AttendanceExceptionDetector
             .Select(g => g.First())
             .ToList();
     }
+
+    /// <summary>
+    /// Raises the long, late and early breaks that the policy asks to be raised. The finding is on the record either way; here it only
+    /// becomes an exception when the policy says so. It is tied to the break-out punch, so accepting one break does not accept another.
+    /// </summary>
+    private static void AddBreakFindings(List<DetectedException> found, ShiftCalculation calculation, ResolvedShift? shift, AttendancePolicy policy)
+    {
+        if (shift?.BreakStartsAt is not { } scheduledStart || calculation.BreakOut is not { } breakOut)
+        {
+            return;
+        }
+
+        var scheduled = scheduledStart.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var findings = calculation.BreakFindings;
+        if (findings.HasFlag(BreakFindings.LongBreak) && policy.RaiseExceptionOnLongBreak)
+        {
+            found.Add(new DetectedException(
+                AttendanceExceptionType.LongBreak,
+                null,
+                breakOut.NormalizedTransactionId,
+                $"The break lasted {Minutes((int)calculation.BreakDuration.TotalMinutes)}, {Minutes(calculation.BreakExcessMinutes)} longer than the scheduled {Minutes(shift.BreakMinutes)}."));
+        }
+
+        if (findings.HasFlag(BreakFindings.LateBreak) && policy.RaiseExceptionOnLateBreak)
+        {
+            found.Add(new DetectedException(
+                AttendanceExceptionType.LateBreak,
+                null,
+                breakOut.NormalizedTransactionId,
+                $"The break started {Minutes(calculation.BreakStartOffsetMinutes)} after the scheduled {scheduled}."));
+        }
+
+        if (findings.HasFlag(BreakFindings.EarlyBreak) && policy.RaiseExceptionOnEarlyBreak)
+        {
+            found.Add(new DetectedException(
+                AttendanceExceptionType.EarlyBreak,
+                null,
+                breakOut.NormalizedTransactionId,
+                $"The break started {Minutes(-calculation.BreakStartOffsetMinutes)} before the scheduled {scheduled}."));
+        }
+    }
+
+    private static string Minutes(int minutes) => minutes == 1 ? "1 minute" : $"{minutes} minutes";
 
     private static DetectedException Missing(NormalizedEventType missing, string description) =>
         new(AttendanceExceptionType.MissingPunch, missing, null, description);

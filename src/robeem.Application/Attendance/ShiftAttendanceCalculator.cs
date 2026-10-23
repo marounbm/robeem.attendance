@@ -29,6 +29,10 @@ internal static class ShiftAttendanceCalculator
         // A punch still unlabeled can't be used, and is never guessed (CLAUDE.md §1.5, §1.6).
         var complete = ordered.All(p => p.Type != NormalizedEventType.Unknown);
         var typed = WithoutRepeats(ordered.Where(p => p.Type != NormalizedEventType.Unknown).ToList(), policy.DuplicateTimeWindowSeconds);
+
+        // A break shorter than the policy's minimum is a toilet visit, not a break: both punches are left out, so
+        // the time stays work and the break rules never see it.
+        typed = WithoutShortBreaks(typed, policy.IgnoreBreaksShorterThanMinutes, out var ignoredShortBreaks);
         var rounding = policy.RoundingRuleMinutes;
 
         // Pair the punches in time order. Elapsed time is measured on the UTC instants, so a shift
@@ -71,10 +75,12 @@ internal static class ShiftAttendanceCalculator
         var breakIn = typed.FirstOrDefault(p => p.Type == NormalizedEventType.BreakIn && (breakOut is null || p.Utc >= breakOut.Utc));
 
         complete &= state == State.Off && checkIn is not null && checkOut is not null;
-        if (shift?.BreakTime == true)
+        if (shift?.BreakTime == true && policy.RaiseExceptionOnNoBreak)
         {
             complete &= breakOut is not null && breakIn is not null;
         }
+
+        var (findings, breakExcess, breakOffset) = FindBreakIssues(shift, checkIn, checkOut, breakOut, breakIn, onBreak, policy);
 
         var late = shift is not null && checkIn is not null
             ? Math.Max(0, WholeMinutes(RoundedLocal(checkIn, rounding) - shift.StartsAt) - policy.LateGraceMinutes)
@@ -103,11 +109,97 @@ internal static class ShiftAttendanceCalculator
             LateMinutes = late,
             EarlyDepartureMinutes = early,
             OvertimeMinutes = overtime,
+            BreakFindings = findings,
+            BreakExcessMinutes = breakExcess,
+            BreakStartOffsetMinutes = breakOffset,
+            IgnoredShortBreaks = ignoredShortBreaks,
             IsComplete = complete,
             SourceIds = ordered.Where(p => p.NormalizedTransactionId.HasValue).Select(p => p.NormalizedTransactionId!.Value).Order().ToList(),
             CorrectionIds = ordered.Where(p => p.CorrectionId.HasValue).Select(p => p.CorrectionId!.Value).Order().ToList(),
             Punches = typed,
         };
+    }
+
+    /// <summary>
+    /// Leaves out the two punches of a break that lasted less than <paramref name="minimumMinutes"/>: a break-out followed at once
+    /// by its break-in. A break with no break-in yet is not a short break; it is left for the sequence rules. 0 keeps every break.
+    /// </summary>
+    private static List<AttendancePunch> WithoutShortBreaks(List<AttendancePunch> typed, int minimumMinutes, out int ignored)
+    {
+        ignored = 0;
+        if (minimumMinutes <= 0)
+        {
+            return typed;
+        }
+
+        var minimum = TimeSpan.FromMinutes(minimumMinutes);
+        var kept = new List<AttendancePunch>(typed.Count);
+        for (var i = 0; i < typed.Count; i++)
+        {
+            if (typed[i].Type == NormalizedEventType.BreakOut
+                && i + 1 < typed.Count
+                && typed[i + 1].Type == NormalizedEventType.BreakIn
+                && typed[i + 1].Utc - typed[i].Utc < minimum)
+            {
+                ignored++;
+                i++;
+                continue;
+            }
+
+            kept.Add(typed[i]);
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// Compares the break taken with the shift's scheduled break: how long, and when it started. A shift with a scheduled break and no
+    /// break taken at all is a "no break", once the shift has both its check-in and check-out. Returns the findings, how many minutes the
+    /// breaks lasted beyond the schedule, and how many minutes from the scheduled start the break began (late is positive).
+    /// </summary>
+    private static (BreakFindings Findings, int ExcessMinutes, int StartOffsetMinutes) FindBreakIssues(
+        ResolvedShift? shift,
+        AttendancePunch? checkIn,
+        AttendancePunch? checkOut,
+        AttendancePunch? breakOut,
+        AttendancePunch? breakIn,
+        TimeSpan onBreak,
+        AttendancePolicy policy)
+    {
+        if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart })
+        {
+            return (BreakFindings.None, 0, 0);
+        }
+
+        if (breakOut is null)
+        {
+            return checkIn is not null && checkOut is not null ? (BreakFindings.NoBreak, 0, 0) : (BreakFindings.None, 0, 0);
+        }
+
+        if (breakIn is null)
+        {
+            // An unfinished break: a missing punch, not something to measure.
+            return (BreakFindings.None, 0, 0);
+        }
+
+        var findings = BreakFindings.None;
+        var offset = WholeMinutes(RoundedLocal(breakOut, policy.RoundingRuleMinutes) - scheduledStart);
+        if (offset > policy.BreakStartGraceMinutes)
+        {
+            findings |= BreakFindings.LateBreak;
+        }
+        else if (-offset > policy.BreakStartGraceMinutes)
+        {
+            findings |= BreakFindings.EarlyBreak;
+        }
+
+        var excess = Math.Max(0, WholeMinutes(onBreak) - shift.BreakMinutes);
+        if (excess > policy.LongBreakGraceMinutes)
+        {
+            findings |= BreakFindings.LongBreak;
+        }
+
+        return (findings, excess, offset);
     }
 
     /// <summary>

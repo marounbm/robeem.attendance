@@ -60,6 +60,13 @@ namespace robeem.DataModel
         /// <summary>Gets or sets how the exception was closed; null while it is not.</summary>
         public AttendanceExceptionResolutionMethod? ResolutionMethod { get; set; }
 
+        /// <summary>Gets or sets who accepted the exception (an employee id); null unless it was closed as <see cref="AttendanceExceptionResolutionMethod.Accepted"/>.</summary>
+        public int? ResolvedById { get; set; }
+
+        /// <summary>Gets or sets the reason given when the exception was accepted; null otherwise.</summary>
+        [MaxLength(1000)]
+        public string? ResolutionNote { get; set; }
+
         #region not mapped
         [NotMapped]
         public bool IsActive => Status != AttendanceExceptionStatus.Closed;

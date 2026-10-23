@@ -40,4 +40,13 @@ public sealed class ExceptionListItem
     /// a missing punch, and open. Only the exception's employee can propose.
     /// </summary>
     public bool CanPropose { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the user can accept it now: an open break exception (long, late or early) of someone else
+    /// whom the user manages, or anyone for HR.
+    /// </summary>
+    public bool CanAccept { get; init; }
+
+    /// <summary>Gets the reason it was accepted with; null if it was not.</summary>
+    public string? ResolutionNote { get; init; }
 }

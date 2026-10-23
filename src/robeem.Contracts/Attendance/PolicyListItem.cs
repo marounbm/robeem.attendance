@@ -31,4 +31,18 @@ public sealed class PolicyListItem
     public int DuplicateTimeWindowSeconds { get; init; }
 
     public int MissingPunchGraceMinutes { get; init; }
+
+    public int IgnoreBreaksShorterThanMinutes { get; init; }
+
+    public int BreakStartGraceMinutes { get; init; }
+
+    public int LongBreakGraceMinutes { get; init; }
+
+    public bool RaiseExceptionOnLongBreak { get; init; }
+
+    public bool RaiseExceptionOnLateBreak { get; init; }
+
+    public bool RaiseExceptionOnEarlyBreak { get; init; }
+
+    public bool RaiseExceptionOnNoBreak { get; init; }
 }

@@ -209,6 +209,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     DetectedAt = x.e.DetectedAt,
                     ResolvedAt = x.e.ResolvedAt,
                     ResolutionMethod = x.e.ResolutionMethod?.ToString(),
+                    ResolutionNote = x.e.ResolutionNote,
                     CanPropose = x.e.EmployeeId == viewer.EmployeeId && x.e.ExceptionType == AttendanceExceptionType.MissingPunch && x.e.Status == AttendanceExceptionStatus.Open,
                 })
                 .ToList(),
@@ -300,6 +301,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
         LateMinutes = r.LateMinutes,
         EarlyDepartureMinutes = r.EarlyDepartureMinutes,
         OvertimeMinutes = r.OvertimeMinutes,
+        BreakFindings = Enum.GetValues<BreakFindings>().Where(f => f != BreakFindings.None && r.BreakFindings.HasFlag(f)).Select(f => f.ToString()).ToList(),
         Status = r.Status.ToString(),
         Reviews = reviews,
     };

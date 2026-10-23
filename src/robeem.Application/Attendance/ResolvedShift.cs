@@ -1,3 +1,5 @@
+using robeem.DataModel;
+
 namespace robeem.Application.Attendance;
 
 /// <summary>
@@ -20,4 +22,25 @@ public sealed record ResolvedShift(
 
     /// <summary>Gets when the shift ends; the next day for an overnight shift.</summary>
     public DateTime EndsAt { get; init; }
+
+    /// <summary>
+    /// Gets when the scheduled break starts; null for a shift without a break. A break earlier in the day than the shift starts
+    /// is after midnight, so it falls on the next day.
+    /// </summary>
+    public DateTime? BreakStartsAt
+    {
+        get
+        {
+            if (!BreakTime)
+            {
+                return null;
+            }
+
+            var at = StartsAt.Date.Add(Set.ParseTime(BreakStartTime));
+            return at < StartsAt ? at.AddDays(1) : at;
+        }
+    }
+
+    /// <summary>Gets the length of the scheduled break in minutes; 0 for a shift without a break.</summary>
+    public int BreakMinutes => BreakTime ? (int)Math.Round(Set.TimeSpan(BreakStartTime, BreakEndTime) * 60) : 0;
 }

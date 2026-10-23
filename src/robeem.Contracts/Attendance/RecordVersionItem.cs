@@ -48,6 +48,9 @@ public sealed class RecordVersionItem
 
     public int OvertimeMinutes { get; init; }
 
+    /// <summary>Gets what was found about the break: any of LongBreak, LateBreak, EarlyBreak, NoBreak. Empty when the break was as scheduled (or the shift has none).</summary>
+    public IReadOnlyList<string> BreakFindings { get; init; } = Array.Empty<string>();
+
     public string Status { get; init; } = string.Empty;
 
     /// <summary>Gets the review decisions on this version, oldest first.</summary>

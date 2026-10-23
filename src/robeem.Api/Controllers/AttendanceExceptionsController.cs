@@ -17,11 +17,13 @@ namespace robeem.Api.Controllers;
 public sealed class AttendanceExceptionsController : ControllerBase
 {
     private readonly IAttendanceExceptionQuery _exceptions;
+    private readonly IAttendanceExceptionService _service;
     private readonly ICurrentUser _user;
 
-    public AttendanceExceptionsController(IAttendanceExceptionQuery exceptions, ICurrentUser user)
+    public AttendanceExceptionsController(IAttendanceExceptionQuery exceptions, IAttendanceExceptionService service, ICurrentUser user)
     {
         _exceptions = exceptions;
+        _service = service;
         _user = user;
     }
 
@@ -47,5 +49,42 @@ public sealed class AttendanceExceptionsController : ControllerBase
         }
 
         return Ok(await _exceptions.ListAsync(new ExceptionFilter(parsed, from, to, employeeId, take == 0 ? 100 : take), viewer, cancellationToken));
+    }
+
+    /// <summary>
+    /// A manager (of the employee) or HR accepts a break exception (long, late or early) as it is, with a reason. A missing punch
+    /// is not accepted: it is corrected.
+    /// </summary>
+    [HttpPost("{id:int}/accept")]
+    [Authorize(Roles = AttendanceRoles.Approvers)]
+    public async Task<IActionResult> Accept(int id, AcceptExceptionRequest request, CancellationToken cancellationToken)
+    {
+        if (_user.EmployeeId is not { } acceptedBy)
+        {
+            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim), so it can't accept an exception.");
+        }
+
+        // A user with one of the two roles accepts in it; one with both says which.
+        var isManager = _user.IsInRole(AttendanceRoles.Manager);
+        var isHr = _user.IsInRole(AttendanceRoles.HRAdministrator);
+        var asHr = isManager && isHr ? request.IsHrDecision : isHr;
+
+        var result = await _service.AcceptAsync(id, acceptedBy, asHr, request.Reason, cancellationToken);
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (!result.Succeeded)
+        {
+            foreach (var (field, message) in result.Errors)
+            {
+                ModelState.AddModelError(field, message);
+            }
+
+            return ValidationProblem(ModelState);
+        }
+
+        return NoContent();
     }
 }

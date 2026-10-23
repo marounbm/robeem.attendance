@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using robeem.Contracts.Attendance;
 
@@ -40,5 +41,11 @@ public sealed class ExceptionsApiClient : IExceptionsApiClient
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(Path, query), cancellationToken);
         return await ApiResponses.ReadAsync<List<ExceptionListItem>>(response, cancellationToken);
+    }
+
+    public async Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/{exceptionId.ToString(CultureInfo.InvariantCulture)}/accept", request, cancellationToken);
+        return await ApiResponses.SaveAsync<AcceptExceptionRequest>(response, exceptionId, cancellationToken);
     }
 }

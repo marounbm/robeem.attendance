@@ -82,7 +82,13 @@ else
                                 </td>
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ScheduledStart) – @DisplayFormats.Time(v.ScheduledEnd)</td>
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckIn) <span class="small">@Source(v.ActualCheckInSource)</span></td>
-                                <td class="text-nowrap">@DisplayFormats.Time(v.ActualBreakOut) – @DisplayFormats.Time(v.ActualBreakIn) <span class="small">@Source(v.ActualBreakOutSource ?? v.ActualBreakInSource)</span></td>
+                                <td class="text-nowrap">
+                                    @DisplayFormats.Time(v.ActualBreakOut) – @DisplayFormats.Time(v.ActualBreakIn) <span class="small">@Source(v.ActualBreakOutSource ?? v.ActualBreakInSource)</span>
+                                    @foreach (var finding in v.BreakFindings)
+                                    {
+                                        <div><span class="badge text-bg-warning" title="Recorded whatever the policy raises as an exception">@DisplayFormats.Words(finding)</span></div>
+                                    }
+                                </td>
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckOut) <span class="small">@Source(v.ActualCheckOutSource)</span></td>
                                 <td class="text-end">@DisplayFormats.Hours(v.WorkingHours)</td>
                                 <td class="text-end">@(v.LateMinutes == 0 ? "—" : DisplayFormats.Minutes(v.LateMinutes))</td>
@@ -132,6 +138,10 @@ else
                     {
                         <span>Missing @DisplayFormats.Words(e.MissingEventType).ToLowerInvariant()</span>
                     }
+                    else if (e.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
+                    {
+                        <span>@DisplayFormats.Words(e.ExceptionType)</span>
+                    }
                     else
                     {
                         <span>Wrong order</span>
@@ -143,7 +153,7 @@ else
                     <div class="small text-muted">@e.Description</div>
                     @if (e.ResolutionMethod is not null)
                     {
-                        <div class="small text-muted">Settled: @DisplayFormats.Words(e.ResolutionMethod).ToLowerInvariant()@(e.ResolvedAt is { } at ? $" on {DisplayFormats.DateTime(at)}" : string.Empty)</div>
+                        <div class="small text-muted">Settled: @DisplayFormats.Words(e.ResolutionMethod).ToLowerInvariant()@(e.ResolvedAt is { } at ? $" on {DisplayFormats.DateTime(at)}" : string.Empty)@(string.IsNullOrWhiteSpace(e.ResolutionNote) ? string.Empty : ": " + e.ResolutionNote)</div>
                     }
                 </li>
             }

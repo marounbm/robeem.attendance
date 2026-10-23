@@ -152,7 +152,7 @@ public sealed class ApprovalsWebTests
     public async Task ExceptionsProposal_SendsWhatWasTyped_AndReportsTheOutcome()
     {
         var corrections = new FakeCorrections();
-        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections));
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
         // Only a time is typed: the day is the exception's, or the day after when the person says it was after midnight.
         await controller.Propose(4, new DateTime(2026, 10, 5), new TimeOnly(12, 0), false, "Reader missed it", CancellationToken.None);
@@ -174,12 +174,38 @@ public sealed class ApprovalsWebTests
     public async Task ExceptionsProposal_WithoutATime_IsNeverSent()
     {
         var corrections = new FakeCorrections();
-        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections));
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
         await controller.Propose(4, new DateTime(2026, 10, 5), null, false, "Reader missed it", CancellationToken.None);
 
         Assert.Empty(corrections.Proposals);
         Assert.Contains("Enter the time", (string)controller.TempData["ErrorMessage"]!);
+    }
+
+    [Theory]
+    [InlineData("HRAdministrator", true)]
+    [InlineData("Manager", false)]
+    public async Task AcceptingABreakException_SendsTheReason_AndWhetherTheUserDecidesAsHr(string role, bool asHr)
+    {
+        var exceptions = new FakeExceptions();
+        var controller = WithTempData(new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor([role])));
+
+        await controller.Accept(9, "Covered the phones", CancellationToken.None);
+        await controller.Accept(9, null, CancellationToken.None);
+
+        Assert.Equal([(9, "Covered the phones", asHr), (9, string.Empty, asHr)], exceptions.Accepted);
+        Assert.Contains("was accepted", (string)controller.TempData["StatusMessage"]!);
+    }
+
+    [Fact]
+    public async Task AcceptingIsRefused_ByTheApi_WithItsReason()
+    {
+        var exceptions = new FakeExceptions { Refusal = "A reason is required to accept an exception." };
+        var controller = WithTempData(new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Manager"])));
+
+        await controller.Accept(9, " ", CancellationToken.None);
+
+        Assert.Equal("A reason is required to accept an exception.", controller.TempData["ErrorMessage"]);
     }
 
     [Theory]
@@ -189,7 +215,7 @@ public sealed class ApprovalsWebTests
     public async Task TheExceptionsStatus_FallsBackToActive_WhenItIsNotOneWeKnow(string? status, string expected)
     {
         var exceptions = new FakeExceptions();
-        var controller = new ExceptionsController(exceptions, new FakeCorrections());
+        var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Employee"]));
 
         var result = await controller.Index(status, null, null, CancellationToken.None);
 
@@ -301,10 +327,22 @@ public sealed class ApprovalsWebTests
     {
         public List<string?> Statuses { get; } = [];
 
+        public List<(int ExceptionId, string Reason, bool IsHr)> Accepted { get; } = [];
+
+        public string? Refusal { get; set; }
+
         public Task<IReadOnlyList<ExceptionListItem>> ListAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken)
         {
             Statuses.Add(status);
             return Task.FromResult<IReadOnlyList<ExceptionListItem>>([]);
+        }
+
+        public Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken)
+        {
+            Accepted.Add((exceptionId, request.Reason, request.IsHrDecision));
+            return Task.FromResult(Refusal is null
+                ? ApiSaveResult.Success(exceptionId)
+                : ApiSaveResult.Invalid(new Dictionary<string, string> { [string.Empty] = Refusal }));
         }
     }
 }

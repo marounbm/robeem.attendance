@@ -73,6 +73,10 @@
                                 {
                                     <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
                                 }
+                                else if (item.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
+                                {
+                                    <span>@DisplayFormats.Words(item.ExceptionType)</span>
+                                }
                                 else
                                 {
                                     <span>Wrong order</span>
@@ -83,7 +87,7 @@
                                 <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
                                 @if (item.ResolutionMethod is not null)
                                 {
-                                    <div class="small text-muted">@DisplayFormats.Words(item.ResolutionMethod)</div>
+                                    <div class="small text-muted">@DisplayFormats.Words(item.ResolutionMethod)@(string.IsNullOrWhiteSpace(item.ResolutionNote) ? string.Empty : ": " + item.ResolutionNote)</div>
                                 }
                             </td>
                             <td class="text-nowrap small">@DisplayFormats.DateTime(item.DetectedAt)</td>
@@ -93,8 +97,30 @@
                                     <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
                                             data-bs-target="#propose-@item.Id" aria-expanded="false" aria-controls="propose-@item.Id">Propose correction</button>
                                 }
+                                @if (item.CanAccept)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
+                                            data-bs-target="#accept-@item.Id" aria-expanded="false" aria-controls="accept-@item.Id">Accept</button>
+                                }
                             </td>
                         </tr>
+                        @if (item.CanAccept)
+                        {
+                            <tr class="collapse" id="accept-@item.Id">
+                                <td colspan="7" class="bg-light">
+                                    <form method="post" asp-action="Accept" class="row g-2 align-items-end">
+                                        <input type="hidden" name="exceptionId" value="@item.Id" />
+                                        <div class="col-md-9">
+                                            <label class="form-label small mb-0" for="accept-why-@item.Id">Why is this accepted as it is?</label>
+                                            <input id="accept-why-@item.Id" type="text" name="reason" maxlength="1000" class="form-control" required />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="submit" class="btn btn-primary">Accept exception</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
                         @if (item.CanPropose)
                         {
                             <tr class="collapse" id="propose-@item.Id">

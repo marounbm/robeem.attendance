@@ -143,6 +143,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             LateMinutes = calculation.LateMinutes,
             EarlyDepartureMinutes = calculation.EarlyDepartureMinutes,
             OvertimeMinutes = calculation.OvertimeMinutes,
+            BreakFindings = calculation.BreakFindings,
             Status = needsReview ? AttendanceRecordStatus.PendingReview : AttendanceRecordStatus.Approved,
             SourceNormalizedTransactionIds = calculation.SourceIds.Count == 0 ? null : string.Join(",", calculation.SourceIds),
             SourceCorrectionIds = calculation.CorrectionIds.Count == 0 ? null : string.Join(",", calculation.CorrectionIds),
@@ -167,6 +168,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         && a.LateMinutes == b.LateMinutes
         && a.EarlyDepartureMinutes == b.EarlyDepartureMinutes
         && a.OvertimeMinutes == b.OvertimeMinutes
+        && a.BreakFindings == b.BreakFindings
         && a.SourceNormalizedTransactionIds == b.SourceNormalizedTransactionIds
         && a.SourceCorrectionIds == b.SourceCorrectionIds;
 
@@ -248,6 +250,12 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 {
                     previous.Status = AttendanceRecordStatus.PendingReview;
                 }
+                else if (previous.Status == AttendanceRecordStatus.PendingReview && candidate.Status == AttendanceRecordStatus.Approved)
+                {
+                    // Nothing is left to review: the exception that held the day was accepted. A reviewer's own decision (approved or
+                    // rejected) is never changed here.
+                    previous.Status = AttendanceRecordStatus.Approved;
+                }
 
                 current.Add(previous);
                 unchanged++;
@@ -316,11 +324,27 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .Where(e => e.EmployeeId == employeeId && e.AttendanceDate == day && e.Status != AttendanceExceptionStatus.Closed)
             .ToListAsync(cancellationToken);
 
+        // A break exception someone accepted stays accepted while the same break is found, so it is not raised again.
+        var accepted = await _db.AttendanceExceptions
+            .AsNoTracking()
+            .Where(e => e.EmployeeId == employeeId
+                && e.AttendanceDate == day
+                && e.Status == AttendanceExceptionStatus.Closed
+                && e.ResolutionMethod == AttendanceExceptionResolutionMethod.Accepted)
+            .ToListAsync(cancellationToken);
+
         var active = new List<AttendanceException>();
         var matched = new HashSet<AttendanceException>();
         var raised = 0;
         foreach (var (shiftId, found) in detected)
         {
+            if (accepted.Any(e => e.TimeScheduleShiftId == shiftId
+                && e.ExceptionType == found.Type
+                && e.RelatedNormalizedTransactionId == found.NormalizedTransactionId))
+            {
+                continue;
+            }
+
             var match = stored.FirstOrDefault(e => !matched.Contains(e)
                 && e.TimeScheduleShiftId == shiftId
                 && e.ExceptionType == found.Type

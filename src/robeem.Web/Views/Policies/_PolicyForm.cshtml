@@ -75,6 +75,63 @@
 </div>
 
 <div class="card mb-3">
+    <div class="card-header">Breaks</div>
+    <div class="card-body row g-3">
+        <p class="small text-muted mb-0">
+            Every day is checked against its shift's scheduled break, and what is found is shown on the day either way. Tick a rule below to also
+            raise an exception for it, which a manager or HR then accepts with a reason. Left unticked, the finding is only recorded and the day
+            can still be approved.
+        </p>
+        <div class="col-md-4">
+            <label asp-for="Input.IgnoreBreaksShorterThanMinutes" class="form-label"></label>
+            <input asp-for="Input.IgnoreBreaksShorterThanMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
+            <div class="form-text">A break shorter than this is a toilet visit, not a break: it counts as work and is ignored by every rule below. 0 turns this off.</div>
+            <span asp-validation-for="Input.IgnoreBreaksShorterThanMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.BreakStartGraceMinutes" class="form-label"></label>
+            <input asp-for="Input.BreakStartGraceMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
+            <div class="form-text">How many minutes before or after the scheduled start a break may begin without being early or late.</div>
+            <span asp-validation-for="Input.BreakStartGraceMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.LongBreakGraceMinutes" class="form-label"></label>
+            <input asp-for="Input.LongBreakGraceMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
+            <div class="form-text">How many minutes the breaks together may run past the scheduled break without being long.</div>
+            <span asp-validation-for="Input.LongBreakGraceMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check">
+                <input asp-for="Input.RaiseExceptionOnLongBreak" class="form-check-input" />
+                <label asp-for="Input.RaiseExceptionOnLongBreak" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check">
+                <input asp-for="Input.RaiseExceptionOnLateBreak" class="form-check-input" />
+                <label asp-for="Input.RaiseExceptionOnLateBreak" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check">
+                <input asp-for="Input.RaiseExceptionOnEarlyBreak" class="form-check-input" />
+                <label asp-for="Input.RaiseExceptionOnEarlyBreak" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check">
+                <input asp-for="Input.RaiseExceptionOnNoBreak" class="form-check-input" />
+                <label asp-for="Input.RaiseExceptionOnNoBreak" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-12 form-text">
+            <strong>No break</strong> is a shift with a scheduled break that was worked with no break punches. Ticked, the break punches are reported missing so
+            someone can supply them; unticked, working through the break is allowed and the day is complete without it.
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
     <div class="card-header">Corrections and unlabeled punches</div>
     <div class="card-body row g-3">
         <div class="col-md-4">

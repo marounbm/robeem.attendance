@@ -1,3 +1,5 @@
+using robeem.DataModel;
+
 namespace robeem.Application.Attendance;
 
 /// <summary>The outcome of <see cref="ShiftAttendanceCalculator.Calculate"/> for one shift.</summary>
@@ -20,6 +22,18 @@ internal sealed record ShiftCalculation
     public int EarlyDepartureMinutes { get; init; }
 
     public int OvertimeMinutes { get; init; }
+
+    /// <summary>Gets what was found about the break: long, late, early, or none taken. Always computed; the policy decides what is raised.</summary>
+    public BreakFindings BreakFindings { get; init; }
+
+    /// <summary>Gets how many minutes the breaks together lasted beyond the scheduled break; 0 when they did not.</summary>
+    public int BreakExcessMinutes { get; init; }
+
+    /// <summary>Gets how many minutes the first break started away from schedule (positive is late, negative is early); 0 without a break.</summary>
+    public int BreakStartOffsetMinutes { get; init; }
+
+    /// <summary>Gets how many breaks were left out for being shorter than the policy's minimum.</summary>
+    public int IgnoredShortBreaks { get; init; }
 
     /// <summary>Gets a value indicating whether every expected punch is present, in a valid sequence, with no punch left unlabeled.</summary>
     public bool IsComplete { get; init; }

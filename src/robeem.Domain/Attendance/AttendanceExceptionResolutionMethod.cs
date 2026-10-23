@@ -10,5 +10,8 @@ namespace robeem.DataModel
 
         /// <summary>An approved correction fixed it.</summary>
         Correction,
+
+        /// <summary>A manager or HR accepted it as it is, with a reason. Only for a break exception: there is no punch to supply.</summary>
+        Accepted,
     }
 }

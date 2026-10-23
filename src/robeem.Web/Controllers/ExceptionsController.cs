@@ -3,6 +3,7 @@ using robeem.Contracts.Attendance;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
+using robeem.Web.Navigation;
 
 namespace robeem.Web.Controllers;
 
@@ -17,11 +18,13 @@ public sealed class ExceptionsController : Controller
 
     private readonly IExceptionsApiClient _exceptions;
     private readonly ICorrectionsApiClient _corrections;
+    private readonly ICurrentActor _actor;
 
-    public ExceptionsController(IExceptionsApiClient exceptions, ICorrectionsApiClient corrections)
+    public ExceptionsController(IExceptionsApiClient exceptions, ICorrectionsApiClient corrections, ICurrentActor actor)
     {
         _exceptions = exceptions;
         _corrections = corrections;
+        _actor = actor;
     }
 
     [HttpGet]
@@ -35,6 +38,22 @@ public sealed class ExceptionsController : Controller
             From = from,
             To = to,
         });
+    }
+
+    /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>
+    [HttpPost]
+    [RequiresEmployee]
+    public async Task<IActionResult> Accept(int exceptionId, string? reason, CancellationToken cancellationToken)
+    {
+        var result = await _exceptions.AcceptAsync(
+            exceptionId,
+            new AcceptExceptionRequest { Reason = reason ?? string.Empty, IsHrDecision = _actor.IsInRole(NavigationMenu.Hr) },
+            cancellationToken);
+
+        TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
+            ? "The exception was accepted. The day was calculated again."
+            : result.MessageText;
+        return RedirectToAction(nameof(Index));
     }
 
     [HttpPost]

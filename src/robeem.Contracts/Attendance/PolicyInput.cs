@@ -10,6 +10,7 @@ public sealed class PolicyInput
     public const int MaxOvertimeThresholdMinutes = 480;
     public const int MaxDuplicateWindowSeconds = 3600;
     public const int MaxMissingPunchGraceMinutes = 1440;
+    public const int MaxBreakMinutes = 240;
 
     /// <summary>The workflows a correction can follow, as the policy's <c>CorrectionApprovalWorkflow</c> names them.</summary>
     public static readonly IReadOnlyList<string> Workflows = ["Manager", "HR", "Both"];
@@ -60,4 +61,28 @@ public sealed class PolicyInput
     [Range(0, MaxMissingPunchGraceMinutes)]
     [Display(Name = "Missing-punch grace (minutes)")]
     public int MissingPunchGraceMinutes { get; set; } = 120;
+
+    [Range(0, MaxBreakMinutes)]
+    [Display(Name = "Ignore breaks shorter than (minutes)")]
+    public int IgnoreBreaksShorterThanMinutes { get; set; } = 10;
+
+    [Range(0, MaxBreakMinutes)]
+    [Display(Name = "Break start allowance (minutes)")]
+    public int BreakStartGraceMinutes { get; set; } = 15;
+
+    [Range(0, MaxBreakMinutes)]
+    [Display(Name = "Long break allowance (minutes)")]
+    public int LongBreakGraceMinutes { get; set; } = 5;
+
+    [Display(Name = "Long break raises an exception")]
+    public bool RaiseExceptionOnLongBreak { get; set; }
+
+    [Display(Name = "Late break raises an exception")]
+    public bool RaiseExceptionOnLateBreak { get; set; }
+
+    [Display(Name = "Early break raises an exception")]
+    public bool RaiseExceptionOnEarlyBreak { get; set; }
+
+    [Display(Name = "No break raises an exception")]
+    public bool RaiseExceptionOnNoBreak { get; set; } = true;
 }

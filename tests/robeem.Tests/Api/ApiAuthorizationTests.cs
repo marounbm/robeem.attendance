@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Api.Controllers;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
+using robeem.Application.Common;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
 
@@ -30,6 +31,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         _api = TestApi.Start(services =>
         {
             services.AddSingleton<IAttendanceExceptionQuery>(_exceptions);
+            services.AddSingleton<IAttendanceExceptionService>(_exceptions);
             services.AddSingleton<IAttendanceReviewService>(_reviews);
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
             services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
@@ -224,6 +226,31 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AcceptingAnException_IsForApproversOnly_WithAnEmployeeIdentity()
+    {
+        var body = new { reason = "Covered the phones" };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/exceptions/5/accept", As(7, AttendanceRoles.Employee), body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/exceptions/5/accept", As(7, AttendanceRoles.PayrollAdministrator), body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/exceptions/5/accept", As(null, AttendanceRoles.Manager), body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Post, "api/attendance/exceptions/5/accept", null, body)).StatusCode);
+        Assert.Empty(_exceptions.Accepted);
+    }
+
+    [Fact]
+    public async Task AnException_IsAcceptedAsTheUser_InTheirRole_WithTheReason()
+    {
+        var first = await Send(HttpMethod.Post, "api/attendance/exceptions/5/accept", As(12, AttendanceRoles.Manager), new { reason = "Covered the phones", isHrDecision = true });
+        await Send(HttpMethod.Post, "api/attendance/exceptions/6/accept", As(13, AttendanceRoles.HRAdministrator), new { reason = "Agreed with the employee" });
+        await Send(HttpMethod.Post, "api/attendance/exceptions/7/accept", As(14, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator), new { reason = "Policy exception", isHrDecision = true });
+
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.Equal(
+            [(5, 12, false, "Covered the phones"), (6, 13, true, "Agreed with the employee"), (7, 14, true, "Policy exception")],
+            _exceptions.Accepted);
+    }
+
+    [Fact]
     public async Task Reviews_AreForApproversOnly_WithAnEmployeeIdentity()
     {
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(7, AttendanceRoles.Employee))).StatusCode);
@@ -336,9 +363,17 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         }
     }
 
-    private sealed class FakeExceptions : IAttendanceExceptionQuery
+    private sealed class FakeExceptions : IAttendanceExceptionQuery, IAttendanceExceptionService
     {
         public List<(ExceptionFilter Filter, ExceptionViewer Viewer)> Calls { get; } = [];
+
+        public List<(int ExceptionId, int AcceptedBy, bool AsHr, string? Reason)> Accepted { get; } = [];
+
+        public Task<SaveResult> AcceptAsync(int exceptionId, int acceptedByEmployeeId, bool asHr, string? reason, CancellationToken cancellationToken)
+        {
+            Accepted.Add((exceptionId, acceptedByEmployeeId, asHr, reason));
+            return Task.FromResult(SaveResult.Success(exceptionId));
+        }
 
         public Task<IReadOnlyList<ExceptionListItem>> ListAsync(ExceptionFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
         {

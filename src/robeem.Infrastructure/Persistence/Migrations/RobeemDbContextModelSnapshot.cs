@@ -438,8 +438,15 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("ResolvedById")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -793,6 +800,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("BreakStartGraceMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CorrectionApprovalWorkflow")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -813,7 +823,13 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("GUID")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("IgnoreBreaksShorterThanMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<int>("LateGraceMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LongBreakGraceMinutes")
                         .HasColumnType("integer");
 
                     b.Property<int>("MissingPunchGraceMinutes")
@@ -827,6 +843,18 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("OvertimeThresholdMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("RaiseExceptionOnEarlyBreak")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RaiseExceptionOnLateBreak")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RaiseExceptionOnLongBreak")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RaiseExceptionOnNoBreak")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("RequiresOvertimePreApproval")
                         .HasColumnType("boolean");
@@ -1068,6 +1096,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<TimeSpan>("BreakDuration")
                         .HasColumnType("interval");
+
+                    b.Property<int>("BreakFindings")
+                        .HasColumnType("integer");
 
                     b.Property<int>("CreatedBy")
                         .HasColumnType("integer");

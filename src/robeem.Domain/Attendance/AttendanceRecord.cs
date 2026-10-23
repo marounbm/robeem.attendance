@@ -65,6 +65,9 @@ namespace robeem.DataModel
 
         public int OvertimeMinutes { get; set; }
 
+        /// <summary>Gets or sets what was found about the break: long, late, early or none taken. Recorded whatever the policy raises as an exception.</summary>
+        public BreakFindings BreakFindings { get; set; }
+
         public AttendanceRecordStatus Status { get; set; } = AttendanceRecordStatus.Calculated;
 
         /// <summary>Gets or sets the ids of the normalized transactions the calculation used: comma-separated, ascending.</summary>

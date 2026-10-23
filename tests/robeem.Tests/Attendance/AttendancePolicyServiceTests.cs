@@ -70,6 +70,31 @@ public sealed class AttendancePolicyServiceTests : IDisposable
         Assert.Equal((CorrectionApprovalWorkflow.Both, UnlabeledPunchInterpretationMode.Sequential), (stored.CorrectionApprovalWorkflow, stored.UnlabeledPunchInterpretationMode));
     }
 
+    [Fact]
+    public async Task TheBreakRules_AreStored_AndReadBack_AndStartWithTheDefaultsOfANewPolicy()
+    {
+        var fresh = new PolicyInput();
+        Assert.Equal((10, 15, 5, false, false, false, true), (fresh.IgnoreBreaksShorterThanMinutes, fresh.BreakStartGraceMinutes, fresh.LongBreakGraceMinutes, fresh.RaiseExceptionOnLongBreak, fresh.RaiseExceptionOnLateBreak, fresh.RaiseExceptionOnEarlyBreak, fresh.RaiseExceptionOnNoBreak));
+
+        var input = Input("Breaks", ScheduleId("Night shift"));
+        input.IgnoreBreaksShorterThanMinutes = 7;
+        input.BreakStartGraceMinutes = 20;
+        input.LongBreakGraceMinutes = 3;
+        input.RaiseExceptionOnLongBreak = true;
+        input.RaiseExceptionOnLateBreak = false;
+        input.RaiseExceptionOnEarlyBreak = true;
+        input.RaiseExceptionOnNoBreak = false;
+
+        var id = (await CreateAsync(input)).Id!.Value;
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var back = await Service(db).GetInputAsync(id, CancellationToken.None);
+        var listed = Assert.Single(await Service(db).ListAsync(CancellationToken.None));
+        Assert.Equal((7, 20, 3, true, false, true, false), (back!.IgnoreBreaksShorterThanMinutes, back.BreakStartGraceMinutes, back.LongBreakGraceMinutes, back.RaiseExceptionOnLongBreak, back.RaiseExceptionOnLateBreak, back.RaiseExceptionOnEarlyBreak, back.RaiseExceptionOnNoBreak));
+        Assert.Equal((7, 20, 3, true, false, true, false), (listed.IgnoreBreaksShorterThanMinutes, listed.BreakStartGraceMinutes, listed.LongBreakGraceMinutes, listed.RaiseExceptionOnLongBreak, listed.RaiseExceptionOnLateBreak, listed.RaiseExceptionOnEarlyBreak, listed.RaiseExceptionOnNoBreak));
+        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.PolicyChanged && a.Details!.Contains("breaks under 7 min ignored") && a.Details.Contains("long/early"));
+    }
+
     [Theory]
     [InlineData(nameof(PolicyInput.RoundingRuleMinutes), -1)]
     [InlineData(nameof(PolicyInput.RoundingRuleMinutes), 61)]
@@ -79,6 +104,9 @@ public sealed class AttendancePolicyServiceTests : IDisposable
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 0)]
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 3601)]
     [InlineData(nameof(PolicyInput.MissingPunchGraceMinutes), 1441)]
+    [InlineData(nameof(PolicyInput.IgnoreBreaksShorterThanMinutes), 241)]
+    [InlineData(nameof(PolicyInput.BreakStartGraceMinutes), -1)]
+    [InlineData(nameof(PolicyInput.LongBreakGraceMinutes), 241)]
     public async Task ASettingOutsideItsRange_IsRefusedByName(string field, int value)
     {
         var input = Input("Bad");

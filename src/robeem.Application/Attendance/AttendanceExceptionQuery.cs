@@ -77,6 +77,8 @@ public sealed class AttendanceExceptionQuery : IAttendanceExceptionQuery
                 e.DetectedAt,
                 e.ResolvedAt,
                 e.ResolutionMethod,
+                e.ResolutionNote,
+                ManagerId = e.Employee.ManagerId,
             })
             .ToListAsync(cancellationToken);
 
@@ -97,6 +99,11 @@ public sealed class AttendanceExceptionQuery : IAttendanceExceptionQuery
                 ResolvedAt = r.ResolvedAt,
                 ResolutionMethod = r.ResolutionMethod?.ToString(),
                 CanPropose = r.EmployeeId == viewerId && r.ExceptionType == AttendanceExceptionType.MissingPunch && r.Status == AttendanceExceptionStatus.Open,
+                CanAccept = r.ExceptionType is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
+                    && r.Status == AttendanceExceptionStatus.Open
+                    && r.EmployeeId != viewerId
+                    && (viewer.IsHr || (viewer.IsManager && r.ManagerId == viewerId)),
+                ResolutionNote = r.ResolutionNote,
             })
             .ToList();
     }
