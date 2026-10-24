@@ -22,6 +22,18 @@ public sealed class CorrectionsApiClient : ICorrectionsApiClient
         return await ApiResponses.CommandAsync<CreatedResponse>(response, cancellationToken);
     }
 
+    public async Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync($"{Path}/day?date={date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}", cancellationToken);
+        return response.StatusCode == System.Net.HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<DayCorrectionView>(response, cancellationToken);
+    }
+
+    public async Task<ApiCommandResult<CreatedResponse>> ProposeDayAsync(DayCorrectionRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/day", request, cancellationToken);
+        return await ApiResponses.CommandAsync<CreatedResponse>(response, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover awaiting, CancellationToken cancellationToken)
     {
         using var response = await _http.GetAsync($"{Path}/pending?awaiting={awaiting}", cancellationToken);

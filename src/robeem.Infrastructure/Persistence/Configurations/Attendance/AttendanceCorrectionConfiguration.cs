@@ -26,5 +26,8 @@ public sealed class AttendanceCorrectionConfiguration : IEntityTypeConfiguration
         // The engine reads an employee's applied corrections around the day it processes; approvers list the pending ones.
         builder.HasIndex(c => new { c.TenantId, c.EmployeeId, c.ProposedValue });
         builder.HasIndex(c => new { c.TenantId, c.Status });
+
+        // A request is decided as a whole: its rows are found by what ties them.
+        builder.HasIndex(c => new { c.TenantId, c.RequestId });
     }
 }

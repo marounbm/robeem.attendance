@@ -1,6 +1,7 @@
 @model ExceptionsIndexViewModel
 @{
     ViewData["Title"] = "Exceptions";
+    var days = Model.Days;
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -8,9 +9,9 @@
 </div>
 
 <p class="text-muted">
-    A missing punch, or punches in the wrong order, that a person has to settle. You see your own; a manager also sees
-    their reports'; HR sees everyone's. If a punch is missing from your day, propose the time it happened and your
-    approver decides.
+    The days that have a problem a person has to settle: a missing punch, punches in the wrong order, or a break outside the rules. You see your
+    own; a manager also sees their reports'; HR sees everyone's. To put one of your days right, press <strong>Correct</strong>: it shows every
+    punch of the day, and you can change a punch, add one that is missing, or ignore one that should not count. Your approver then decides.
 </p>
 
 <partial name="_StatusMessage" />
@@ -39,9 +40,9 @@
 </form>
 
 <div class="card">
-    @if (Model.Items.Count == 0)
+    @if (days.Count == 0)
     {
-        <div class="card-body text-muted">No exceptions match.</div>
+        <div class="card-body text-muted">No days with exceptions match.</div>
     }
     else
     {
@@ -52,173 +53,86 @@
                         <th scope="col">Date</th>
                         <th scope="col">Employee</th>
                         <th scope="col">Shift</th>
-                        <th scope="col">Problem</th>
+                        <th scope="col">Problems</th>
                         <th scope="col">Status</th>
-                        <th scope="col">Detected</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var item in Model.Items)
+                    @foreach (var day in days)
                     {
+                        var key = $"{day.EmployeeId}-{day.Date:yyyyMMdd}";
                         <tr>
                             <td class="text-nowrap">
-                                <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
-                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@DisplayFormats.Date(item.AttendanceDate)</a>
+                                <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId"
+                                   asp-route-date="@day.Date.ToString("yyyy-MM-dd")">@DisplayFormats.Date(day.Date)</a>
                             </td>
-                            <td>@item.EmployeeName</td>
-                            <td>@(item.ShiftTitle ?? "—")</td>
+                            <td>@day.EmployeeName</td>
+                            <td>@string.Join(", ", day.Shifts)</td>
                             <td>
-                                @if (item.MissingEventType is not null)
-                                {
-                                    <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
-                                }
-                                else if (item.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
-                                {
-                                    <span>@DisplayFormats.Words(item.ExceptionType)</span>
-                                }
-                                else
-                                {
-                                    <span>Wrong order</span>
-                                }
-                                <div class="small text-muted">@item.Description</div>
+                                <button class="btn btn-link btn-sm p-0 text-start" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#day-@key" aria-expanded="false" aria-controls="day-@key">
+                                    @day.Items.Count problem@(day.Items.Count == 1 ? string.Empty : "s")
+                                </button>
                             </td>
-                            <td>
-                                <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
-                                @if (item.ResolutionMethod is not null)
-                                {
-                                    <div class="small text-muted">@DisplayFormats.Words(item.ResolutionMethod)@(string.IsNullOrWhiteSpace(item.ResolutionNote) ? string.Empty : ": " + item.ResolutionNote)</div>
-                                }
-                            </td>
-                            <td class="text-nowrap small">@DisplayFormats.DateTime(item.DetectedAt)</td>
+                            <td><span class="badge text-bg-@DisplayFormats.Badge(day.Status)">@DisplayFormats.Words(day.Status)</span></td>
                             <td class="text-end">
-                                @if (item.CanPropose)
+                                @if (day.CanCorrect)
                                 {
-                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
-                                            data-bs-target="#propose-@item.Id" aria-expanded="false" aria-controls="propose-@item.Id">@(item.MissingEventType is null ? "Change punch" : "Propose correction")</button>
+                                    <a class="btn btn-sm btn-primary" asp-action="Correct" asp-route-date="@day.Date.ToString("yyyy-MM-dd")">Correct</a>
                                 }
-                                @if (item.CanAccept)
+                                else if (day.IsWaiting)
                                 {
-                                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse"
-                                            data-bs-target="#accept-@item.Id" aria-expanded="false" aria-controls="accept-@item.Id">Accept</button>
+                                    <span class="small text-muted">Waiting for approval</span>
                                 }
                             </td>
                         </tr>
-                        @if (item.CanAccept)
-                        {
-                            <tr class="collapse" id="accept-@item.Id">
-                                <td colspan="7" class="bg-light">
-                                    <form method="post" asp-action="Accept" class="row g-2 align-items-end">
-                                        <input type="hidden" name="exceptionId" value="@item.Id" />
-                                        <div class="col-md-9">
-                                            <label class="form-label small mb-0" for="accept-why-@item.Id">Why is this accepted as it is?</label>
-                                            <input id="accept-why-@item.Id" type="text" name="reason" maxlength="1000" class="form-control" required />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <button type="submit" class="btn btn-primary">Accept exception</button>
-                                        </div>
-                                    </form>
-                                </td>
-                            </tr>
-                        }
-                        @if (item.CanPropose && item.MissingEventType is null)
-                        {
-                            <tr class="collapse" id="propose-@item.Id">
-                                <td colspan="7" class="bg-light">
-                                    <form method="post" asp-action="ProposeChange" class="row g-2 align-items-end">
-                                        <input type="hidden" name="exceptionId" value="@item.Id" />
-                                        <div class="col-md-4">
-                                            <label class="form-label small mb-0" for="type-@item.Id">
-                                                The @(item.RelatedPunchType is null ? "punch" : DisplayFormats.Words(item.RelatedPunchType).ToLowerInvariant())@(item.RelatedPunchAt is { } at ? " at " + at.ToString("HH:mm") : string.Empty) was really a:
-                                            </label>
-                                            <select id="type-@item.Id" name="newEventType" class="form-select" required>
-                                                <option value="">— Choose —</option>
-                                                @foreach (var type in item.SuggestedEventTypes)
-                                                {
-                                                    <option value="@type">@DisplayFormats.Words(type)</option>
-                                                }
-                                            </select>
-                                            <div class="form-text">Only what would settle this problem is offered.</div>
-                                        </div>
-                                        <div class="col-md-5">
-                                            <label class="form-label small mb-0" for="why-type-@item.Id">Why was it recorded wrongly?</label>
-                                            <input id="why-type-@item.Id" type="text" name="justification" maxlength="1000" class="form-control" required />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <button type="submit" class="btn btn-primary">Send for approval</button>
-                                        </div>
-                                    </form>
-                                </td>
-                            </tr>
-                        }
-                        @if (item.CanPropose && item.MissingEventType is not null)
-                        {
-                            <tr class="collapse" id="propose-@item.Id">
-                                <td colspan="7" class="bg-light">
-                                    @{
-                                        // The day is fixed: the exception's day. Nothing later than now can be proposed, so on today's
-                                        // date the time stops at the current time; the day after is offered only for a shift that ends
-                                        // after midnight, and only once that day has begun.
-                                        var day = item.AttendanceDate.Date;
-                                        var nowTime = DateTime.Now.ToString("HH:mm");
-                                        var sameDayMax = day == DateTime.Today ? nowTime : string.Empty;
-                                        var nextDayMax = day.AddDays(1) == DateTime.Today ? nowTime : string.Empty;
-                                        var offerNextDay = item.ShiftIsOvernight && day.AddDays(1) <= DateTime.Today;
-                                    }
-                                    <form method="post" asp-action="Propose" class="row g-2 align-items-end"
-                                          data-propose data-max-same-day="@sameDayMax" data-max-next-day="@nextDayMax">
-                                        <input type="hidden" name="exceptionId" value="@item.Id" />
-                                        <input type="hidden" name="attendanceDate" value="@day.ToString("yyyy-MM-dd")" />
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0" for="time-@item.Id">
-                                                What time did the @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant() happen on @DisplayFormats.Date(item.AttendanceDate)?
-                                            </label>
-                                            <input id="time-@item.Id" type="time" name="proposedTime" class="form-control" required
-                                                   max="@(sameDayMax.Length == 0 ? null : sameDayMax)" />
-                                            @if (offerNextDay)
+                        <tr class="collapse" id="day-@key">
+                            <td colspan="6" class="bg-light">
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var item in day.Items)
+                                    {
+                                        <li class="py-1">
+                                            <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
+                                            @if (item.MissingEventType is not null)
                                             {
-                                                <div class="form-check mt-1">
-                                                    <input id="after-midnight-@item.Id" type="checkbox" name="afterMidnight" value="true" class="form-check-input" />
-                                                    <label class="form-check-label small" for="after-midnight-@item.Id">After midnight (the next day)</label>
-                                                </div>
+                                                <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
                                             }
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label small mb-0" for="why-@item.Id">Why was it missed?</label>
-                                            <input id="why-@item.Id" type="text" name="justification" maxlength="1000" class="form-control" required />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <button type="submit" class="btn btn-primary">Send for approval</button>
-                                        </div>
-                                    </form>
-                                </td>
-                            </tr>
-                        }
+                                            else if (item.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
+                                            {
+                                                <span>@DisplayFormats.Words(item.ExceptionType)</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Wrong order</span>
+                                            }
+                                            <span class="small text-muted"> · @item.Description</span>
+                                            @if (item.ResolutionMethod is not null)
+                                            {
+                                                <div class="small text-muted ms-2">@DisplayFormats.Words(item.ResolutionMethod)@(string.IsNullOrWhiteSpace(item.ResolutionNote) ? string.Empty : ": " + item.ResolutionNote)</div>
+                                            }
+
+                                            @if (item.CanAccept)
+                                            {
+                                                <form method="post" asp-action="Accept" class="row g-2 align-items-end mt-1 ms-2">
+                                                    <input type="hidden" name="exceptionId" value="@item.Id" />
+                                                    <div class="col-md-7">
+                                                        <label class="form-label small mb-0" for="accept-why-@item.Id">Accept this as it is: why?</label>
+                                                        <input id="accept-why-@item.Id" type="text" name="reason" maxlength="1000" class="form-control form-control-sm" required />
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <button type="submit" class="btn btn-sm btn-outline-primary">Accept exception</button>
+                                                    </div>
+                                                </form>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            </td>
+                        </tr>
                     }
                 </tbody>
             </table>
         </div>
     }
 </div>
-
-@section Scripts {
-    <script>
-        // After midnight, the time belongs to the next day: it may not be later than now on that day either.
-        document.querySelectorAll('form[data-propose]').forEach(function (form) {
-            var time = form.querySelector('input[type="time"]');
-            var after = form.querySelector('input[name="afterMidnight"]');
-            if (!time || !after) {
-                return;
-            }
-
-            after.addEventListener('change', function () {
-                var max = after.checked ? form.dataset.maxNextDay : form.dataset.maxSameDay;
-                if (max) {
-                    time.setAttribute('max', max);
-                } else {
-                    time.removeAttribute('max');
-                }
-            });
-        });
-    </script>
-}

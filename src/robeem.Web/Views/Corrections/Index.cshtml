@@ -46,8 +46,7 @@
                     <tr>
                         <th scope="col">Employee</th>
                         <th scope="col">Day</th>
-                        <th scope="col">Punch</th>
-                        <th scope="col">Time</th>
+                        <th scope="col">Corrections</th>
                         <th scope="col">Reason</th>
                         <th scope="col">Who decides</th>
                         <th scope="col"><span class="visually-hidden">Decide</span></th>
@@ -60,16 +59,24 @@
                             <td>@item.EmployeeName</td>
                             <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
                             <td>
-                                @if (item.Kind == "ChangePunchType")
+                                @foreach (var edit in item.Edits)
                                 {
-                                    <span>Change <strong>@DisplayFormats.Words(item.OriginalEventType).ToLowerInvariant()</strong> to <strong>@DisplayFormats.Words(item.CorrectedEventType).ToLowerInvariant()</strong></span>
-                                }
-                                else
-                                {
-                                    @DisplayFormats.Words(item.CorrectedEventType)
+                                    <div>
+                                        @switch (edit.Kind)
+                                        {
+                                            case "ChangePunchType":
+                                                <span>Change the <strong>@DisplayFormats.Words(edit.OriginalEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At) to a <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong></span>
+                                                break;
+                                            case "IgnorePunch":
+                                                <span>Ignore the <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>
+                                                break;
+                                            default:
+                                                <span>Add a <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>
+                                                break;
+                                        }
+                                    </div>
                                 }
                             </td>
-                            <td class="text-nowrap">@DisplayFormats.DateTime(item.ProposedValue)@(item.Kind == "ChangePunchType" ? " (the punch's time)" : string.Empty)</td>
                             <td>@item.Justification<div class="small text-muted">Asked @DisplayFormats.DateTime(item.RequestedAt)</div></td>
                             <td>
                                 @item.ApprovalWorkflow

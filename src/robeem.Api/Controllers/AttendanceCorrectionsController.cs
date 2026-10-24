@@ -19,12 +19,62 @@ namespace robeem.Api.Controllers;
 public sealed class AttendanceCorrectionsController : ControllerBase
 {
     private readonly IAttendanceCorrectionService _corrections;
+    private readonly IAttendanceDayCorrectionService _days;
     private readonly ICurrentUser _user;
 
-    public AttendanceCorrectionsController(IAttendanceCorrectionService corrections, ICurrentUser user)
+    public AttendanceCorrectionsController(IAttendanceCorrectionService corrections, IAttendanceDayCorrectionService days, ICurrentUser user)
     {
         _corrections = corrections;
+        _days = days;
         _user = user;
+    }
+
+    /// <summary>
+    /// One of the employee's own days with every punch and what can be done to it, for correcting it. Reading the punches is audited.
+    /// </summary>
+    /// <param name="date">The attendance date.</param>
+    [HttpGet("day")]
+    [Authorize(Roles = AttendanceRoles.Employee)]
+    public async Task<ActionResult<DayCorrectionView>> Day(DateTime date, CancellationToken cancellationToken)
+    {
+        if (_user.EmployeeId is not { } employeeId)
+        {
+            return NoEmployeeIdentity();
+        }
+
+        return await _days.GetDayAsync(employeeId, date, employeeId, cancellationToken) is { } view ? view : NotFound();
+    }
+
+    /// <summary>
+    /// An employee sends the corrections of one of their days: punches given another type, missing punches added, punches ignored.
+    /// They are decided together. The employee is the signed-in user, never a field of the request.
+    /// </summary>
+    [HttpPost("day")]
+    [Authorize(Roles = AttendanceRoles.Employee)]
+    public async Task<ActionResult<CreatedResponse>> ProposeDay(DayCorrectionRequest request, CancellationToken cancellationToken)
+    {
+        if (_user.EmployeeId is not { } employeeId)
+        {
+            return NoEmployeeIdentity();
+        }
+
+        var result = await _days.ProposeAsync(employeeId, request, employeeId, cancellationToken);
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (result.Succeeded)
+        {
+            return StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value });
+        }
+
+        foreach (var (field, message) in result.Errors)
+        {
+            ModelState.AddModelError(field, message);
+        }
+
+        return ValidationProblem(ModelState);
     }
 
     /// <summary>An employee proposes the missing punch of their own open exception, or the type an out-of-order punch of theirs should have.</summary>

@@ -42,7 +42,7 @@ public sealed class ActorAccessFilterTests
     [InlineData(typeof(RecordsController), "Index", "Employee")]
     [InlineData(typeof(RecordsController), "Day", "Manager")]
     [InlineData(typeof(ExceptionsController), "Index", "Employee")]
-    [InlineData(typeof(ExceptionsController), "Propose", "HRAdministrator")]
+    [InlineData(typeof(ExceptionsController), "Accept", "HRAdministrator")]
     public void AnActorWithNoEmployee_IsTurnedAwayWithTheReason_WhereTheApiNeedsOne(Type controller, string action, string role)
     {
         var context = Run(controller, action, employeeId: null, [role]);
@@ -260,6 +260,12 @@ public sealed class ActorAccessFilterTests
         public List<CorrectionApprover> Lists { get; } = [];
 
         public Task<ApiCommandResult<robeem.Contracts.Common.CreatedResponse>> ProposeAsync(ProposeCorrectionRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<ApiCommandResult<robeem.Contracts.Common.CreatedResponse>> ProposeDayAsync(DayCorrectionRequest request, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover awaiting, CancellationToken cancellationToken)

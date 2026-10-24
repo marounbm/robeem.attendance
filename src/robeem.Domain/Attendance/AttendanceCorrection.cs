@@ -20,10 +20,19 @@ namespace robeem.DataModel
         [MaxLength(ITenantScoped.TenantIdMaxLength)]
         public string TenantId { get; set; } = string.Empty;
 
-        [Required]
-        public int AttendanceExceptionId { get; set; }
+        /// <summary>
+        /// Gets or sets the exception this correction was proposed for. Null for a correction of a whole day, which is not tied to one
+        /// exception: the day's open exceptions wait for it together.
+        /// </summary>
+        public int? AttendanceExceptionId { get; set; }
 
         public AttendanceException? AttendanceException { get; set; }
+
+        /// <summary>
+        /// Gets or sets what ties the edits of one request together. A request is decided as a whole: its rows are approved, applied or rejected
+        /// at once. A correction proposed for one exception is a request of its own.
+        /// </summary>
+        public Guid RequestId { get; set; } = Guid.NewGuid();
 
         /// <summary>Gets or sets the employee whose day is corrected; the exception's employee.</summary>
         [Required]
@@ -44,7 +53,7 @@ namespace robeem.DataModel
 
         public NormalizedAttendanceTransaction? NormalizedTransaction { get; set; }
 
-        /// <summary>Gets or sets the type the punch had when the change was proposed; null for a supplied punch.</summary>
+        /// <summary>Gets or sets the type the punch had when the change was proposed; null for a supplied punch. For an ignored punch, the type it had.</summary>
         public NormalizedEventType? OriginalEventType { get; set; }
 
         /// <summary>
@@ -98,9 +107,12 @@ namespace robeem.DataModel
 
         #region not mapped
         [NotMapped]
-        public override string Title => Kind == AttendanceCorrectionKind.ChangePunchType
-            ? $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:d}"
-            : $"Correction {CorrectedEventType} — {AttendanceDate:d}";
+        public override string Title => Kind switch
+        {
+            AttendanceCorrectionKind.ChangePunchType => $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:d}",
+            AttendanceCorrectionKind.IgnorePunch => $"Correction ignore {OriginalEventType} — {AttendanceDate:d}",
+            _ => $"Correction {CorrectedEventType} — {AttendanceDate:d}",
+        };
         #endregion
     }
 }

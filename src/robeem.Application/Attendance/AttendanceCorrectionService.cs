@@ -196,13 +196,22 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
     public async Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken)
     {
-        var correction = await _db.AttendanceCorrections
-            .Include(c => c.AttendanceException)
-            .SingleOrDefaultAsync(c => c.Id == correctionId, cancellationToken);
-        if (correction?.AttendanceException is not { } exception)
+        var correction = await _db.AttendanceCorrections.SingleOrDefaultAsync(c => c.Id == correctionId, cancellationToken);
+        if (correction is null)
         {
             return CorrectionResult.Missing();
         }
+
+        // A request is decided as a whole: every edit of it is approved, applied or rejected together.
+        var group = await _db.AttendanceCorrections.Where(c => c.RequestId == correction.RequestId).OrderBy(c => c.Id).ToListAsync(cancellationToken);
+
+        // The exceptions waiting for it: those it names and, for a correction of a whole day, the day's that wait for a correction.
+        var linked = group.Where(c => c.AttendanceExceptionId != null).Select(c => c.AttendanceExceptionId!.Value).ToList();
+        var wholeDay = group.Any(c => c.AttendanceExceptionId == null);
+        var exceptions = await _db.AttendanceExceptions
+            .Where(e => linked.Contains(e.Id)
+                || (wholeDay && e.EmployeeId == correction.EmployeeId && e.AttendanceDate == correction.AttendanceDate && e.Status == AttendanceExceptionStatus.PendingCorrection))
+            .ToListAsync(cancellationToken);
 
         if (correction.Status != AttendanceCorrectionStatus.Pending)
         {
@@ -242,24 +251,27 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         var decision = approved ? AttendanceCorrectionDecision.Approved : AttendanceCorrectionDecision.Rejected;
         var actor = ActorOf(decidedByUserId);
         var role = decidesAsHr ? "HR" : standsIn ? "HR, in place of the manager" : "Manager";
-        if (decidesAsHr)
+        foreach (var row in group)
         {
-            (correction.HrDecision, correction.HrDecidedById, correction.HrDecidedAt) = (decision, decidedByUserId, now);
-        }
-        else
-        {
-            (correction.ManagerDecision, correction.ManagerDecidedById, correction.ManagerDecidedAt) = (decision, decidedByUserId, now);
+            if (decidesAsHr)
+            {
+                (row.HrDecision, row.HrDecidedById, row.HrDecidedAt) = (decision, decidedByUserId, now);
+            }
+            else
+            {
+                (row.ManagerDecision, row.ManagerDecidedById, row.ManagerDecidedAt) = (decision, decidedByUserId, now);
+            }
         }
 
         if (!approved)
         {
             // Back to Open, so a new correction can be proposed (study §11.1).
-            correction.Status = AttendanceCorrectionStatus.Rejected;
-            exception.Status = AttendanceExceptionStatus.Open;
+            group.ForEach(row => row.Status = AttendanceCorrectionStatus.Rejected);
+            exceptions.ForEach(e => e.Status = AttendanceExceptionStatus.Open);
             _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
-            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Open: the correction was rejected.", actor);
+            exceptions.ForEach(e => _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), e.Id, "PendingCorrection -> Open: the correction was rejected.", actor));
             await _db.SaveChangesAsync(cancellationToken);
-            return CorrectionResult.Success(correction, exception.Status);
+            return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Open);
         }
 
         // Every approval the workflow asks for is in once the last role of the workflow has approved:
@@ -269,26 +281,35 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         {
             _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is still {correction.Status}.", actor);
             await _db.SaveChangesAsync(cancellationToken);
-            return CorrectionResult.Success(correction, exception.Status);
+            return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.PendingCorrection);
         }
 
-        // Approve, apply, close the exception and recalculate the day as one unit: a day recalculated
-        // with the exception still open would never come out Approved, and a failure must not leave
-        // the correction applied to a day that was not recalculated.
+        // Approve, apply, close the exceptions and recalculate the day as one unit: a day recalculated
+        // with the exceptions still open would never come out Approved, and a failure must not leave
+        // the correction applied to a day that was not recalculated. Whatever the edits did not settle
+        // is found again by the recalculation and opens as a new exception.
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        correction.Status = AttendanceCorrectionStatus.Applied;
-        correction.AppliedAt = now;
-        exception.Status = AttendanceExceptionStatus.Closed;
-        exception.ResolutionMethod = AttendanceExceptionResolutionMethod.Correction;
-        exception.ResolvedAt = now;
+        foreach (var row in group)
+        {
+            row.Status = AttendanceCorrectionStatus.Applied;
+            row.AppliedAt = now;
+        }
+
+        foreach (var exception in exceptions)
+        {
+            exception.Status = AttendanceExceptionStatus.Closed;
+            exception.ResolutionMethod = AttendanceExceptionResolutionMethod.Correction;
+            exception.ResolvedAt = now;
+            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Closed: the correction was applied.", actor);
+        }
+
         _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
-        _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Closed: the correction was applied.", actor);
         await _db.SaveChangesAsync(cancellationToken);
 
         await _engine.ProcessEmployeeDayAsync(correction.EmployeeId, correction.AttendanceDate, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return CorrectionResult.Success(correction, exception.Status);
+        return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Closed);
     }
 
     public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken)
@@ -316,6 +337,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             .Select(c => new
             {
                 c.Id,
+                c.RequestId,
                 c.AttendanceExceptionId,
                 c.EmployeeId,
                 c.Employee!.FirstName,
@@ -332,22 +354,35 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             })
             .ToListAsync(cancellationToken);
 
+        // One item per request: its edits are decided together, by the decision on any of them.
         return rows
-            .Select(r => new CorrectionListItem
+            .GroupBy(r => r.RequestId)
+            .Select(g =>
             {
-                Id = r.Id,
-                ExceptionId = r.AttendanceExceptionId,
-                EmployeeId = r.EmployeeId,
-                EmployeeName = $"{r.FirstName} {r.LastName}",
-                AttendanceDate = r.AttendanceDate,
-                Kind = r.Kind.ToString(),
-                OriginalEventType = r.OriginalEventType?.ToString(),
-                CorrectedEventType = r.CorrectedEventType.ToString(),
-                ProposedValue = r.ProposedValue,
-                Justification = r.Justification,
-                RequestedAt = r.RequestedAt,
-                ApprovalWorkflow = r.ApprovalWorkflow.ToString(),
-                ManagerDecision = r.ManagerDecision?.ToString(),
+                var r = g.First();
+                return new CorrectionListItem
+                {
+                    Id = r.Id,
+                    ExceptionId = r.AttendanceExceptionId,
+                    EmployeeId = r.EmployeeId,
+                    EmployeeName = $"{r.FirstName} {r.LastName}",
+                    AttendanceDate = r.AttendanceDate,
+                    Kind = r.Kind.ToString(),
+                    OriginalEventType = r.OriginalEventType?.ToString(),
+                    CorrectedEventType = r.CorrectedEventType.ToString(),
+                    ProposedValue = r.ProposedValue,
+                    Edits = g.Select(e => new CorrectionEditItem
+                    {
+                        Kind = e.Kind.ToString(),
+                        OriginalEventType = e.OriginalEventType?.ToString(),
+                        CorrectedEventType = e.CorrectedEventType.ToString(),
+                        At = e.ProposedValue,
+                    }).ToList(),
+                    Justification = r.Justification,
+                    RequestedAt = r.RequestedAt,
+                    ApprovalWorkflow = r.ApprovalWorkflow.ToString(),
+                    ManagerDecision = r.ManagerDecision?.ToString(),
+                };
             })
             .ToList();
     }
@@ -388,23 +423,6 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
     /// device's clock is the one the schedule is compared with; the server's zone when the employee
     /// has no punch around then.
     /// </summary>
-    private async Task<string> ResolveTimeZoneAsync(int employeeId, DateTime proposed, string actor, CancellationToken cancellationToken)
-    {
-        // A direct read of normalized attendance outside the engine: audited, and saved at once, since
-        // a proposal that is then refused saves nothing else.
-        _audit.Record(AttendanceAuditActions.AttendanceDataRead, nameof(NormalizedAttendanceTransaction), null, $"Time zone for a correction of employee {employeeId}, near {proposed:s}.", actor);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        var nearby = await _db.NormalizedAttendanceTransactions
-            .AsNoTracking()
-            .Where(n => n.EmployeeId == employeeId
-                && n.EventTimestampLocal >= proposed.AddDays(-1)
-                && n.EventTimestampLocal < proposed.AddDays(1))
-            .Select(n => new { n.EventTimestampLocal, n.TimeZoneId })
-            .ToListAsync(cancellationToken);
-
-        return nearby.Count == 0
-            ? _clock.LocalTimeZone.Id
-            : nearby.MinBy(n => (n.EventTimestampLocal - proposed).Duration())!.TimeZoneId;
-    }
+    private Task<string> ResolveTimeZoneAsync(int employeeId, DateTime proposed, string actor, CancellationToken cancellationToken) =>
+        CorrectionTimeZones.ResolveAsync(_db, _audit, _clock, employeeId, proposed, actor, cancellationToken);
 }

@@ -54,6 +54,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         // An applied change of type makes a punch the type the employee proposed and the approver agreed: the normalized row stays as it is.
         punches = await ApplyTypeChangesAsync(employeeId, punches, cancellationToken);
 
+        // An applied "ignore" leaves a punch out altogether (a duplicate, a tap by mistake): the punch row stays, it just does not count.
+        punches = await WithoutIgnoredPunchesAsync(employeeId, punches, cancellationToken);
+
         // c. The policy: the employee's schedule's, else the tenant default (CLAUDE.md §3).
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
 
@@ -258,6 +261,22 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         return rows
             .Select(n => new AttendancePunch(n.Id, n.NormalizedEventType, n.EventTimestampUtc, n.EventTimestampLocal, AttendancePunchSource.Normalized))
             .ToList();
+    }
+
+    private async Task<List<AttendancePunch>> WithoutIgnoredPunchesAsync(int employeeId, List<AttendancePunch> punches, CancellationToken cancellationToken)
+    {
+        var ignored = await _db.AttendanceCorrections
+            .AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId
+                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.Kind == AttendanceCorrectionKind.IgnorePunch
+                && c.NormalizedTransactionId != null)
+            .Select(c => c.NormalizedTransactionId!.Value)
+            .ToListAsync(cancellationToken);
+
+        return ignored.Count == 0
+            ? punches
+            : punches.Where(p => p.NormalizedTransactionId is not { } id || !ignored.Contains(id)).ToList();
     }
 
     private async Task<List<AttendancePunch>> ApplyTypeChangesAsync(int employeeId, List<AttendancePunch> punches, CancellationToken cancellationToken)

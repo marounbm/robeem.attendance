@@ -90,7 +90,7 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("AttendanceDate")
                         .HasColumnType("timestamp without time zone");
 
-                    b.Property<int>("AttendanceExceptionId")
+                    b.Property<int?>("AttendanceExceptionId")
                         .HasColumnType("integer");
 
                     b.Property<string>("CorrectedEventType")
@@ -156,6 +156,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ProposedValue")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -194,6 +197,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "AttendanceExceptionId")
                         .IsUnique()
                         .HasFilter("\"Status\" IN ('Pending', 'Approved')");
+
+                    b.HasIndex("TenantId", "RequestId");
 
                     b.HasIndex("TenantId", "Status");
 
@@ -2042,8 +2047,7 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasOne("robeem.DataModel.AttendanceException", "AttendanceException")
                         .WithMany()
                         .HasForeignKey("AttendanceExceptionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("robeem.DataModel.Profile", "Employee")
                         .WithMany()

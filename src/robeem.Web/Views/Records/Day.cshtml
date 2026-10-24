@@ -178,9 +178,13 @@ else
                     {
                         <span>Change the @DisplayFormats.Words(c.OriginalEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue) to a @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant()</span>
                     }
+                    else if (c.Kind == "IgnorePunch")
+                    {
+                        <span>Ignore the @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue)</span>
+                    }
                     else
                     {
-                        <span>@DisplayFormats.Words(c.CorrectedEventType) at @DisplayFormats.Time(c.ProposedValue)</span>
+                        <span>Add a @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue)</span>
                     }
                     <span class="text-muted"> · proposed by @c.RequestedByName on @DisplayFormats.DateTime(c.RequestedAt)</span>
                     <div class="small">@c.Justification</div>

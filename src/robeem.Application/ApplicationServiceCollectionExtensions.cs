@@ -40,6 +40,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendanceCorrectionService, AttendanceCorrectionService>();
         services.AddScoped<IAttendanceReviewService, AttendanceReviewService>();
         services.AddScoped<IAttendanceExceptionService, AttendanceExceptionService>();
+        services.AddScoped<IAttendanceDayCorrectionService, AttendanceDayCorrectionService>();
         services.AddScoped<IAttendanceExceptionQuery, AttendanceExceptionQuery>();
         services.AddScoped<IAttendanceTransactionQuery, AttendanceTransactionQuery>();
         services.AddScoped<IAttendanceIntegrationService, AttendanceIntegrationService>();

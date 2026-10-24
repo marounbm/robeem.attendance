@@ -214,6 +214,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     RelatedPunchAt = x.e.RelatedEventAt,
                     SuggestedEventTypes = AttendanceExceptionRules.Suggested(x.e.SuggestedEventTypes),
                     CanPropose = AttendanceExceptionRules.CanPropose(x.e.ExceptionType, x.e.Status, x.e.EmployeeId, viewer.EmployeeId, x.e.SuggestedEventTypes),
+                    CanCorrect = AttendanceExceptionRules.CanCorrect(x.e.Status, x.e.EmployeeId, viewer.EmployeeId),
                 })
                 .ToList(),
             Corrections = corrections

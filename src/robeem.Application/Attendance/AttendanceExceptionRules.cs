@@ -15,6 +15,10 @@ internal static class AttendanceExceptionRules
         && (type == AttendanceExceptionType.MissingPunch
             || (type == AttendanceExceptionType.InvalidSequence && suggestedEventTypes.Length > 0));
 
+    /// <summary>Whether the viewer can correct the day of the exception: it is their own and still open, whatever it is about.</summary>
+    public static bool CanCorrect(AttendanceExceptionStatus status, int employeeId, int viewerId) =>
+        employeeId == viewerId && status == AttendanceExceptionStatus.Open;
+
     /// <summary>Splits the stored list of suggested event types.</summary>
     public static IReadOnlyList<string> Suggested(string suggestedEventTypes) =>
         suggestedEventTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

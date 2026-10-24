@@ -4,7 +4,8 @@ public sealed class CorrectionListItem
 {
     public int Id { get; init; }
 
-    public int ExceptionId { get; init; }
+    /// <summary>Gets the exception it was proposed for; null for a correction of a whole day.</summary>
+    public int? ExceptionId { get; init; }
 
     public int EmployeeId { get; init; }
 
@@ -23,6 +24,9 @@ public sealed class CorrectionListItem
 
     /// <summary>Gets when the punch happened (a supplied punch), or the time of the punch whose type changes.</summary>
     public DateTime ProposedValue { get; init; }
+
+    /// <summary>Gets every edit of the request. The fields above describe the first; a correction of a whole day can have several.</summary>
+    public IReadOnlyList<CorrectionEditItem> Edits { get; init; } = Array.Empty<CorrectionEditItem>();
 
     public string Justification { get; init; } = string.Empty;
 

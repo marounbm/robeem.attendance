@@ -149,37 +149,111 @@ public sealed class ApprovalsWebTests
     }
 
     [Fact]
-    public async Task ExceptionsProposal_SendsWhatWasTyped_AndReportsTheOutcome()
+    public async Task TheCorrectPage_ShowsTheDay_WithAChoiceForEveryPunchThatCanBeEdited()
     {
-        var corrections = new FakeCorrections();
+        var corrections = new FakeCorrections { Day = SampleDay() };
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
-        // Only a time is typed: the day is the exception's, or the day after when the person says it was after midnight.
-        await controller.Propose(4, new DateTime(2026, 10, 5), new TimeOnly(12, 0), false, "Reader missed it", CancellationToken.None);
-        await controller.Propose(4, new DateTime(2026, 10, 5, 14, 30, 0), new TimeOnly(5, 45), true, "Left late", CancellationToken.None);
-        corrections.Refusal = ["The exception is closed."];
-        await controller.Propose(4, new DateTime(2026, 10, 5), new TimeOnly(12, 0), false, null, CancellationToken.None);
+        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), CancellationToken.None)).Model);
 
-        Assert.Equal(
-            [
-                (4, new DateTime(2026, 10, 5, 12, 0, 0), "Reader missed it"),
-                (4, new DateTime(2026, 10, 6, 5, 45, 0), "Left late"),
-                (4, new DateTime(2026, 10, 5, 12, 0, 0), string.Empty),
-            ],
-            corrections.Proposals);
-        Assert.Equal("The exception is closed.", controller.TempData["ErrorMessage"]);
+        Assert.Equal(new DateTime(2026, 10, 5), model.Form.Date);
+        Assert.Equal([10, 12], model.Form.Punches.Select(p => p.TransactionId));
+        Assert.All(model.Form.Punches, p => Assert.True(string.IsNullOrEmpty(p.Action)));
+
+        corrections.Day = null;
+        Assert.IsType<NotFoundResult>(await controller.Correct(new DateTime(2026, 10, 9), CancellationToken.None));
     }
 
     [Fact]
-    public async Task ExceptionsProposal_WithoutATime_IsNeverSent()
+    public async Task TheEditsOfTheDay_AreSentTogether_AsChangesIgnoresAndAdditions_AndEmptyRowsAreLeftOut()
     {
-        var corrections = new FakeCorrections();
+        var corrections = new FakeCorrections { Day = SampleDay() };
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+        var form = new DayCorrectionForm
+        {
+            Date = new DateTime(2026, 10, 5, 14, 30, 0),
+            Justification = "Came back from lunch",
+            Punches =
+            [
+                new PunchChoice { TransactionId = 10, Action = "CheckIn" },
+                new PunchChoice { TransactionId = 12, Action = "Ignore" },
+                new PunchChoice { TransactionId = 14, Action = string.Empty },
+            ],
+            Added =
+            [
+                new AddedPunch { EventType = "CheckOut", Time = new TimeOnly(17, 5) },
+                new AddedPunch { EventType = "BreakIn", Time = new TimeOnly(0, 45), AfterMidnight = true },
+                new AddedPunch(),
+            ],
+        };
 
-        await controller.Propose(4, new DateTime(2026, 10, 5), null, false, "Reader missed it", CancellationToken.None);
+        var result = await controller.Correct(form, CancellationToken.None);
 
-        Assert.Empty(corrections.Proposals);
-        Assert.Contains("Enter the time", (string)controller.TempData["ErrorMessage"]!);
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        var sent = Assert.Single(corrections.DayRequests);
+        Assert.Equal((new DateTime(2026, 10, 5), "Came back from lunch"), (sent.Date, sent.Justification));
+        Assert.Equal(
+            [
+                ("Change", 10, "CheckIn", (DateTime?)null),
+                ("Ignore", 12, null, null),
+                ("Add", null, "CheckOut", new DateTime(2026, 10, 5, 17, 5, 0)),
+                ("Add", null, "BreakIn", new DateTime(2026, 10, 6, 0, 45, 0)),
+            ],
+            sent.Edits.Select(e => (e.Action, e.TransactionId, e.EventType, e.At)));
+        Assert.Contains("sent", (string)controller.TempData["StatusMessage"]!);
+    }
+
+    [Fact]
+    public async Task ARefusedCorrection_ShowsThePageAgain_WithWhatWasTyped_AndWhyItWasRefused()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay(), Refusal = ["Edit 1: that punch is not one of this day's that count."] };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+        var form = new DayCorrectionForm
+        {
+            Date = new DateTime(2026, 10, 5),
+            Justification = "Because",
+            Punches = [new PunchChoice { TransactionId = 12, Action = "Ignore" }, new PunchChoice { TransactionId = 10, Action = "CheckIn" }],
+            Added = [new AddedPunch { EventType = "CheckOut", Time = new TimeOnly(17, 5) }],
+        };
+
+        var result = await controller.Correct(form, CancellationToken.None);
+
+        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(result).Model);
+
+        // The choices are shown against the punches as they are now, in the order the page lists them, whatever order they were posted in.
+        Assert.Equal(["CheckIn", "Ignore"], model.Form.Punches.Select(p => p.Action));
+        Assert.Equal("Because", model.Form.Justification);
+        Assert.Equal(new TimeOnly(17, 5), Assert.Single(model.Form.Added).Time);
+        Assert.Contains("that punch is not one of this day's", controller.ModelState[string.Empty]!.Errors.Single().ErrorMessage);
+    }
+
+    [Fact]
+    public void TheExceptionsGrid_HasOneRowPerDay_NewestFirst_AndOffersCorrectOnlyWhereItCan()
+    {
+        var model = new ExceptionsIndexViewModel
+        {
+            Items =
+            [
+                new ExceptionListItem { Id = 1, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open", CanCorrect = true, ShiftTitle = "Day" },
+                new ExceptionListItem { Id = 2, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open", CanCorrect = true, ShiftTitle = "Day" },
+                new ExceptionListItem { Id = 3, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 6), Status = "Open", CanCorrect = true },
+                new ExceptionListItem { Id = 4, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 6), Status = "PendingCorrection" },
+                new ExceptionListItem { Id = 5, EmployeeId = 8, EmployeeName = "Charles Babbage", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open" },
+                new ExceptionListItem { Id = 6, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 1), Status = "Closed" },
+            ],
+        };
+
+        var days = model.Days;
+
+        Assert.Equal([(new DateTime(2026, 10, 6), 7), (new DateTime(2026, 10, 5), 7), (new DateTime(2026, 10, 5), 8), (new DateTime(2026, 10, 1), 7)], days.Select(d => (d.Date, d.EmployeeId)));
+        Assert.Equal([2, 2, 1, 1], days.Select(d => d.Items.Count));
+
+        // 5 Oct (Ada): two open exceptions, hers: Correct. 6 Oct: a correction already waits, so no. Charles's day is not hers to correct.
+        Assert.Equal([false, true, false, false], days.Select(d => d.CanCorrect));
+        Assert.Equal(["Open", "Open", "Open", "Closed"], days.Select(d => d.Status));
+        Assert.True(days[0].IsWaiting);
+        Assert.Equal(["Day"], days[1].Shifts);
+        Assert.Equal(["Unscheduled work"], days[2].Shifts);
     }
 
     [Theory]
@@ -242,6 +316,21 @@ public sealed class ApprovalsWebTests
         Assert.Equal(expected, DisplayFormats.Words(name));
     }
 
+    private static DayCorrectionView SampleDay() => new()
+    {
+        Date = new DateTime(2026, 10, 5),
+        EmployeeId = 7,
+        EmployeeName = "Ada Lovelace",
+        CanCorrect = true,
+        Punches =
+        [
+            new DayPunchItem { TransactionId = 10, Type = "CheckOut", At = new DateTime(2026, 10, 5, 13, 57, 0), Editable = true, Problem = "A check-out follows a check-out.", SuggestedTypes = ["CheckIn"] },
+            new DayPunchItem { TransactionId = 11, Type = "CheckOut", At = new DateTime(2026, 10, 5, 13, 57, 20), State = "Duplicate" },
+            new DayPunchItem { TransactionId = 12, Type = "CheckIn", At = new DateTime(2026, 10, 5, 15, 36, 0), Editable = true },
+            new DayPunchItem { Type = "CheckOut", At = new DateTime(2026, 10, 5, 18, 0, 0), Source = "Corrected", State = "Added" },
+        ],
+    };
+
     private static T WithTempData<T>(T controller)
         where T : Controller
     {
@@ -287,6 +376,18 @@ public sealed class ApprovalsWebTests
         public List<(int Id, bool Approved, bool AsHr)> Decisions { get; } = [];
 
         public List<(int ExceptionId, DateTime Time, string Justification)> Proposals { get; } = [];
+
+        public List<DayCorrectionRequest> DayRequests { get; } = [];
+
+        public DayCorrectionView? Day { get; set; }
+
+        public Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken) => Task.FromResult(Day);
+
+        public Task<ApiCommandResult<CreatedResponse>> ProposeDayAsync(DayCorrectionRequest request, CancellationToken cancellationToken)
+        {
+            DayRequests.Add(request);
+            return Task.FromResult(Refusal is null ? ApiCommandResult<CreatedResponse>.Ok(new CreatedResponse { Id = 1 }) : ApiCommandResult<CreatedResponse>.Refused(Refusal));
+        }
 
         public Task<ApiCommandResult<CreatedResponse>> ProposeAsync(ProposeCorrectionRequest request, CancellationToken cancellationToken)
         {

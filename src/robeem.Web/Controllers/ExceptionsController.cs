@@ -8,8 +8,8 @@ using robeem.Web.Navigation;
 namespace robeem.Web.Controllers;
 
 /// <summary>
-/// Attendance exceptions of the acting user: their own (and, for a manager, their reports'; for
-/// HR, everyone's). The exception's own employee proposes the missing punch from here.
+/// Attendance exceptions of the acting user, shown a day at a time: their own (and, for a manager, their reports'; for
+/// HR, everyone's). The employee corrects a day from here: the Correct page shows every punch of it.
 /// </summary>
 [RequiresEmployee(HrExempt = true)]
 public sealed class ExceptionsController : Controller
@@ -41,27 +41,46 @@ public sealed class ExceptionsController : Controller
     }
 
     /// <summary>
-    /// The employee proposes the type an out-of-order punch of theirs should have (a check-out that follows a check-out is
-    /// really a check-in). Only the types the exception offers are accepted by the Api.
+    /// Every punch of one of the employee's days, to put it right: change a punch's type, add a missing one, or ignore one that should not count.
     /// </summary>
+    [HttpGet]
+    [RequiresEmployee]
+    public async Task<IActionResult> Correct(DateTime date, CancellationToken cancellationToken)
+    {
+        if (await _corrections.GetDayAsync(date, cancellationToken) is not { } day)
+        {
+            return NotFound();
+        }
+
+        return View(new DayCorrectionViewModel { Day = day, Form = DayCorrectionForm.For(day) });
+    }
+
+    /// <summary>Sends the edits of the day for approval, all together, with one reason.</summary>
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> ProposeChange(int exceptionId, string? newEventType, string? justification, CancellationToken cancellationToken)
+    public async Task<IActionResult> Correct(DayCorrectionForm form, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(newEventType))
+        var result = await _corrections.ProposeDayAsync(
+            new DayCorrectionRequest { Date = form.Date.Date, Justification = form.Justification ?? string.Empty, Edits = form.ToEdits() },
+            cancellationToken);
+        if (result.Succeeded)
         {
-            TempData["ErrorMessage"] = "Choose what the punch should be.";
+            TempData["StatusMessage"] = "Your corrections were sent. They now wait for the approver's decision, all together.";
             return RedirectToAction(nameof(Index));
         }
 
-        var result = await _corrections.ProposeAsync(
-            new ProposeCorrectionRequest { ExceptionId = exceptionId, NewEventType = newEventType, Justification = justification ?? string.Empty },
-            cancellationToken);
+        // Back to the page with what was typed, and why it was refused.
+        if (await _corrections.GetDayAsync(form.Date.Date, cancellationToken) is not { } day)
+        {
+            return NotFound();
+        }
 
-        TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
-            ? "Change proposed. It now waits for its approver's decision."
-            : result.MessageText;
-        return RedirectToAction(nameof(Index));
+        foreach (var message in result.Messages)
+        {
+            ModelState.AddModelError(string.Empty, message);
+        }
+
+        return View(new DayCorrectionViewModel { Day = day, Form = form.WithPunchesOf(day) });
     }
 
     /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>
@@ -77,35 +96,6 @@ public sealed class ExceptionsController : Controller
         TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
             ? "The exception was accepted. The day was calculated again."
             : result.MessageText;
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpPost]
-    [RequiresEmployee]
-    public async Task<IActionResult> Propose(int exceptionId, DateTime attendanceDate, TimeOnly? proposedTime, bool afterMidnight, string? justification, CancellationToken cancellationToken)
-    {
-        if (proposedTime is not { } time)
-        {
-            TempData["ErrorMessage"] = "Enter the time the punch happened, as hours and minutes.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        // The person enters a time only. The day is the exception's day, or the day after when they say the
-        // punch was after midnight (only offered for a shift that ends then); the Api refuses any other day.
-        var proposed = attendanceDate.Date.AddDays(afterMidnight ? 1 : 0).Add(time.ToTimeSpan());
-        var result = await _corrections.ProposeAsync(
-            new ProposeCorrectionRequest { ExceptionId = exceptionId, ProposedValue = proposed, Justification = justification ?? string.Empty },
-            cancellationToken);
-
-        if (result.Succeeded)
-        {
-            TempData["StatusMessage"] = "Correction proposed. It now waits for its approver's decision.";
-        }
-        else
-        {
-            TempData["ErrorMessage"] = result.MessageText;
-        }
-
         return RedirectToAction(nameof(Index));
     }
 }

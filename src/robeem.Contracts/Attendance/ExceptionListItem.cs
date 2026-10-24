@@ -54,6 +54,12 @@ public sealed class ExceptionListItem
     public bool CanPropose { get; init; }
 
     /// <summary>
+    /// Gets a value indicating whether the user can correct the day this exception is on: it is their own and still open. The Correct page shows
+    /// every punch of the day and lets them change one, add a missing one or ignore one that should not count.
+    /// </summary>
+    public bool CanCorrect { get; init; }
+
+    /// <summary>
     /// Gets a value indicating whether the user can accept it now: an open break exception (long, late or early) of someone else
     /// whom the user manages, or anyone for HR.
     /// </summary>

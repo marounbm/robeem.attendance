@@ -21,6 +21,7 @@ namespace robeem.Tests.Api;
 public sealed class ApiAuthorizationTests : IAsyncDisposable
 {
     private readonly FakeCorrectionService _corrections = new();
+    private readonly FakeDayCorrections _days = new();
     private readonly FakePayroll _payroll = new();
     private readonly FakeExceptions _exceptions = new();
     private readonly FakeReviews _reviews = new();
@@ -34,6 +35,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             services.AddSingleton<IAttendanceExceptionService>(_exceptions);
             services.AddSingleton<IAttendanceReviewService>(_reviews);
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
+            services.AddSingleton<IAttendanceDayCorrectionService>(_days);
             services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
             services.AddSingleton<IIntegrationHealthService, FakeHealth>();
             services.AddSingleton<IAttendanceAuditTrail, FakeAudit>();
@@ -293,6 +295,31 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         Assert.Equal((HttpStatusCode.Created, HttpStatusCode.Created, HttpStatusCode.Forbidden), (change.StatusCode, missing.StatusCode, manager.StatusCode));
         Assert.Equal([(3, "CheckIn", 7)], _corrections.TypeChanges);
         Assert.Equal([7], _corrections.Proposals);
+    }
+
+    [Fact]
+    public async Task TheDayCorrection_IsForEmployees_AndAlwaysAsTheSignedInEmployee()
+    {
+        var body = new { date = "2026-10-05", justification = "Because", employeeId = 999, edits = new[] { new { action = "Ignore", transactionId = 4 } } };
+
+        var read = await Send(HttpMethod.Get, "api/attendance/corrections/day?date=2026-10-05", As(7, AttendanceRoles.Employee));
+        var sent = await Send(HttpMethod.Post, "api/attendance/corrections/day", As(7, AttendanceRoles.Employee), body);
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.Created), (read.StatusCode, sent.StatusCode));
+        Assert.Equal([(7, new DateTime(2026, 10, 5), 7)], _days.Reads);
+        var proposal = Assert.Single(_days.Proposals);
+        Assert.Equal((7, 7, "Because"), (proposal.EmployeeId, proposal.RequestedBy, proposal.Request.Justification));
+        Assert.Equal("Ignore", Assert.Single(proposal.Request.Edits).Action);
+
+        foreach (var other in new[] { As(12, AttendanceRoles.Manager), As(7, AttendanceRoles.PayrollAdministrator), As(null, AttendanceRoles.Employee), null })
+        {
+            var expected = other is null ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden;
+            Assert.Equal(expected, (await Send(HttpMethod.Get, "api/attendance/corrections/day?date=2026-10-05", other)).StatusCode);
+            Assert.Equal(expected, (await Send(HttpMethod.Post, "api/attendance/corrections/day", other, body)).StatusCode);
+        }
+
+        Assert.Single(_days.Reads);
+        Assert.Single(_days.Proposals);
     }
 
     [Fact]

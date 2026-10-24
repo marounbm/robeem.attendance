@@ -254,6 +254,7 @@ public sealed class ApiAuthenticationTests
                 {
                     services.AddControllers().AddApplicationPart(typeof(AttendanceCorrectionsController).Assembly);
                     services.AddSingleton<IAttendanceCorrectionService, OkCorrectionService>();
+                    services.AddSingleton<IAttendanceDayCorrectionService, FakeDayCorrections>();
                     services.AddRobeemAuthentication(Configuration(developmentUser), new FakeEnvironment(Environments.Development));
 
                     // The provider's metadata is a local key: no network. Runs before the post-configuration that would fetch it.

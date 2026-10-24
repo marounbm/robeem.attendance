@@ -1,0 +1,219 @@
+@model DayCorrectionViewModel
+@{
+    var day = Model.Day;
+    ViewData["Title"] = "Correct " + DisplayFormats.Date(day.Date);
+    var editable = day.Punches.Where(p => p is { Editable: true, TransactionId: not null }).ToList();
+    var addedRows = Math.Max(4, Model.Form.Added.Count);
+    var nowTime = day.Date.Date == DateTime.Today ? DateTime.Now.ToString("HH:mm") : null;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Correct <span class="text-muted">@DisplayFormats.Date(day.Date)</span></h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back to exceptions</a>
+</div>
+
+<partial name="_StatusMessage" />
+
+<p class="text-muted">
+    These are all the punches of the day, as the time clock sent them. Put the day right: <strong>change</strong> a punch that has the wrong type,
+    <strong>ignore</strong> one that should not count (a duplicate, a tap by mistake), or <strong>add</strong> one that is missing. Nothing is
+    edited or deleted: your approver decides on all of it together, and the day is then calculated again.
+</p>
+
+@if (day.Shifts.Count > 0)
+{
+    <p class="mb-2"><strong>Scheduled:</strong> @string.Join("; ", day.Shifts)</p>
+}
+
+<div class="card mb-3">
+    <div class="card-header">What was found</div>
+    @if (day.Exceptions.Count == 0)
+    {
+        <div class="card-body text-muted">This day has no exception.</div>
+    }
+    else
+    {
+        <ul class="list-group list-group-flush">
+            @foreach (var exception in day.Exceptions)
+            {
+                <li class="list-group-item">
+                    <span class="badge text-bg-@DisplayFormats.Badge(exception.Status)">@DisplayFormats.Words(exception.Status)</span>
+                    @exception.Description
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@if (!day.CanCorrect)
+{
+    <div class="alert alert-info">@day.CannotCorrectReason</div>
+}
+
+<form method="post" asp-action="Correct">
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+    <input type="hidden" name="Date" value="@day.Date.ToString("yyyy-MM-dd")" />
+
+    <div class="card mb-3">
+        <div class="card-header">The day's punches</div>
+        @if (day.Punches.Count == 0)
+        {
+            <div class="card-body text-muted">The time clock sent no punch for this day.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Time</th>
+                            <th scope="col">Punch</th>
+                            <th scope="col">How it counts</th>
+                            <th scope="col">What to do</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ var index = 0; }
+                        @foreach (var punch in day.Punches)
+                        {
+                            <tr class="@(punch.Problem is not null ? "table-warning" : null)">
+                                <td class="text-nowrap">@punch.At.ToString("HH:mm:ss")@(punch.At.Date > day.Date.Date ? " (next day)" : string.Empty)</td>
+                                <td>
+                                    @DisplayFormats.Words(punch.Type)
+                                    @if (punch.OriginalType is not null)
+                                    {
+                                        <div class="small text-muted">was @DisplayFormats.Words(punch.OriginalType).ToLowerInvariant()</div>
+                                    }
+                                </td>
+                                <td>
+                                    @switch (punch.State)
+                                    {
+                                        case "Counted":
+                                            <span class="small">Counts</span>
+                                            break;
+                                        case "Changed":
+                                            <span class="small">Counts, with the type a correction gave it</span>
+                                            break;
+                                        case "Added":
+                                            <span class="small">Added by a correction</span>
+                                            break;
+                                        case "Ignored":
+                                            <span class="small text-muted">Left out by a correction</span>
+                                            break;
+                                        case "Duplicate":
+                                            <span class="small text-muted">A repeat of another punch, already left out</span>
+                                            break;
+                                        default:
+                                            <span class="small text-muted">Not used: not attendance, or its device is not recognized</span>
+                                            break;
+                                    }
+
+                                    @if (punch.Problem is not null)
+                                    {
+                                        <div class="small text-danger">@punch.Problem</div>
+                                    }
+                                </td>
+                                <td style="min-width: 15rem;">
+                                    @if (punch.Editable && punch.TransactionId is { } transactionId && day.CanCorrect)
+                                    {
+                                        var chosen = Model.Form.Punches.ElementAtOrDefault(index)?.Action ?? string.Empty;
+                                        <input type="hidden" name="Punches[@index].TransactionId" value="@transactionId" />
+                                        <select name="Punches[@index].Action" class="form-select form-select-sm" aria-label="What to do with the punch at @punch.At.ToString("HH:mm")">
+                                            <option value="">Keep as it is</option>
+                                            @foreach (var type in DayCorrectionViewModel.EventTypes.Where(t => t != punch.Type))
+                                            {
+                                                <option value="@type" selected="@(chosen == type)">Change to @DisplayFormats.Words(type).ToLowerInvariant()@(punch.SuggestedTypes.Contains(type) ? " (suggested)" : string.Empty)</option>
+                                            }
+                                            <option value="Ignore" selected="@(chosen == "Ignore")">Ignore this punch</option>
+                                        </select>
+                                        index++;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    @if (day.CanCorrect)
+    {
+        <div class="card mb-3">
+            <div class="card-header">Add a punch that is missing</div>
+            <div class="card-body">
+                <p class="small text-muted">Say what the punch was and when it happened. Leave a row empty if you have nothing to add.</p>
+                @for (var j = 0; j < addedRows; j++)
+                {
+                    var added = Model.Form.Added.ElementAtOrDefault(j);
+                    var hidden = j >= 1 && string.IsNullOrEmpty(added?.EventType) && added?.Time is null;
+                    <div class="row g-2 align-items-end mb-2 added-row" hidden="@hidden">
+                        <div class="col-md-3">
+                            <label class="form-label small mb-0" for="added-type-@j">Punch</label>
+                            <select id="added-type-@j" name="Added[@j].EventType" class="form-select form-select-sm">
+                                <option value="">—</option>
+                                @foreach (var type in DayCorrectionViewModel.EventTypes)
+                                {
+                                    <option value="@type" selected="@(added?.EventType == type)">@DisplayFormats.Words(type)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small mb-0" for="added-time-@j">Time</label>
+                            <input id="added-time-@j" type="time" name="Added[@j].Time" value="@added?.Time?.ToString("HH:mm")" max="@nowTime" class="form-control form-control-sm" />
+                        </div>
+                        @if (day.HasOvernightShift)
+                        {
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input id="added-next-@j" type="checkbox" name="Added[@j].AfterMidnight" value="true" class="form-check-input" checked="@(added?.AfterMidnight == true)" />
+                                    <label class="form-check-label small" for="added-next-@j">After midnight (the next day)</label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="add-another">Add another</button>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Why</div>
+            <div class="card-body">
+                <label class="form-label small mb-0" for="justification">Tell your approver why these corrections are needed.</label>
+                <textarea id="justification" name="Justification" rows="2" maxlength="1000" class="form-control" required>@Model.Form.Justification</textarea>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Send for approval</button>
+        <a asp-action="Index" class="btn btn-link">Cancel</a>
+    }
+</form>
+
+@section Scripts {
+    <script>
+        // Rows to add punches in are there from the start; "Add another" shows the next one.
+        (function () {
+            var button = document.getElementById('add-another');
+            if (!button) {
+                return;
+            }
+
+            button.addEventListener('click', function () {
+                var next = document.querySelector('.added-row[hidden]');
+                if (next) {
+                    next.hidden = false;
+                }
+
+                if (!document.querySelector('.added-row[hidden]')) {
+                    button.disabled = true;
+                }
+            });
+
+            if (!document.querySelector('.added-row[hidden]')) {
+                button.disabled = true;
+            }
+        })();
+    </script>
+}
