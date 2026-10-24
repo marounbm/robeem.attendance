@@ -90,7 +90,7 @@ else
                         @foreach (var total in Model.Employees)
                         {
                             <tr>
-                                <td>@total.EmployeeNumber</td>
+                                <td>@total.EmployeeName <span class="small text-muted">@total.EmployeeNumber</span></td>
                                 <td class="text-end">@total.Days</td>
                                 <td class="text-end">@DisplayFormats.Hours(total.WorkingHours)</td>
                                 <td class="text-end">@DisplayFormats.Hours(total.OvertimeHours)</td>
@@ -120,7 +120,7 @@ else
                         @foreach (var day in Model.Days.OrderBy(d => d.EmployeeNumber, StringComparer.Ordinal).ThenBy(d => d.AttendanceDate))
                         {
                             <tr>
-                                <td>@day.EmployeeNumber</td>
+                                <td>@day.EmployeeName <span class="small text-muted">@day.EmployeeNumber</span></td>
                                 <td class="text-nowrap">@DisplayFormats.Date(day.AttendanceDate)</td>
                                 <td class="text-nowrap">
                                     @foreach (var shift in day.Shifts)

@@ -97,15 +97,17 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
         }
 
         var employeeIds = days.Select(d => d.Summary.EmployeeId).Distinct().ToList();
-        var numbers = await _db.Profiles
+        var employees = await _db.Profiles
             .AsNoTracking()
             .Where(p => employeeIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => p.EmployeeNumber, cancellationToken);
+            .Select(p => new { p.Id, p.EmployeeNumber, p.FirstName, p.LastName })
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
 
         return days
             .Select(d => new PayrollAttendanceDay(
                 d.Summary.EmployeeId,
-                numbers.GetValueOrDefault(d.Summary.EmployeeId, string.Empty),
+                employees.TryGetValue(d.Summary.EmployeeId, out var employee) ? employee.EmployeeNumber : string.Empty,
+                employee is null ? string.Empty : $"{employee.FirstName} {employee.LastName}",
                 d.Summary.AttendanceDate.Date,
                 d.Summary.TotalWorkingHours,
                 d.Summary.TotalOvertimeHours,

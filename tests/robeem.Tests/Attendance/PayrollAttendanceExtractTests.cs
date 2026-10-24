@@ -15,7 +15,7 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
         var days = await ExtractAsync(Monday, Monday);
 
         var day = Assert.Single(days);
-        Assert.Equal((EmployeeId, "E-1", Monday), (day.EmployeeId, day.EmployeeNumber, day.AttendanceDate));
+        Assert.Equal((EmployeeId, "E-1", "Ada Lovelace", Monday), (day.EmployeeId, day.EmployeeNumber, day.EmployeeName, day.AttendanceDate));
         Assert.Equal((TimeSpan.FromHours(8), TimeSpan.Zero, TimeSpan.FromHours(1)), (day.TotalWorkingHours, day.TotalOvertimeHours, day.TotalBreakHours));
         var shift = Assert.Single(day.Shifts);
         Assert.Equal((Monday.At(8, 0), Monday.At(17, 0)), (shift.ActualCheckIn, shift.ActualCheckOut));

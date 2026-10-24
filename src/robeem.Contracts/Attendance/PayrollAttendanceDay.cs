@@ -7,6 +7,7 @@ namespace robeem.Contracts.Attendance;
 public sealed record PayrollAttendanceDay(
     int EmployeeId,
     string EmployeeNumber,
+    string EmployeeName,
     DateTime AttendanceDate,
     TimeSpan TotalWorkingHours,
     TimeSpan TotalOvertimeHours,

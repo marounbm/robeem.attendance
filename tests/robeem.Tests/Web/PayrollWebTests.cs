@@ -164,6 +164,7 @@ public sealed class PayrollWebTests
         var model = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, CancellationToken.None)).Model!;
 
         Assert.Equal(["E-1", "E-2"], model.Employees.Select(e => e.EmployeeNumber));
+        Assert.Equal(["Employee E-1", "Employee E-2"], model.Employees.Select(e => e.EmployeeName));
         var first = model.Employees[0];
         Assert.Equal((2, TimeSpan.FromHours(15.5), TimeSpan.FromHours(1)), (first.Days, first.WorkingHours, first.OvertimeHours));
     }
@@ -222,7 +223,7 @@ public sealed class PayrollWebTests
     }
 
     private static PayrollAttendanceDay Day(int employeeId, string number, int dayOfOctober, double working, double overtime) =>
-        new(employeeId, number, new DateTime(2026, 10, dayOfOctober), TimeSpan.FromHours(working), TimeSpan.FromHours(overtime), TimeSpan.Zero, []);
+        new(employeeId, number, $"Employee {number}", new DateTime(2026, 10, dayOfOctober), TimeSpan.FromHours(working), TimeSpan.FromHours(overtime), TimeSpan.Zero, []);
 
     private static T WithTempData<T>(T controller)
         where T : Controller

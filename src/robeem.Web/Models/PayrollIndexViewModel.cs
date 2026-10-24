@@ -24,10 +24,11 @@ public sealed class PayrollIndexViewModel
     /// <summary>Gets the per-employee totals of <see cref="Days"/>, by employee number.</summary>
     public IReadOnlyList<PayrollEmployeeTotal> Employees =>
         (Days ?? [])
-            .GroupBy(day => (day.EmployeeId, day.EmployeeNumber))
+            .GroupBy(day => (day.EmployeeId, day.EmployeeNumber, day.EmployeeName))
             .Select(group => new PayrollEmployeeTotal(
                 group.Key.EmployeeId,
                 group.Key.EmployeeNumber,
+                group.Key.EmployeeName,
                 group.Count(),
                 TimeSpan.FromTicks(group.Sum(day => day.TotalWorkingHours.Ticks)),
                 TimeSpan.FromTicks(group.Sum(day => day.TotalOvertimeHours.Ticks)),

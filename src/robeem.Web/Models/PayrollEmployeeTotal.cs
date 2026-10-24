@@ -4,6 +4,7 @@ namespace robeem.Web.Models;
 public sealed record PayrollEmployeeTotal(
     int EmployeeId,
     string EmployeeNumber,
+    string EmployeeName,
     int Days,
     TimeSpan WorkingHours,
     TimeSpan OvertimeHours,
