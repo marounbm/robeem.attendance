@@ -73,6 +73,30 @@ public sealed class AttendancePunchTypeCorrectionTests : AttendanceEngineTestBas
     }
 
     [Fact]
+    public async Task AnExceptionRaisedBeforeTheOffersExisted_GetsItsOfferFromTheDayProcessor_OnceAndWithoutNewPunches()
+    {
+        AddPunches("I@08:00,O@12:00,O@13:00");
+        await ProcessAsync(Monday);
+
+        // As it was in a database from before: the exception exists, with nothing about the punch or what would settle it.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var old = db.AttendanceExceptions.Single();
+            (old.RelatedEventType, old.RelatedEventAt, old.SuggestedEventTypes) = (null, null, string.Empty);
+            db.NormalizedAttendanceTransactions.ToList().ForEach(n => n.ProcessingStatus = NormalizedTransactionProcessingStatus.Processed);
+            db.SaveChanges();
+        }
+
+        var first = await ProcessPendingAsync();
+        var second = await ProcessPendingAsync();
+
+        Assert.Equal((1, 0), (first, second));
+        var exception = InvalidSequence();
+        Assert.Equal("CheckIn", exception.SuggestedEventTypes);
+        Assert.Equal((NormalizedEventType.CheckOut, Monday.At(13, 0)), (exception.RelatedEventType, exception.RelatedEventAt));
+    }
+
+    [Fact]
     public async Task TheEmployeeProposesTheChange_TheManagerApproves_AndTheDayIsCalculatedWithThePunchAsACheckIn()
     {
         AddPunches("I@08:00,O@12:00,O@13:00");
@@ -231,6 +255,13 @@ public sealed class AttendancePunchTypeCorrectionTests : AttendanceEngineTestBas
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         return db.AttendanceExceptions.Single(e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+    }
+
+    private async Task<int> ProcessPendingAsync()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await new PendingDayProcessor(db, CreateEngine(db), Microsoft.Extensions.Logging.Abstractions.NullLogger<PendingDayProcessor>.Instance)
+            .ProcessPendingAsync(50, CancellationToken.None);
     }
 
     private async Task<CorrectionResult> ProposeAsync(int exceptionId, string newType, int? requestedBy = null, string justification = "I came back from lunch.")

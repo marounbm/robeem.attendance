@@ -51,6 +51,44 @@ public sealed class PendingDayProcessor : IPendingDayProcessor
             }
         }
 
+        var room = Math.Max(1, maxDays) - pending.Count;
+        return room > 0 ? processed + await RecalculateStaleExceptionDaysAsync(room, cancellationToken) : processed;
+    }
+
+    /// <summary>
+    /// An out-of-order exception raised before the engine kept the punch's type and time (and so before it worked out what would settle
+    /// it) has no punch details. Its day is calculated again, which fills them in; after that it no longer matches, so this happens once.
+    /// </summary>
+    private async Task<int> RecalculateStaleExceptionDaysAsync(int maxDays, CancellationToken cancellationToken)
+    {
+        var stale = await _db.AttendanceExceptions
+            .AsNoTracking()
+            .Where(e => e.Status == AttendanceExceptionStatus.Open
+                && e.ExceptionType == AttendanceExceptionType.InvalidSequence
+                && e.RelatedNormalizedTransactionId != null
+                && e.RelatedEventType == null)
+            .Select(e => new { e.EmployeeId, e.AttendanceDate })
+            .Distinct()
+            .OrderBy(e => e.AttendanceDate)
+            .ThenBy(e => e.EmployeeId)
+            .Take(maxDays)
+            .ToListAsync(cancellationToken);
+
+        var processed = 0;
+        foreach (var day in stale)
+        {
+            try
+            {
+                await _engine.ProcessEmployeeDayAsync(day.EmployeeId, day.AttendanceDate.Date, cancellationToken);
+                processed++;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Recalculating attendance of employee {EmployeeId} for {Date:yyyy-MM-dd} failed.", day.EmployeeId, day.AttendanceDate);
+                _db.ChangeTracker.Clear();
+            }
+        }
+
         return processed;
     }
 
