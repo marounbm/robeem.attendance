@@ -19,21 +19,24 @@ internal static class AttendanceSeedData
 
     public static readonly SeedTransport[] Transports =
     [
-        new(AttendanceTransport.FileUpload, "Manual file upload", IsPull: false, UsesFileFormat: true),
-        new(AttendanceTransport.Sftp, "SFTP drop", IsPull: true, UsesFileFormat: false),
-        new(AttendanceTransport.RestApi, "REST API", IsPull: true, UsesFileFormat: false),
-        new(AttendanceTransport.Webhook, "Webhook", IsPull: false, UsesFileFormat: false),
-        new(AttendanceTransport.Database, "Database", IsPull: true, UsesFileFormat: false),
-        new(AttendanceTransport.DeviceSdk, "Device SDK / agent", IsPull: true, UsesFileFormat: false),
+        new(AttendanceTransport.FileUpload, "Manual file upload", IsPull: false, UsesPayloadFormat: true),
+        new(AttendanceTransport.Sftp, "SFTP drop", IsPull: true, UsesPayloadFormat: false),
+        new(AttendanceTransport.RestApi, "REST API", IsPull: true, UsesPayloadFormat: false),
+        new(AttendanceTransport.Webhook, "Webhook", IsPull: false, UsesPayloadFormat: false),
+        new(AttendanceTransport.Database, "Database", IsPull: true, UsesPayloadFormat: false),
+        new(AttendanceTransport.DeviceSdk, "Device SDK / agent", IsPull: true, UsesPayloadFormat: false),
     ];
 
-    /// <summary>The providers; a file-based one is read by <see cref="SeedProvider.DefaultFormat"/>, an API or webhook one by the code adapter registered under its key.</summary>
-    public static readonly SeedProvider[] Providers =
+    /// <summary>
+    /// The vendors, each with one connector of the same key. A file-based connector is read by <see cref="SeedVendor.DefaultFormat"/>,
+    /// an API or webhook one by the code adapter registered under its adapter key.
+    /// </summary>
+    public static readonly SeedVendor[] Vendors =
     [
-        new("generic-csv", "Generic CSV upload", [], SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, DefaultFormat: GenericCsvFormatName),
-        new("generic-webhook", "Generic webhook", [AttendanceTransport.Webhook], SupportsWebhooks: true, SupportsIncrementalSync: false, IsActive: false),
-        new("zkteco", "ZKTeco", [], SupportsWebhooks: false, SupportsIncrementalSync: false, IsActive: true, DefaultFormat: ZktecoFormatName, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
-        new("suprema-biostar", "Suprema BioStar 2", [AttendanceTransport.RestApi], SupportsWebhooks: false, SupportsIncrementalSync: true, IsActive: true),
+        new("generic-csv", "Generic CSV upload", [], SupportsIncrementalSync: false, IsActive: true, DefaultFormat: GenericCsvFormatName),
+        new("generic-webhook", "Generic webhook", [AttendanceTransport.Webhook], SupportsIncrementalSync: false, IsActive: false, AdapterKey: "generic-webhook"),
+        new("zkteco", "ZKTeco", [], SupportsIncrementalSync: false, IsActive: true, DefaultFormat: ZktecoFormatName, Manufacturer: "ZKTeco", WebsiteUrl: "https://www.zkteco.com"),
+        new("suprema-biostar", "Suprema BioStar 2", [AttendanceTransport.RestApi], SupportsIncrementalSync: true, IsActive: true, AdapterKey: "suprema-biostar"),
     ];
 
     /// <summary>

@@ -18,13 +18,13 @@ public sealed class UploadsWebTests
     [Fact]
     public async Task TheClient_ListsTheTargets_WithTheirFormatsAndLayout()
     {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"integrationId":3,"displayName":"Head office","providerName":"ZKTeco","fileFormats":[".xls",".csv"],"layout":{"providerKey":"zkteco","summary":"s","fields":[{"source":"No.","target":"ExternalEmployeeId"}]}}]""");
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"integrationId":3,"displayName":"Head office","vendorName":"ZKTeco","fileExtensions":[".xls",".csv"],"layout":{"vendorKey":"zkteco","summary":"s","fields":[{"source":"No.","target":"ExternalEmployeeId"}]}}]""");
 
         var targets = await new UploadsApiClient(handler.CreateClient()).ListTargetsAsync(CancellationToken.None);
 
         Assert.Equal("/api/attendance/ingestion/targets", handler.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal(3, targets[0].IntegrationId);
-        Assert.Equal([".xls", ".csv"], targets[0].FileFormats);
+        Assert.Equal([".xls", ".csv"], targets[0].FileExtensions);
         Assert.Equal("ExternalEmployeeId", targets[0].Layout.Fields.Single().Target);
     }
 
@@ -138,9 +138,9 @@ public sealed class UploadsWebTests
     {
         IntegrationId = id,
         DisplayName = $"Clock {id}",
-        ProviderName = "ZKTeco",
-        FileFormats = formats,
-        Layout = new ProviderMappingGuide { ProviderKey = "zkteco" },
+        VendorName = "ZKTeco",
+        FileExtensions = formats,
+        Layout = new VendorMappingGuide { VendorKey = "zkteco" },
     };
 
     private static FormFile FormFile(string name, string content)

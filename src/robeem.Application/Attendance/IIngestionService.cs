@@ -5,8 +5,8 @@ namespace robeem.Application.Attendance;
 public interface IIngestionService
 {
     /// <summary>
-    /// The integrations a file can be uploaded into, by name: active ones whose provider is active and
-    /// supports file upload. Each carries its provider's file formats and layout, as the adapter describes them.
+    /// The integrations a file can be uploaded into, by name: active ones whose vendor is active and
+    /// supports file upload. Each carries its vendor's file formats and layout, as the adapter describes them.
     /// </summary>
     Task<IReadOnlyList<UploadTarget>> ListUploadTargetsAsync(CancellationToken cancellationToken);
 
@@ -31,7 +31,8 @@ public interface IIngestionService
 
     /// <summary>
     /// The same for a body a webhook delivered (already authenticated by the caller), in a new
-    /// Webhook batch. A body the adapter cannot read marks the batch Failed and stores no row.
+    /// Webhook batch, recorded against <paramref name="connectionId"/> (null: the integration's default connection). A body
+    /// the adapter cannot read marks the batch Failed and stores no row.
     /// </summary>
-    Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken);
+    Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, int? connectionId, string filePath, CancellationToken cancellationToken);
 }

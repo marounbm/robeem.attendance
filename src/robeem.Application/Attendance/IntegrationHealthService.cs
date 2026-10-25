@@ -27,7 +27,7 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
     {
         var integration = await _db.AttendanceIntegrations
             .AsNoTracking()
-            .Include(i => i.Provider)
+            .Include(i => i.Connector).ThenInclude(c => c!.Vendor)
             .SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
         {
@@ -47,7 +47,7 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
         var firstDate = windowStart.Date;
 
         // Every successful synchronization leaves a batch, a quiet one included (pruned after
-        // EmptySyncRetentionDays), so the rate counts them all. A failed one is a provider failure:
+        // EmptySyncRetentionDays), so the rate counts them all. A failed one is a vendor failure:
         // no rows, and a reason.
         var syncs = _db.AttendanceProcessingBatches
             .Where(b => b.IntegrationId == integrationId && b.BatchType == AttendanceBatchType.IncrementalSync && b.StartedAt >= windowStart);
@@ -93,7 +93,7 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
         {
             IntegrationId = integration.Id,
             DisplayName = integration.DisplayName,
-            ProviderKey = integration.Provider!.ProviderKey,
+            VendorKey = integration.Connector!.Vendor!.VendorKey,
             Status = integration.Status.ToString(),
             HealthStatus = integration.HealthStatus.ToString(),
             IsCircuitOpen = _resilience.Get(_db.CurrentTenantId, integration.Id).IsOpen,

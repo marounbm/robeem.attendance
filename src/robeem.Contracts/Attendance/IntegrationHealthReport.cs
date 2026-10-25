@@ -11,7 +11,7 @@ public sealed class IntegrationHealthReport
 
     public string DisplayName { get; init; } = string.Empty;
 
-    public string ProviderKey { get; init; } = string.Empty;
+    public string VendorKey { get; init; } = string.Empty;
 
     /// <summary>Gets the integration's configured status: Active, Paused or Failed.</summary>
     public string Status { get; init; } = string.Empty;
@@ -19,7 +19,7 @@ public sealed class IntegrationHealthReport
     /// <summary>Gets the stored health: Unknown, Healthy, Degraded or Unhealthy. Kept by the sync job.</summary>
     public string HealthStatus { get; init; } = string.Empty;
 
-    /// <summary>Gets a value indicating whether the circuit breaker is refusing calls to the provider right now. In memory: a restart closes it.</summary>
+    /// <summary>Gets a value indicating whether the circuit breaker is refusing calls to the vendor right now. In memory: a restart closes it.</summary>
     public bool IsCircuitOpen { get; init; }
 
     public DateTime? LastSuccessfulSyncAt { get; init; }

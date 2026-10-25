@@ -1,0 +1,17 @@
+@model ConnectionFormViewModel
+@{
+    ViewData["Title"] = "Edit connection";
+}
+
+<h1 class="h3 mb-1">Edit connection</h1>
+<p class="text-muted">Of @Model.Integration.DisplayName (@Model.Integration.VendorName)</p>
+
+<form method="post" asp-action="Edit" asp-route-integrationId="@Model.Integration.Id" asp-route-id="@Model.Id">
+    <partial name="_ConnectionForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-integrationId="@Model.Integration.Id">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

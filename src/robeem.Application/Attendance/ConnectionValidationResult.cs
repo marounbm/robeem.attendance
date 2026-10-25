@@ -1,4 +1,4 @@
 namespace robeem.Application.Attendance;
 
-/// <summary>Outcome of <see cref="IAttendanceProvider.ValidateConnectionAsync"/>.</summary>
+/// <summary>Outcome of <see cref="IAttendanceAdapter.ValidateConnectionAsync"/>.</summary>
 public sealed record ConnectionValidationResult(bool IsValid, string? Message = null);

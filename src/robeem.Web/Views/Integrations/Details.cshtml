@@ -9,12 +9,12 @@
     <div>
         <h1 class="h3 mb-1">@integration.DisplayName</h1>
         <div class="text-muted">
-            @integration.ProviderName
+            @integration.VendorName
             · <span class="badge text-bg-@(integration.Status == "Active" ? "success" : integration.Status == "Failed" ? "danger" : "secondary")">@integration.Status</span>
             · <span class="badge text-bg-light border">@integration.TransportName</span>
-            @if (integration.FileFormatName is not null)
+            @if (integration.PayloadFormatName is not null)
             {
-                <span>· file format <strong>@integration.FileFormatName</strong></span>
+                <span>· file format <strong>@integration.PayloadFormatName</strong></span>
             }
             @if (integration.DefaultDeviceName is not null)
             {
@@ -30,6 +30,7 @@
     </div>
     <div class="d-flex gap-2">
         <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@integration.Id">Edit</a>
+        <a class="btn btn-outline-secondary" asp-controller="Connections" asp-action="Index" asp-route-integrationId="@integration.Id" title="Where this integration's attendance comes from and how that is authenticated. A device may use another connection than the default.">Connections (@integration.ConnectionCount)</a>
         <a class="btn btn-outline-secondary" asp-action="RawMapping" asp-route-id="@integration.Id" title="Each raw punch beside the normalized punch it produced. Opening it is written to the audit log.">Raw → normalized</a>
         <form method="post" asp-action="RetryFailed" asp-route-id="@integration.Id">
             <button type="submit" class="btn btn-outline-secondary" title="Normalize again the punches that failed for want of a time zone, after setting the integration's time zone or registering the device. Other failures are not retried.">Retry failed punches</button>
@@ -57,7 +58,7 @@
             <span class="badge text-bg-@DisplayFormats.Badge(integration.HealthStatus)">@integration.HealthStatus</span>
             @if (health?.IsCircuitOpen == true)
             {
-                <span class="badge text-bg-danger">Circuit open: the provider is not being called</span>
+                <span class="badge text-bg-danger">Circuit open: the vendor is not being called</span>
             }
         </span>
     </div>

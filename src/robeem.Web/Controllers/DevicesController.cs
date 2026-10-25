@@ -13,10 +13,12 @@ namespace robeem.Web.Controllers;
 public sealed class DevicesController : Controller
 {
     private readonly IIntegrationsApiClient _integrations;
+    private readonly IConnectionsApiClient _connections;
 
-    public DevicesController(IIntegrationsApiClient integrations)
+    public DevicesController(IIntegrationsApiClient integrations, IConnectionsApiClient connections)
     {
         _integrations = integrations;
+        _connections = connections;
     }
 
     [HttpGet]
@@ -41,6 +43,7 @@ public sealed class DevicesController : Controller
             IntegrationId = chosen?.Id ?? 0,
             Input = new DeviceInput { TimeZoneId = chosen?.TimeZoneId ?? "UTC" },
             Integrations = integrations,
+            Connections = await ListConnectionsAsync(integrations.Select(i => i.Id), cancellationToken),
             DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken),
         });
     }
@@ -67,6 +70,7 @@ public sealed class DevicesController : Controller
 
         model.IntegrationId = integrationId;
         model.Integrations = await _integrations.ListAsync(cancellationToken);
+        model.Connections = await ListConnectionsAsync(model.Integrations.Select(i => i.Id), cancellationToken);
         model.DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken);
         return View(model);
     }
@@ -86,6 +90,7 @@ public sealed class DevicesController : Controller
                 ExternalDeviceId = device.ExternalDeviceId,
                 Name = device.Name,
                 DeviceTypeId = device.DeviceTypeId ?? 0,
+                ConnectionId = device.ConnectionId,
                 Model = device.Model,
                 SoftwareVersion = device.SoftwareVersion,
                 SdkVersion = device.SdkVersion,
@@ -162,9 +167,21 @@ public sealed class DevicesController : Controller
         model.Id = device.Id;
         model.IntegrationId = device.IntegrationId;
         model.Device = device;
+        model.Connections = await ListConnectionsAsync([device.IntegrationId], cancellationToken);
         model.DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken);
         model.Mappings = await _integrations.ListMappingsAsync(device.IntegrationId, device.Id, cancellationToken);
         model.Employees = await _integrations.ListEmployeeOptionsAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ConnectionListItem>> ListConnectionsAsync(IEnumerable<int> integrationIds, CancellationToken cancellationToken)
+    {
+        var all = new List<ConnectionListItem>();
+        foreach (var integrationId in integrationIds)
+        {
+            all.AddRange(await _connections.ListAsync(integrationId, cancellationToken) ?? []);
+        }
+
+        return all;
     }
 
     private IActionResult MappingDone(int integrationId, int id, ApiSaveResult result, string success)

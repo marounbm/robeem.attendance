@@ -20,9 +20,9 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// request unusable, since there is nothing of it that could be stored faithfully.</para>
 /// <para>Timestamp and event-type formats are those of <see cref="GenericWebhookInterpreter"/>.</para>
 /// </remarks>
-public sealed class GenericWebhookProvider : IAttendanceProvider, IAttendanceMappingGuide
+public sealed class GenericWebhookProvider : IAttendanceAdapter, IAttendanceMappingGuide
 {
-    public const string ProviderKey = "generic-webhook";
+    public const string VendorKey = "generic-webhook";
 
     private const string PushOnly = "The generic webhook is push-only: the sender delivers punches, there is nothing to pull.";
 
@@ -82,9 +82,9 @@ public sealed class GenericWebhookProvider : IAttendanceProvider, IAttendanceMap
     public Task<AttendanceBatchResult> GetTransactionChangesAsync(AttendanceIntegrationConfig config, SyncCursor? cursor, CancellationToken cancellationToken)
         => throw new NotSupportedException(PushOnly);
 
-    public ProviderMappingGuide DescribeMapping() => new()
+    public VendorMappingGuide DescribeMapping() => new()
     {
-        ProviderKey = ProviderKey,
+        VendorKey = VendorKey,
         Summary = "Events pushed as JSON to the integration's webhook (one object, an array, or {\"events\": [...]}), each request signed with HMAC-SHA256 of its body under the integration's secret. ISO 8601 timestamps; IN, OUT, BREAK OUT and BREAK IN labels (and their spellings).",
         Fields =
         [

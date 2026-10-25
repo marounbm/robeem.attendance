@@ -36,24 +36,33 @@ public static class NavigationMenu
             new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr) { NeedsEmployee = true },
         ]);
 
+    // Running the integrations, day to day: what is connected, the machines, getting data in, and the jobs that process it.
     private static readonly NavSection Integrations = new(
         "Integrations",
         [
-            new NavItem("Integrations", "Integrations", "Index", "Connections to time-clock providers: health, schedule and sync.", Integration),
+            new NavItem("Integrations", "Integrations", "Index", "Your use of each vendor's software: its connections, health, schedule and sync.", Integration),
             new NavItem("Devices", "Devices", "Index", "The punch devices of every integration, their time zones, and each device's employee-id mappings.", Integration),
-            new NavItem("Providers", "Providers", "Index", "The vendors you receive attendance from: their transports and the file format their uploads are read by.", Integration),
-            new NavItem("File formats", "FileFormats", "Index", "Define the layout of a file an integration reads on manual upload: columns, date patterns and type labels.", Integration),
-            new NavItem("Device types", "DeviceTypes", "Index", "The kinds of punch device a device can be given.", Integration),
-            new NavItem("Transports", "Transports", "Index", "Rename the ways attendance reaches robeem, or switch one off for new integrations.", Integration),
+            new NavItem("Upload attendance", "Uploads", "Index", "Upload a file exported from the time clock, in the format and layout of its integration.", Hr),
             new NavItem("Background jobs", "Jobs", "Index", "When the jobs that normalize punches, calculate days and sync integrations run next, how each run ended, and run one now.", Integration, Hr),
         ]);
 
-    private static readonly NavSection Import = new(
-        "Import",
+    // What came in, before it becomes a day: every punch as received, then as normalized.
+    private static readonly NavSection Transactions = new(
+        "Transactions",
         [
-            new NavItem("Upload attendance", "Uploads", "Index", "Upload a file exported from the time clock, in the format and layout of its integration.", Hr),
             new NavItem("Raw transactions", "RawTransactions", "Index", "Every punch exactly as the time clock or file sent it, with its status and the normalized punch it became.", Integration, Hr),
             new NavItem("Normalized transactions", "NormalizedTransactions", "Index", "Every punch after normalization: employee, device, event type, certainty, duplicates and flags.", Integration, Hr),
+        ]);
+
+    // What an integration is built from, in the order it is built: the company, its software, how its files are read, how data arrives, the kinds of device.
+    private static readonly NavSection IntegrationSetup = new(
+        "Integration setup",
+        [
+            new NavItem("Vendors", "Vendors", "Index", "The companies you receive attendance from.", Integration),
+            new NavItem("Connectors", "Connectors", "Index", "The software and protocols of each vendor: their transports, the payload format their uploads are read by, and the code adapter, if any.", Integration),
+            new NavItem("Payload formats", "PayloadFormats", "Index", "Define the layout of a file an integration reads on manual upload: columns, date patterns and type labels.", Integration),
+            new NavItem("Transports", "Transports", "Index", "Rename the ways attendance reaches robeem, or switch one off for new integrations.", Integration),
+            new NavItem("Device types", "DeviceTypes", "Index", "The kinds of punch device a device can be given.", Integration),
         ]);
 
     private static readonly NavSection PayrollSection = new(
@@ -67,7 +76,7 @@ public static class NavigationMenu
 
     private static readonly NavSection AuditSection = new("Audit", [new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr)]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Import, Integrations, PayrollSection, Settings, AuditSection];
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, Integrations, Transactions, IntegrationSetup, PayrollSection, Settings, AuditSection];
 
     /// <summary>
     /// The sections the actor may open, each with only the items it may open; empty sections are dropped.

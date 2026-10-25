@@ -47,6 +47,7 @@
                         <th scope="col">Name</th>
                         <th scope="col">Device id</th>
                         <th scope="col">Integration</th>
+                        <th scope="col">Connection</th>
                         <th scope="col">Type</th>
                         <th scope="col">Model</th>
                         <th scope="col">Time zone</th>
@@ -64,6 +65,7 @@
                             <td><a asp-action="Edit" asp-route-integrationId="@device.IntegrationId" asp-route-id="@device.Id">@device.Name</a></td>
                             <td><code>@device.ExternalDeviceId</code></td>
                             <td><a asp-controller="Integrations" asp-action="Details" asp-route-id="@device.IntegrationId">@device.IntegrationName</a></td>
+                            <td>@(device.ConnectionName.Length == 0 ? "—" : device.ConnectionName)@(device.ConnectionId is null ? string.Empty : " ")@if (device.ConnectionId is null && device.ConnectionName.Length > 0) { <span class="text-muted small">(default)</span> }</td>
                             <td>@(device.DeviceType.Length == 0 ? "—" : device.DeviceType)</td>
                             <td>@(device.Model.Length == 0 ? "—" : device.Model)</td>
                             <td class="text-nowrap"><code>@device.TimeZoneId</code></td>

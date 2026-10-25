@@ -20,7 +20,7 @@ public sealed class IntegrationsWebTests
     [Fact]
     public async Task TheClient_ReadsListsAndSingleRecords_AndMapsA404ToNull()
     {
-        var list = new StubHttpHandler(HttpStatusCode.OK, """[{"id":1,"displayName":"HQ","providerName":"Generic CSV","deviceCount":2,"mappingCount":5}]""");
+        var list = new StubHttpHandler(HttpStatusCode.OK, """[{"id":1,"displayName":"HQ","vendorName":"Generic CSV","deviceCount":2,"mappingCount":5}]""");
         var missing = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
 
         var items = await new IntegrationsApiClient(list.CreateClient()).ListAsync(CancellationToken.None);
@@ -33,16 +33,16 @@ public sealed class IntegrationsWebTests
     }
 
     [Theory]
-    [InlineData("providers", "/api/attendance/integrations/providers")]
+    [InlineData("connectors", "/api/attendance/integrations/connectors")]
     [InlineData("employees", "/api/attendance/integrations/employee-options")]
     public async Task TheClient_AsksTheRightPathForTheOptions(string which, string path)
     {
         var handler = new StubHttpHandler(HttpStatusCode.OK, "[]");
         var client = new IntegrationsApiClient(handler.CreateClient());
 
-        if (which == "providers")
+        if (which == "connectors")
         {
-            await client.ListProvidersAsync(CancellationToken.None);
+            await client.ListConnectorsAsync(CancellationToken.None);
         }
         else
         {
@@ -128,7 +128,7 @@ public sealed class IntegrationsWebTests
     public async Task Creating_RedirectsToTheNewIntegration_OrShowsTheFormWithItsErrors()
     {
         var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(7) };
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         var created = await controller.Create(new IntegrationFormViewModel { Input = new IntegrationInput { DisplayName = "HQ" } }, CancellationToken.None);
 
@@ -146,7 +146,7 @@ public sealed class IntegrationsWebTests
     [Fact]
     public async Task EditingAnUnknownIntegration_IsNotFound()
     {
-        var controller = WithTempData(new IntegrationsController(new FakeIntegrations { Save = ApiSaveResult.Missing() }));
+        var controller = WithTempData(new IntegrationsController(new FakeIntegrations { Save = ApiSaveResult.Missing() }, new FakeConnections()));
 
         Assert.IsType<NotFoundResult>(await controller.Edit(9, CancellationToken.None));
         Assert.IsType<NotFoundResult>(await controller.Details(9, CancellationToken.None));
@@ -158,7 +158,7 @@ public sealed class IntegrationsWebTests
     {
         var integrations = new FakeIntegrations();
         integrations.Devices.AddRange([new DeviceItem { Id = 1, IntegrationId = 5 }, new DeviceItem { Id = 2, IntegrationId = 6 }]);
-        var controller = WithTempData(new DevicesController(integrations));
+        var controller = WithTempData(new DevicesController(integrations, new FakeConnections()));
 
         var all = Assert.IsType<DevicesIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index(null, CancellationToken.None)).Model);
         var one = Assert.IsType<DevicesIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index(6, CancellationToken.None)).Model);
@@ -172,7 +172,7 @@ public sealed class IntegrationsWebTests
     public async Task ADeviceAction_ReportsItsOutcome_AndABadFormIsNeverSent()
     {
         var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(1) };
-        var controller = WithTempData(new DevicesController(integrations));
+        var controller = WithTempData(new DevicesController(integrations, new FakeConnections()));
 
         var added = Assert.IsType<RedirectToActionResult>(await controller.Create(5, new DeviceFormViewModel { Input = new DeviceInput { Name = "Front door" } }, CancellationToken.None));
         Assert.Equal(("Edit", 1), (added.ActionName, added.RouteValues!["id"]));
@@ -195,7 +195,7 @@ public sealed class IntegrationsWebTests
     public async Task AMapping_IsAddedAndRemovedOnItsDevice_AndAnUnknownDeviceIsNotFound()
     {
         var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(1) };
-        var controller = WithTempData(new DevicesController(integrations));
+        var controller = WithTempData(new DevicesController(integrations, new FakeConnections()));
 
         var added = Assert.IsType<RedirectToActionResult>(await controller.AddMapping(5, 2, new MappingInput { ExternalEmployeeId = "21001", EmployeeId = 7 }, CancellationToken.None));
         Assert.Equal(("Edit", 5, 2), (added.ActionName, added.RouteValues!["integrationId"], added.RouteValues["id"]));
@@ -218,7 +218,7 @@ public sealed class IntegrationsWebTests
     public async Task RunNow_ShowsAFailureAsAnError_AndTheRestAsInformation(string status, string key)
     {
         var integrations = new FakeIntegrations { Outcome = new SyncOutcomeResponse { Status = status, RecordsIngested = 3, Message = "note" } };
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         await controller.Run(5, reconcile: true, CancellationToken.None);
 
@@ -244,7 +244,7 @@ public sealed class IntegrationsWebTests
     public async Task TheRawMappingPage_ClampsHowManyRowsItAsksFor_AndAnUnknownIntegrationIsNotFound()
     {
         var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         var page = await controller.RawMapping(5, null, null, 100000, CancellationToken.None);
         await controller.RawMapping(5, null, null, 0, CancellationToken.None);
@@ -273,7 +273,7 @@ public sealed class IntegrationsWebTests
     public async Task RetryFailed_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
     {
         var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         var redirect = Assert.IsType<RedirectToActionResult>(await controller.RetryFailed(5, CancellationToken.None));
 
@@ -301,7 +301,7 @@ public sealed class IntegrationsWebTests
     public async Task RenormalizeFlagged_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
     {
         var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         var redirect = Assert.IsType<RedirectToActionResult>(await controller.RenormalizeFlagged(5, CancellationToken.None));
 
@@ -320,7 +320,7 @@ public sealed class IntegrationsWebTests
     public async Task RenormalizeFlagged_SaysWhyNothingWasQueued(int requeued, int unresolved, string transport, string key, string fragment)
     {
         var integrations = new FakeIntegrations { Renormalized = new RenormalizeFlaggedResponse { Requeued = requeued, Unresolved = unresolved, Transport = transport } };
-        var controller = WithTempData(new IntegrationsController(integrations));
+        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
         await controller.RenormalizeFlagged(5, CancellationToken.None);
 
@@ -362,6 +362,30 @@ public sealed class IntegrationsWebTests
         }
     }
 
+    private sealed class FakeConnections : IConnectionsApiClient
+    {
+        public Task<IReadOnlyList<ConnectionListItem>?> ListAsync(int integrationId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ConnectionListItem>?>([]);
+
+        public Task<ConnectionInput?> GetInputAsync(int integrationId, int connectionId, CancellationToken cancellationToken) =>
+            Task.FromResult<ConnectionInput?>(new ConnectionInput { Name = "Default" });
+
+        public Task<ApiSaveResult> CreateAsync(int integrationId, ConnectionInput input, CancellationToken cancellationToken) =>
+            Task.FromResult(ApiSaveResult.Success(1));
+
+        public Task<ApiSaveResult> UpdateAsync(int integrationId, int connectionId, ConnectionInput input, CancellationToken cancellationToken) =>
+            Task.FromResult(ApiSaveResult.Success(connectionId));
+
+        public Task<ApiSaveResult> MakeDefaultAsync(int integrationId, int connectionId, CancellationToken cancellationToken) =>
+            Task.FromResult(ApiSaveResult.Success(connectionId));
+
+        public Task<ConnectionTestResult?> TestAsync(int integrationId, int connectionId, CancellationToken cancellationToken) =>
+            Task.FromResult<ConnectionTestResult?>(new ConnectionTestResult { Succeeded = true, Message = "ok" });
+
+        public Task<IReadOnlyList<TransportDescriptorItem>> ListDescriptorsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TransportDescriptorItem>>([]);
+    }
+
     private sealed class FakeIntegrations : IIntegrationsApiClient
     {
         public ApiSaveResult Save { get; set; } = ApiSaveResult.Success(1);
@@ -382,9 +406,9 @@ public sealed class IntegrationsWebTests
 
         public Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken) => Task.FromResult<IntegrationInput?>(Save.NotFound ? null : new IntegrationInput());
 
-        public Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProviderOption>>([]);
+        public Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ConnectorOption>>([]);
 
-        public Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<FileFormatOption>>([]);
+        public Task<IReadOnlyList<PayloadFormatOption>> ListPayloadFormatOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PayloadFormatOption>>([]);
 
         public Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DeviceTypeOption>>([]);
 
@@ -421,8 +445,8 @@ public sealed class IntegrationsWebTests
             return Task.FromResult<IReadOnlyList<RawNormalizedMappingItem>?>(Save.NotFound ? null : []);
         }
 
-        public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
-            Task.FromResult<ProviderMappingGuide?>(Save.NotFound ? null : new ProviderMappingGuide { ProviderKey = "zkteco" });
+        public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+            Task.FromResult<VendorMappingGuide?>(Save.NotFound ? null : new VendorMappingGuide { VendorKey = "zkteco" });
 
         public Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken) => Task.FromResult(Outcome);
 

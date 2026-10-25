@@ -10,7 +10,7 @@ using robeem.DataModel;
 namespace robeem.Api.Controllers;
 
 /// <summary>
-/// Integrations: the tenant's connections to attendance providers, their devices and each device's
+/// Integrations: the tenant's connections to attendance vendors, their devices and each device's
 /// vendor-id mappings, run-now, and health. An integration is paused, never deleted (raw data points at it).
 /// </summary>
 [ApiController]
@@ -31,10 +31,10 @@ public sealed class AttendanceIntegrationsController : ControllerBase
     public async Task<IReadOnlyList<IntegrationListItem>> List(CancellationToken cancellationToken) =>
         await _integrations.ListAsync(cancellationToken);
 
-    /// <summary>The providers of the catalog; only an active one can be chosen for a new integration.</summary>
-    [HttpGet("providers")]
-    public async Task<IReadOnlyList<ProviderOption>> Providers(CancellationToken cancellationToken) =>
-        await _integrations.ListProvidersAsync(cancellationToken);
+    /// <summary>The connectors of the catalog; only a usable one can be chosen for a new integration.</summary>
+    [HttpGet("connectors")]
+    public async Task<IReadOnlyList<ConnectorOption>> Connectors(CancellationToken cancellationToken) =>
+        await _integrations.ListConnectorsAsync(cancellationToken);
 
     /// <summary>The active employees, to choose whom a vendor's employee id stands for.</summary>
     [HttpGet("employee-options")]
@@ -117,7 +117,7 @@ public sealed class AttendanceIntegrationsController : ControllerBase
         return result.Succeeded ? NoContent() : Failure(result);
     }
 
-    /// <summary>Syncs now, instead of at the next scheduled time. A provider failure is the outcome (200), not an error.</summary>
+    /// <summary>Syncs now, instead of at the next scheduled time. A vendor failure is the outcome (200), not an error.</summary>
     [HttpPost("{id:int}/sync")]
     public async Task<ActionResult<SyncOutcomeResponse>> Sync(int id, CancellationToken cancellationToken) =>
         await _integrations.RunAsync(id, reconcile: false, cancellationToken) is { } outcome ? outcome : NotFound();
@@ -162,9 +162,9 @@ public sealed class AttendanceIntegrationsController : ControllerBase
         return await _integrations.ListRawToNormalizedAsync(id, new RawNormalizedFilter(batchId, parsed, take), cancellationToken) is { } rows ? Ok(rows) : NotFound();
     }
 
-    /// <summary>How this integration's provider maps raw data: its fields, timestamp formats, event codes, and what is never stored.</summary>
+    /// <summary>How this integration's vendor maps raw data: its fields, timestamp formats, event codes, and what is never stored.</summary>
     [HttpGet("{id:int}/raw-mapping/guide")]
-    public async Task<ActionResult<ProviderMappingGuide>> RawMappingGuide(int id, CancellationToken cancellationToken) =>
+    public async Task<ActionResult<VendorMappingGuide>> RawMappingGuide(int id, CancellationToken cancellationToken) =>
         await _integrations.GetRawMappingGuideAsync(id, cancellationToken) is { } guide ? guide : NotFound();
 
     /// <summary>The integration's stored health, its circuit breaker and the KPIs of the last day.</summary>

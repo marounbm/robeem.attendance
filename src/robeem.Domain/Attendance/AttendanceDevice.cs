@@ -31,17 +31,18 @@ namespace robeem.DataModel
         [MaxLength(255)]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>Gets or sets the device's type. Null only for a device saved before types were a table; the seeder fills it in from <see cref="LegacyDeviceType"/>.</summary>
+        /// <summary>
+        /// Gets or sets the connection this device is reached through. Null: the integration's default connection. When set,
+        /// it is one of the same integration's connections.
+        /// </summary>
+        public int? ConnectionId { get; set; }
+
+        public AttendanceConnection? Connection { get; set; }
+
+        /// <summary>Gets or sets the device's type. Null only for a device that was saved with no type before types were a table.</summary>
         public int? DeviceTypeId { get; set; }
 
         public AttendanceDeviceType? DeviceType { get; set; }
-
-        /// <summary>
-        /// Gets or sets the type's name as it was stored before types were a table (the old enum member name).
-        /// Read once by the seeder, never written by new code; the column is dropped by a later migration.
-        /// </summary>
-        [MaxLength(32)]
-        public string LegacyDeviceType { get; set; } = string.Empty;
 
         /// <summary>Gets or sets the machine model, e.g. <c>U350</c>. Empty when not recorded.</summary>
         [MaxLength(100)]

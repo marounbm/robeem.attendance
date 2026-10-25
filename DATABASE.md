@@ -11,7 +11,7 @@ It was written from the entity classes, the EF Core configurations and the model
 | **§1** | The story in one page | — |
 | **§2** | Conventions every table follows | — |
 | **§3 Part A** | **People and rosters**: who works, and when they should | `Profile`, `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeScheduleLine`, `TimeScheduleEmployee` |
-| **§4 Part B** | **Connecting to time clocks**: vendors, devices, id mapping | `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `ExternalEmployeeIdMapping` |
+| **§4 Part B** | **Connecting to time clocks**: vendors, devices, id mapping | `AttendanceVendor`, `AttendanceConnectorDefinition`, `AttendanceIntegration`, `AttendanceConnection`, `AttendanceDevice`, `ExternalEmployeeIdMapping` |
 | **§5 Part C** | **The rules**: rounding, grace, overtime, who approves | `AttendancePolicy` |
 | **§6 Part D** | **Capturing punches**: raw, then cleaned | `AttendanceProcessingBatch`, `RawAttendanceTransaction`, `NormalizedAttendanceTransaction` |
 | **§7 Part E** | **Calculating days**: what was actually worked | `AttendanceRecord`, `AttendanceDaySummary` |
@@ -27,7 +27,7 @@ Read it in order the first time. Later, use the index in §10.4 to jump to one t
 
 A company has **employees** (`Profile`). Each works to a **roster**: a repeating cycle of days, where on each cycle day a team works a particular **shift** (`TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `TimeScheduleLine`, `TimeScheduleEmployee`). That is what *should* happen.
 
-What *did* happen comes from **time-clock machines**. A machine is made by a **vendor** (`AttendanceProvider`); the company connects to it through an **integration** (`AttendanceIntegration`), which reaches one or more **devices** (`AttendanceDevice`). The machine knows employees by its own ids, so a **mapping** says which real employee each id is (`ExternalEmployeeIdMapping`).
+What *did* happen comes from **time-clock machines**. A machine is made by a **vendor** (`AttendanceVendor`) that offers software or protocols (**connectors**, `AttendanceConnectorDefinition`); the company uses one through an **integration** (`AttendanceIntegration`) with its **connections** (`AttendanceConnection`), which reaches one or more **devices** (`AttendanceDevice`). The machine knows employees by its own ids, so a **mapping** says which real employee each id is (`ExternalEmployeeIdMapping`).
 
 Every time someone punches, robeem first stores the event **exactly as received** (`RawAttendanceTransaction`, inside a `AttendanceProcessingBatch`), and never changes it. A second pass turns it into a clean, vendor-neutral event (`NormalizedAttendanceTransaction`): who, when, check-in or check-out, duplicate or not.
 
@@ -69,7 +69,7 @@ You will see the same columns and rules everywhere. Learn them once here.
 
 | Kind | Tables | Columns it gets |
 |---|---|---|
-| **`Entity`**: things a person creates, views or approves | `Profile`, `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `AttendanceProvider`, `AttendanceIntegration`, `AttendanceDevice`, `ExternalEmployeeIdMapping`, `AttendancePolicy`, `AttendanceRecord`, `AttendanceDaySummary`, `AttendanceException`, `AttendanceCorrection`, `AttendanceReviewDecision`, `PayPeriod` | `Id`, `GUID`, `CreatedOn`, `CreatedBy`, `ModifiedOn`, `ModifiedBy` (+ `Title` on five of them) |
+| **`Entity`**: things a person creates, views or approves | `Profile`, `TimeSchedule`, `TimeScheduleShift`, `TimeScheduleTeam`, `AttendanceVendor`, `AttendanceConnectorDefinition`, `AttendanceIntegration`, `AttendanceConnection`, `AttendanceDevice`, `ExternalEmployeeIdMapping`, `AttendancePolicy`, `AttendanceRecord`, `AttendanceDaySummary`, `AttendanceException`, `AttendanceCorrection`, `AttendanceReviewDecision`, `PayPeriod` | `Id`, `GUID`, `CreatedOn`, `CreatedBy`, `ModifiedOn`, `ModifiedBy` (+ `Title` on five of them) |
 | **`SystemEntity`**: high-volume, system-generated rows nobody "owns" | `TimeScheduleLine`, `TimeScheduleEmployee`, `AttendanceProcessingBatch`, `RawAttendanceTransaction`, `NormalizedAttendanceTransaction`, `AttendanceAuditLog` | **only** `Id` (the audit columns and `GUID` do not exist) |
 
 ### 2.3 The shared columns
@@ -246,34 +246,52 @@ This is exactly what the attendance engine asks (the cycle day is computed in co
 
 **The question this answers:** *where do punches come from, and whose are they?*
 
-Four tables, in a chain: a **provider** (the vendor) → an **integration** (our connection to it) → **devices** (the machines) and **id mappings** (the vendor's employee ids → our employees).
+A chain: a **vendor** (the company) → one of its **connectors** (a software or protocol it offers) → an **integration** (our use of that connector) → its **connections** (where the data comes from and how that is authenticated) and **devices** (the machines), with **id mappings** (the vendor's employee ids → our employees) per device. A connector may be read by a **payload format** (the layout of its files).
 
 ```mermaid
 erDiagram
-    AttendanceProvider ||--o{ AttendanceIntegration : "connected as"
+    AttendanceVendor ||--o{ AttendanceConnectorDefinition : "offers"
+    AttendanceConnectorDefinition ||--o{ AttendanceIntegration : "made with"
+    AttendancePayloadFormat |o--o{ AttendanceConnectorDefinition : "is default of"
+    AttendanceIntegration ||--o{ AttendanceConnection : "has"
+    AttendanceConnection |o--o{ AttendanceDevice : "reached through"
     AttendanceIntegration ||--o{ AttendanceDevice : "reaches"
     AttendanceIntegration ||--o{ ExternalEmployeeIdMapping : "maps ids of"
     Profile ||--o{ ExternalEmployeeIdMapping : "is known as"
 ```
 
-### 4.1 `Attendance.AttendanceProvider` — the vendor catalog
+### 4.1 `Attendance.AttendanceVendor` and `Attendance.AttendanceConnectorDefinition` — the catalog
 
-`Entity`. The vendors robeem can talk to (for example `generic-csv`, `zkteco`, a BioStar server, a webhook). Seeded at startup, then yours to manage: you add, edit and deactivate providers on the *Providers* screen. A provider is **usable** when it is active and has a `DefaultFileFormatId` (a vendor of exported files: no code needed) or a code adapter registered under its `ProviderKey` (a vendor pulled over an API or pushing webhooks).
+`Entity`. The **vendor** is the company (for example `generic-csv`, `zkteco`, `suprema-biostar`); a **connector** is one software or protocol of it (a vendor may have several: a desktop export, a REST API, a push protocol). Both are seeded at startup, then yours to manage on the *Vendors* and *Connectors* screens; neither is ever deleted, only deactivated. A connector is **usable** when it and its vendor are active, something can read what it delivers (a default payload format, or a code adapter registered under its `AdapterKey`) and, if its payload is encrypted, a decryptor for that kind exists.
+
+`AttendanceVendor`:
 
 | Column | Type | Null? | Meaning | Filled by |
 |---|---|---|---|---|
 | *shared columns* | | | no `Title` column (it is `DisplayName` in code) | |
-| `ProviderKey` | varchar(100) | N | Stable key a code adapter is registered under, e.g. `suprema-biostar`. **Unique per tenant; never changes.** | You (seed) |
+| `VendorKey` | varchar(100) | N | Stable key; **the `SourceSystem` stored on raw punches.** Unique per tenant; never changes. | You (seed) |
 | `DisplayName` | varchar(255) | N | | You (seed) |
 | `Manufacturer` | varchar(255) | N | Company that makes the devices; empty if unknown. | You (seed) |
 | `WebsiteUrl` | varchar(255) | N | Manufacturer's site; empty if unknown. | You (seed) |
-| `DefaultFileFormatId` | integer → `AttendanceFileFormat.Id` | Y | The layout an upload is read by when its integration names none. | You (seed) |
-| `SupportedTransports` (code name `LegacySupportedTransports`) | varchar(255) | N | **Old.** The transports as comma-separated text. Read once by the seeder into `AttendanceProviderTransport`, then emptied; to be dropped by a later migration. | System |
-| `SupportsWebhooks` | boolean | N | | You (seed) |
-| `SupportsIncrementalSync` | boolean | N | Whether the adapter can fetch "only what is new". | You (seed) |
-| `IsActive` | boolean | N | Whether integrations can be made with it (with a format or an adapter behind it). | You (seed) |
+| `IsActive` | boolean | N | | You (seed) |
 
-The transports a provider offers (besides file upload, which every provider has) are rows of **`Attendance.AttendanceProviderTransport`** (`ProviderId`, `TransportId`; unique together per tenant), pointing at **`Attendance.AttendanceTransportDefinition`**: one row per `AttendanceTransport` (`FileUpload`, `Sftp`, `RestApi`, `Webhook`, `Database`, `DeviceSdk`) with a `DisplayName` you can change, `IsPull` and `UsesFileFormat` (fixed by what the transport is), and `IsActive`. **`Attendance.AttendanceDeviceType`** (`Name`, `IsActive`) lists the kinds of device (`Biometric`, `Facial`, `RFID`, `Mobile`, `Cloud`, `OnPrem` to start with) and is yours to extend.
+`AttendancePayloadFormat` rows are **versioned**: `Version` (from 1) and `SupersedesId` (the older version it replaces). A change to how files are read, made after a batch was read by the format (`AttendanceProcessingBatch.PayloadFormatId`), is a new row, so punches normalized again are read the way they were first read; only the latest version of a name is listed or edited. The name is unique per version.
+
+`AttendanceConnectorDefinition`:
+
+| Column | Type | Null? | Meaning | Filled by |
+|---|---|---|---|---|
+| *shared columns* | | | no `Title` column (it is `DisplayName`) | |
+| `VendorId` | integer → `AttendanceVendor.Id` | N | Never changes. | You (seed) |
+| `ConnectorKey` | varchar(100) | N | Unique per tenant; never changes. | You (seed) |
+| `DisplayName` / `Description` | varchar(255) / varchar(1000) | N | | You (seed) |
+| `AdapterKey` | varchar(100) | Y | The key a code adapter and interpreter are registered under. Empty: read by payload formats alone. | You (seed) |
+| `DefaultPayloadFormatId` | integer → `AttendancePayloadFormat.Id` | Y | The layout an upload is read by when its integration names none. | You (seed) |
+| `SupportsIncrementalSync` | boolean | N | Whether the adapter can fetch "only what is new". | You (seed) |
+| `EncryptionKind` | varchar(32) | N | `None`, `Pgp`, `Aes` or `PasswordProtected`: how its files arrive. The key is named by the integration, never stored here. | You |
+| `IsActive` | boolean | N | | You (seed) |
+
+The transports a connector offers (besides file upload, which every connector has) are rows of **`Attendance.AttendanceConnectorTransport`** (`ConnectorId`, `TransportId`; unique together per tenant), pointing at **`Attendance.AttendanceTransportDefinition`**: one row per `AttendanceTransport` (`FileUpload`, `Sftp`, `RestApi`, `Webhook`, `Database`, `DeviceSdk`) with a `DisplayName` you can change, `IsPull` and `UsesPayloadFormat` (fixed by what the transport is), and `IsActive`. **`Attendance.AttendanceDeviceType`** (`Name`, `IsActive`) lists the kinds of device (`Biometric`, `Facial`, `RFID`, `Mobile`, `Cloud`, `OnPrem` to start with) and is yours to extend.
 
 ### 4.2 `Attendance.AttendanceIntegration` — the tenant's connection
 
@@ -282,14 +300,34 @@ The transports a provider offers (besides file upload, which every provider has)
 | Column | Type | Null? | Meaning | Filled by |
 |---|---|---|---|---|
 | *shared columns* | | | no `Title` column (it is `DisplayName`) | |
-| `ProviderId` | integer → `AttendanceProvider.Id` | N | | You |
+| `ConnectorId` | integer → `AttendanceConnectorDefinition.Id` | N | Never changes. | You |
 | `DisplayName` | varchar(255) | N | | You |
-| `ConnectionConfigRef` | varchar(255) | N | A **reference** to the connection settings in secret storage, never the secret itself. | You |
-| `PollingScheduleCron` | varchar(100) | Y | Cron expression for scheduled pulls; empty means no scheduled sync. | You |
+| `PayloadKeyRef` | varchar(255) | N | A **reference** to the secret that decrypts this integration's files (required when its connector's payload is encrypted). | You |
+| `PayloadFormatId` | integer → `AttendancePayloadFormat.Id` | Y | The layout uploads are read by; empty: the connector's default. | You |
+| `DefaultDeviceId` | integer → `AttendanceDevice.Id` | Y | The device every punch of an uploaded file is attributed to. | You |
+| `TimeZoneId` | varchar(64) | Y | Zone for punches with no UTC offset whose device is unknown. | You |
 | `SyncCursor` | text | Y | The **high-water mark** of incremental sync (its shape is the provider's, e.g. a timestamp). Moves only after the batch's raw rows are committed. | System |
 | `LastSuccessfulSyncAt` | timestamp | Y | | System |
 | `Status` | varchar(32) | N | `Active`, `Paused`, `Failed`. | You / System |
 | `HealthStatus` | varchar(32) | N | `Unknown`, `Healthy`, `Degraded` (a sync failed), `Unhealthy` (circuit breaker opened). Written by the sync job only. | System |
+
+### 4.2a `Attendance.AttendanceConnection` — where the data comes from
+
+`Entity`. An integration has one or more connections; exactly one is its **default** (a filtered unique index). The transport, the secret reference and the pull schedule that used to sit on the integration are the default connection's (migration `AddConnections` copied them).
+
+| Column | Type | Null? | Meaning | Filled by |
+|---|---|---|---|---|
+| *shared columns* | | | no `Title` column (it is `Name`) | |
+| `IntegrationId` | integer → `AttendanceIntegration.Id` | N | | You |
+| `Name` | varchar(255) | N | Unique per integration. | You |
+| `IsDefault` | boolean | N | The one its devices use unless they name another. | You |
+| `Transport` | varchar(32) | N | `FileUpload`, `Sftp`, `RestApi`, `Webhook`, `Database` or `DeviceSdk`. | You |
+| `AuthMethod` | varchar(32) | N | `None`, `UsernamePassword`, `SshKey`, `ApiKey`, `BearerToken`, `OAuth2ClientCredentials`, `SessionLogin`, `HmacSignature` or `AgentToken`; one the transport allows. | You |
+| `Settings` | text (JSON) | N | Non-secret parameters, only the keys the transport declares (host, port, path, base URL...). Never a credential. | You |
+| `SecretRef` | varchar(255) | N | A **reference** to the credential in secret storage, never the secret itself. | You |
+| `PollingSchedule` | varchar(100) | Y | Cron expression for scheduled pulls; empty means no scheduled sync. | You |
+| `IsActive` | boolean | N | | You |
+| `LastTestedAt` / `LastTestSucceeded` / `LastTestMessage` | timestamp / boolean / varchar(500) | Y | The last test, in words the server chose: never the other end's reply. | System |
 
 ### 4.3 `Attendance.AttendanceDevice` — a punch device
 
@@ -301,8 +339,8 @@ The transports a provider offers (besides file upload, which every provider has)
 | `IntegrationId` | integer → `AttendanceIntegration.Id` | N | | You / System (discovered) |
 | `ExternalDeviceId` | varchar(100) | N | The device id exactly as the vendor reports it. **Unique per integration.** | You / System |
 | `Name` | varchar(255) | N | | You |
-| `DeviceTypeId` | integer → `AttendanceDeviceType.Id` | Y | The kind of device. Empty only for a device saved before types were a table (the seeder fills it in). | You |
-| `DeviceType` (code name `LegacyDeviceType`) | varchar(32) | N | **Old.** The type as text. Read once by the seeder into `DeviceTypeId`, then emptied; to be dropped by a later migration. | System |
+| `ConnectionId` | integer → `AttendanceConnection.Id` | Y | The connection the device is reached through (one of its own integration's); empty: the integration's default. | You |
+| `DeviceTypeId` | integer → `AttendanceDeviceType.Id` | Y | The kind of device. Empty only for a device that was saved with no type before types were a table. | You |
 | `Model` | varchar(100) | N | e.g. `U350`; empty if unknown. | You |
 | `SoftwareVersion` | varchar(100) | N | Version of the vendor's attendance software; empty if unknown. | You |
 | `SdkVersion` | varchar(50) | N | Version of the vendor SDK; empty if unknown. | You |
@@ -670,7 +708,9 @@ erDiagram
     Profile ||--o| TimeScheduleEmployee : "is assigned"
     TimeSchedule |o--o{ AttendancePolicy : "overrides default"
 
-    AttendanceProvider ||--o{ AttendanceIntegration : "connected as"
+    AttendanceVendor ||--o{ AttendanceConnectorDefinition : "offers"
+    AttendanceConnectorDefinition ||--o{ AttendanceIntegration : "made with"
+    AttendanceIntegration ||--o{ AttendanceConnection : "has"
     AttendanceIntegration ||--o{ AttendanceDevice : reaches
     AttendanceIntegration ||--o{ ExternalEmployeeIdMapping : maps
     Profile ||--o{ ExternalEmployeeIdMapping : "is mapped to"
@@ -763,7 +803,8 @@ The engine currently runs when HR reprocesses a day and after a correction or re
 | `TimeScheduleTeam` | A | §3.4 |
 | `TimeScheduleLine` | A | §3.5 |
 | `TimeScheduleEmployee` | A | §3.6 |
-| `AttendanceProvider` | B: Time clocks | §4.1 |
+| `AttendanceVendor`, `AttendanceConnectorDefinition` | B: Time clocks | §4.1 |
+| `AttendanceConnection` | B: Time clocks | §4.2a |
 | `AttendanceIntegration` | B | §4.2 |
 | `AttendanceDevice` | B | §4.3 |
 | `ExternalEmployeeIdMapping` | B | §4.4 |

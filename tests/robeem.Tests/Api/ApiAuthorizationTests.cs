@@ -356,6 +356,11 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             .ToList();
         Assert.NotEmpty(controllers);
 
+        // The webhook has no signed-in user by design: the sender proves itself with its connection's credential, and is anonymous otherwise.
+        Assert.Contains(typeof(AttendanceWebhookController), controllers);
+        controllers.Remove(typeof(AttendanceWebhookController));
+        Assert.NotNull(typeof(AttendanceWebhookController).GetCustomAttribute<AllowAnonymousAttribute>());
+
         // An action is covered when its class or the action itself carries [Authorize(Roles = ...)].
         var unprotected = controllers
             .SelectMany(c => c.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)

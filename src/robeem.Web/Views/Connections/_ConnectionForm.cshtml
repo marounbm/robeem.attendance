@@ -1,0 +1,48 @@
+@model ConnectionFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Connection</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.Name" class="form-label"></label>
+            <input asp-for="Input.Name" class="form-control" autocomplete="off" placeholder="e.g. Branch SFTP drop" />
+            <span asp-validation-for="Input.Name" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Transport" class="form-label"></label>
+            <select asp-for="Input.Transport" class="form-select" id="connection-transport">
+                @foreach (var transport in Model.Transports)
+                {
+                    <option value="@transport.Key" selected="@(transport.Key == Model.Input.Transport)" disabled="@(!transport.IsActive && transport.Key != Model.Input.Transport)">@transport.DisplayName</option>
+                }
+            </select>
+            <div class="form-text">Only what @Model.Integration.ConnectorName supports is offered, and manual file upload.</div>
+            <span asp-validation-for="Input.Transport" class="text-danger small"></span>
+        </div>
+        <partial name="_ConnectionFields" model="@(new ConnectionFieldsModel { AuthMethod = Model.Input.AuthMethod, Settings = Model.Input.Settings, Descriptors = Model.Descriptors, TransportSelectId = "connection-transport" })" />
+        <div class="col-md-6">
+            <label asp-for="Input.SecretRef" class="form-label"></label>
+            <input asp-for="Input.SecretRef" class="form-control" autocomplete="off" placeholder="e.g. acme-sftp-key" />
+            <div class="form-text">
+                The <em>name</em> the credential is kept under in configuration (user-secrets, environment variable, or a vault).
+                Never type the credential itself here. Not needed for a file upload.
+            </div>
+            <span asp-validation-for="Input.SecretRef" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.PollingSchedule" class="form-label"></label>
+            <input asp-for="Input.PollingSchedule" class="form-control" autocomplete="off" placeholder="*/5 * * * *" />
+            <div class="form-text">Cron, in server time, for a transport robeem pulls over. Empty: never pull.</div>
+            <span asp-validation-for="Input.PollingSchedule" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3 d-flex flex-column justify-content-center">
+            <div class="form-check">
+                <input asp-for="Input.IsActive" class="form-check-input" />
+                <label asp-for="Input.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-text">A switched-off connection is skipped: nothing is pulled through it, and a switched-off default stops uploads.</div>
+        </div>
+    </div>
+</div>

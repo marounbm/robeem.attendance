@@ -19,7 +19,7 @@
     <div class="card">
         <div class="card-body text-muted">
             No integration takes file uploads yet. An integration administrator adds one under Integrations, with a
-            file-upload provider such as the ZKTeco export or the generic CSV, and sets <em>Receives attendance by</em> to
+            file-upload vendor such as the ZKTeco export or the generic CSV, and sets <em>Receives attendance by</em> to
             <em>Manual file upload</em>.
         </div>
     </div>
@@ -37,7 +37,7 @@ else
 
                 @foreach (var target in Model.Targets)
                 {
-                    <option value="@target.IntegrationId" selected="@(target.IntegrationId == selected?.IntegrationId)">@target.DisplayName — @target.ProviderName</option>
+                    <option value="@target.IntegrationId" selected="@(target.IntegrationId == selected?.IntegrationId)">@target.DisplayName — @target.VendorName</option>
                 }
             </select>
         </div>
@@ -53,13 +53,13 @@ else
             <div class="upload-target" data-target="@target.IntegrationId" hidden="@(target.IntegrationId != selected?.IntegrationId)">
                 <div class="card mb-3 layout-card" hidden>
                     <div class="card-header">
-                        Format and layout: @target.ProviderName
+                        Format and layout: @target.VendorName
                         <span class="text-muted small ms-2">
-                            @(target.FileFormats.Count == 0 ? "any file type" : string.Join(" ", target.FileFormats))
+                            @(target.FileExtensions.Count == 0 ? "any file type" : string.Join(" ", target.FileExtensions))
                         </span>
                     </div>
                     <div class="card-body">
-                        <partial name="_ProviderLayout" model="target.Layout" />
+                        <partial name="_VendorLayout" model="target.Layout" />
                     </div>
                 </div>
 
@@ -70,7 +70,7 @@ else
                             <input type="hidden" name="integrationId" value="@target.IntegrationId" />
                             <div class="col-md-6">
                                 <label class="form-label small mb-0" for="file-@target.IntegrationId">File (up to 10 MB)</label>
-                                <input id="file-@target.IntegrationId" type="file" name="file" accept="@string.Join(",", target.FileFormats)" class="form-control form-control-sm" required />
+                                <input id="file-@target.IntegrationId" type="file" name="file" accept="@string.Join(",", target.FileExtensions)" class="form-control form-control-sm" required />
                             </div>
                             <div class="col-md-3">
                                 <button type="submit" class="btn btn-sm btn-primary">Upload</button>

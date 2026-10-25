@@ -11,13 +11,13 @@ public sealed class TransportItem
 
     public bool IsPull { get; init; }
 
-    public bool UsesFileFormat { get; init; }
+    public bool UsesPayloadFormat { get; init; }
 
     public bool IsActive { get; init; }
 
     /// <summary>Gets how many integrations receive attendance this way.</summary>
     public int IntegrationCount { get; init; }
 
-    /// <summary>Gets how many providers list it as a transport.</summary>
-    public int ProviderCount { get; init; }
+    /// <summary>Gets how many connectors list it as a transport.</summary>
+    public int ConnectorCount { get; init; }
 }

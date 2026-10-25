@@ -113,7 +113,7 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var target = Assert.Single((await response.Content.ReadFromJsonAsync<List<UploadTarget>>())!);
         Assert.Equal(7, target.IntegrationId);
-        Assert.Equal([".csv"], target.FileFormats);
+        Assert.Equal([".csv"], target.FileExtensions);
         Assert.Equal("ExternalEmployeeId", target.Layout.Fields.Single().Target);
     }
 
@@ -158,14 +158,14 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
                 {
                     IntegrationId = 7,
                     DisplayName = "Head office",
-                    ProviderKey = "generic-csv",
-                    ProviderName = "Generic CSV",
-                    FileFormats = [".csv"],
-                    Layout = new ProviderMappingGuide { ProviderKey = "generic-csv", Fields = [new FieldMappingRule { Source = "employee_id", Target = "ExternalEmployeeId" }] },
+                    VendorKey = "generic-csv",
+                    VendorName = "Generic CSV",
+                    FileExtensions = [".csv"],
+                    Layout = new VendorMappingGuide { VendorKey = "generic-csv", Fields = [new FieldMappingRule { Source = "employee_id", Target = "ExternalEmployeeId" }] },
                 },
             ]);
 
-        public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
+        public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, int? connectionId, string filePath, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<AttendanceIngestionResult?> IngestUploadedFileAsync(int integrationId, string filePath, string fileName, int? uploadedById, CancellationToken cancellationToken)

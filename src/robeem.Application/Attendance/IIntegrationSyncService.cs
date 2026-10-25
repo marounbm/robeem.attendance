@@ -1,8 +1,8 @@
 namespace robeem.Application.Attendance;
 
 /// <summary>
-/// Synchronizes one integration of the current tenant with its provider (study §12.4). Neither
-/// method throws for a provider or storage failure: that is the outcome, so one integration's
+/// Synchronizes one integration of the current tenant with its vendor (study §12.4). Neither
+/// method throws for a vendor or storage failure: that is the outcome, so one integration's
 /// failure never stops the job that walks the others. They only store raw rows (CLAUDE.md §1.1);
 /// normalizing them is the separate background job (CLAUDE.md §1.3).
 /// </summary>
@@ -12,11 +12,11 @@ public interface IIntegrationSyncService
     Task<IReadOnlyList<PollingIntegration>> ListPollingIntegrationsAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Incremental sync: asks the provider for what changed after the integration's cursor (less the
+    /// Incremental sync: asks the vendor for what changed after the integration's cursor (less the
     /// configured overlap), stores it as one <c>IncrementalSync</c> batch, and only after those rows
     /// are committed moves the cursor and <c>LastSuccessfulSyncAt</c>. A failure leaves both as they
     /// were and flips the integration's health: Degraded, and Unhealthy once its circuit breaker opens.
-    /// While the breaker is open the provider is not called.
+    /// While the breaker is open the vendor is not called.
     /// </summary>
     Task<SyncOutcome> SyncAsync(int integrationId, CancellationToken cancellationToken);
 

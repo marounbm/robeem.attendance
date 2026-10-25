@@ -23,7 +23,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     private readonly ServiceProvider _services = new ServiceCollection()
         .AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>()
         .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
-        .AddKeyedSingleton<IAttendanceProvider, UndescribedProvider>("undescribed")
+        .AddKeyedSingleton<IAttendanceAdapter, UndescribedProvider>("undescribed")
         .BuildServiceProvider();
 
     private readonly string _csvPath = Path.GetTempFileName();
@@ -38,9 +38,9 @@ public sealed class IntegrationRawMappingTests : IDisposable
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var zkteco = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
-            var integration = new AttendanceIntegration { Provider = zkteco, DisplayName = "Head office clock" };
-            var other = new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = "undescribed", DisplayName = "Undescribed" }, DisplayName = "Other" };
+            var zkteco = AttendanceTestData.Seeded(db, "zkteco");
+            var integration = new AttendanceIntegration { Connector = zkteco, DisplayName = "Head office clock" };
+            var other = new AttendanceIntegration { Connector = AttendanceTestData.Connector("undescribed", "Undescribed", adapterKey: "undescribed"), DisplayName = "Other" };
             var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
             db.AddRange(
                 other,
@@ -89,7 +89,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
 
         Assert.NotNull(rows);
         Assert.Equal(["Failed", "Failed", "Normalized", "Normalized", "Normalized"], rows.Select(r => r.RawStatus));
-        Assert.All(rows, r => Assert.Equal(("zkteco", _integrationId, _batchId), (r.ProviderKey, r.IntegrationId, r.BatchId)));
+        Assert.All(rows, r => Assert.Equal(("zkteco", _integrationId, _batchId), (r.VendorKey, r.IntegrationId, r.BatchId)));
 
         // Oldest raw row: the vendor's text on the left, the interpreted punch on the right.
         var first = rows[4];
@@ -189,9 +189,9 @@ public sealed class IntegrationRawMappingTests : IDisposable
         var guide = await service.GetRawMappingGuideAsync(_integrationId, CancellationToken.None);
         var undescribed = await service.GetRawMappingGuideAsync(_otherIntegrationId, CancellationToken.None);
 
-        Assert.Equal("zkteco", guide!.ProviderKey);
+        Assert.Equal("zkteco", guide!.VendorKey);
         Assert.Contains(guide.EventCodes, c => c.Code == "C/In");
-        Assert.Equal("undescribed", undescribed!.ProviderKey);
+        Assert.Equal("undescribed", undescribed!.VendorKey);
         Assert.Contains("does not describe", undescribed.Summary);
         Assert.Null(await service.GetRawMappingGuideAsync(_integrationId + 100, CancellationToken.None));
     }
@@ -217,7 +217,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     }
 
     /// <summary>An adapter that does not implement <see cref="IAttendanceMappingGuide"/>.</summary>
-    private sealed class UndescribedProvider : IAttendanceProvider
+    private sealed class UndescribedProvider : IAttendanceAdapter
     {
         public Task<ConnectionValidationResult> ValidateConnectionAsync(AttendanceIntegrationConfig config, CancellationToken cancellationToken) => throw new NotSupportedException();
 

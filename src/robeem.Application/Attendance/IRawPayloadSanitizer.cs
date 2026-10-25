@@ -5,7 +5,7 @@ namespace robeem.Application.Attendance;
 /// <c>RawAttendanceTransaction.RawPayload</c> (CLAUDE.md §1.10).
 /// </summary>
 /// <remarks>
-/// This is a backstop. Each provider adapter must still allowlist the fields it copies; a
+/// This is a backstop. Each vendor adapter must still allowlist the fields it copies; a
 /// deny-list cannot catch a template stored under an innocuous name.
 /// </remarks>
 public interface IRawPayloadSanitizer

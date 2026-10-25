@@ -22,6 +22,16 @@ namespace robeem.DataModel
 
         public AttendanceIntegration? Integration { get; set; }
 
+        /// <summary>Gets or sets the connection the run read from; null for a run with none (reprocessing) or one from before connections existed.</summary>
+        public int? ConnectionId { get; set; }
+
+        public AttendanceConnection? Connection { get; set; }
+
+        /// <summary>Gets or sets the payload format the run read its file by; null when it used none (an adapter) or the run predates the record.</summary>
+        public int? PayloadFormatId { get; set; }
+
+        public AttendancePayloadFormat? PayloadFormat { get; set; }
+
         public AttendanceBatchType BatchType { get; set; }
 
         public DateTime StartedAt { get; set; } = DateTime.Now;

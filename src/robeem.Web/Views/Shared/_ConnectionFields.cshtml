@@ -1,0 +1,84 @@
+@model ConnectionFieldsModel
+@{
+    // Errors of the dynamic settings fields: they have no tag helper of their own, so they are listed here.
+    var settingErrors = ViewData.ModelState
+        .Where(entry => entry.Key.StartsWith("Input.Settings[", StringComparison.Ordinal) && entry.Value is { Errors.Count: > 0 })
+        .SelectMany(entry => entry.Value!.Errors.Select(error => error.ErrorMessage))
+        .ToList();
+}
+
+<div class="col-md-6" id="connection-auth">
+    <label class="form-label" for="Input_AuthMethod">Authentication</label>
+    <select name="Input.AuthMethod" id="Input_AuthMethod" class="form-select"></select>
+    <div class="form-text">How the other end is trusted. The credential itself is never typed here: the secret reference names it.</div>
+    @Html.ValidationMessage("Input.AuthMethod", new { @class = "text-danger small" })
+</div>
+
+<div class="col-12" id="connection-settings-card">
+    <div class="row g-3" id="connection-settings"></div>
+    @foreach (var message in settingErrors)
+    {
+        <div class="text-danger small">@message</div>
+    }
+</div>
+
+<script>
+    (function () {
+        var descriptors = @Json.Serialize(Model.Descriptors);
+        var saved = @Json.Serialize(Model.Settings);
+        var wantedAuth = @Json.Serialize(Model.AuthMethod ?? string.Empty);
+        var transport = document.getElementById('@Model.TransportSelectId');
+        var auth = document.getElementById('Input_AuthMethod');
+        var authBox = document.getElementById('connection-auth');
+        var box = document.getElementById('connection-settings');
+
+        function text(tag, content, className) {
+            var element = document.createElement(tag);
+            element.textContent = content;
+            if (className) { element.className = className; }
+            return element;
+        }
+
+        function render() {
+            var descriptor = descriptors.filter(function (d) { return d.transport === transport.value; })[0];
+            var methods = descriptor ? descriptor.authMethods : ['None'];
+            var fields = descriptor ? descriptor.fields : [];
+
+            // The authentication follows the transport; one that is not allowed there gives way to the transport's usual one.
+            var keep = auth.value || wantedAuth;
+            auth.innerHTML = '';
+            methods.forEach(function (method) {
+                var option = document.createElement('option');
+                option.value = method;
+                option.textContent = method.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+                auth.appendChild(option);
+            });
+            auth.value = methods.indexOf(keep) >= 0 ? keep : methods[0];
+            authBox.hidden = methods.length === 1 && methods[0] === 'None';
+
+            box.innerHTML = '';
+            fields.forEach(function (field) {
+                var column = document.createElement('div');
+                column.className = 'col-md-6';
+                var id = 'setting_' + field.key;
+                var label = text('label', field.label + (field.required ? ' *' : ''), 'form-label');
+                label.htmlFor = id;
+                var input = document.createElement('input');
+                input.id = id;
+                input.name = 'Input.Settings[' + field.key + ']';
+                input.className = 'form-control';
+                input.autocomplete = 'off';
+                input.type = field.kind === 'number' ? 'number' : 'text';
+                if (field.kind === 'number') { input.min = 1; input.max = 65535; }
+                input.value = saved[field.key] || '';
+                column.appendChild(label);
+                column.appendChild(input);
+                column.appendChild(text('div', field.help, 'form-text'));
+                box.appendChild(column);
+            });
+        }
+
+        transport.addEventListener('change', function () { wantedAuth = ''; auth.value = ''; render(); });
+        render();
+    })();
+</script>

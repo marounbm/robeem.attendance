@@ -1,0 +1,51 @@
+@model VendorFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Vendor</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.DisplayName" class="form-label"></label>
+            <input asp-for="Input.DisplayName" class="form-control" autocomplete="off" placeholder="e.g. ZKTeco" />
+            <span asp-validation-for="Input.DisplayName" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.VendorKey" class="form-label"></label>
+            @if (Model.Id is null)
+            {
+                <input asp-for="Input.VendorKey" class="form-control font-monospace" autocomplete="off" placeholder="e.g. my-clock" />
+                <div class="form-text">
+                    Lower-case letters, digits, <code>.</code> <code>_</code> <code>-</code>. Can't be changed later: every punch records it as its source.
+                </div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Input.VendorKey" />
+                <input class="form-control font-monospace" value="@Model.Input.VendorKey" disabled />
+                <div class="form-text">The key can't be changed: the punches it produced are tied to it.</div>
+            }
+            <span asp-validation-for="Input.VendorKey" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Manufacturer" class="form-label"></label>
+            <input asp-for="Input.Manufacturer" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.Manufacturer" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.WebsiteUrl" class="form-label"></label>
+            <input asp-for="Input.WebsiteUrl" class="form-control" autocomplete="off" placeholder="https://" />
+            <span asp-validation-for="Input.WebsiteUrl" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <div class="form-check">
+                <input asp-for="Input.IsActive" class="form-check-input" />
+                <label asp-for="Input.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-text">
+                An inactive vendor can't be chosen for a new integration; integrations that already use it keep working.
+                How the vendor's data arrives is set on its <a asp-controller="Connectors" asp-action="Index">connectors</a>.
+            </div>
+        </div>
+    </div>
+</div>

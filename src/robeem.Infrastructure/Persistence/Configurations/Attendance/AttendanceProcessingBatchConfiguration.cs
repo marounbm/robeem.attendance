@@ -10,5 +10,7 @@ public sealed class AttendanceProcessingBatchConfiguration : IEntityTypeConfigur
     {
         builder.Property(b => b.BatchType).HasConversion<string>().HasMaxLength(32);
         builder.Property(b => b.Status).HasConversion<string>().HasMaxLength(32);
+        builder.HasOne(b => b.Connection).WithMany().HasForeignKey(b => b.ConnectionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(b => b.PayloadFormat).WithMany().HasForeignKey(b => b.PayloadFormatId).OnDelete(DeleteBehavior.Restrict);
     }
 }

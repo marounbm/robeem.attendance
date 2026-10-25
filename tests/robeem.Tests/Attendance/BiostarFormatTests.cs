@@ -85,9 +85,9 @@ public sealed class BiostarFormatTests : IDisposable
     public void Interpreter_ReturnsNull_ForALabelItDoesNotKnow() =>
         Assert.Null(new CustomFormatInterpreter(Format()).MapEventType("Lunch", null));
 
-    private AttendanceFileFormat Format()
+    private AttendancePayloadFormat Format()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceFileFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "Suprema BioStar 2 export");
+        return db.AttendancePayloadFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "Suprema BioStar 2 export");
     }
 }

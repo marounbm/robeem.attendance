@@ -3,14 +3,15 @@
 <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
 @{
-    // Each provider's transports, so the choice offers only what the chosen provider can do. A transport an
+    // Each connector's transports, so the choice offers only what the chosen connector can do. A transport an
     // administrator switched off is offered only to the integration that already has it.
-    var supportedByProvider = Model.Providers.ToDictionary(
+    var supportedByConnector =Model.Connectors.ToDictionary(
         p => p.Id.ToString(),
         p => p.SupportedTransports.Where(t => t.IsActive || t.Key == Model.Input.Transport).Select(t => t.Key).ToArray());
-    var transports = Model.Providers.SelectMany(p => p.SupportedTransports).GroupBy(t => t.Key).Select(g => g.First()).ToList();
+    var transports = Model.Connectors.SelectMany(p => p.SupportedTransports).GroupBy(t => t.Key).Select(g => g.First()).ToList();
     var pullingTransports = transports.Where(t => t.IsPull).Select(t => t.Key).ToArray();
-    var fileTransports = transports.Where(t => t.UsesFileFormat).Select(t => t.Key).ToArray();
+    var fileTransports = transports.Where(t => t.UsesPayloadFormat).Select(t => t.Key).ToArray();
+    var encryptedConnectors = Model.Connectors.Where(p => p.EncryptionKind != "None").Select(p => p.Id.ToString()).ToArray();
 }
 
 <div class="card mb-3">
@@ -22,30 +23,30 @@
             <span asp-validation-for="Input.DisplayName" class="text-danger small"></span>
         </div>
         <div class="col-md-6">
-            <label asp-for="Input.ProviderId" class="form-label"></label>
+            <label asp-for="Input.ConnectorId" class="form-label"></label>
             @if (Model.Id is null)
             {
-                <select asp-for="Input.ProviderId" class="form-select">
-                    @foreach (var provider in Model.Providers)
+                <select asp-for="Input.ConnectorId" class="form-select">
+                    @foreach (var connector in Model.Connectors)
                     {
-                        <option value="@provider.Id" disabled="@(!provider.IsActive)" selected="@(provider.Id == Model.Input.ProviderId)">
-                            @provider.DisplayName
+                        <option value="@connector.Id" disabled="@(!connector.IsActive)" selected="@(connector.Id == Model.Input.ConnectorId)">
+                            @connector.VendorName — @connector.DisplayName
                         </option>
                     }
                 </select>
-                <div class="form-text">Only a usable provider can be chosen: active, with a default file format or a code adapter. <a asp-controller="Providers" asp-action="Index">Manage providers.</a></div>
-                @foreach (var vendor in Model.Providers.Where(p => p.Manufacturer.Length > 0))
+                <div class="form-text">Only a usable connector can be chosen: active, with a default payload format or a code adapter. <a asp-controller="Connectors" asp-action="Index">Manage connectors.</a></div>
+                @foreach (var connector in Model.Connectors.Where(p => p.Manufacturer.Length > 0).GroupBy(p => p.VendorKey).Select(g => g.First()))
                 {
-                    <div class="form-text">@vendor.DisplayName: made by @vendor.Manufacturer@(vendor.WebsiteUrl.Length > 0 ? " (" + vendor.WebsiteUrl + ")" : string.Empty).</div>
+                    <div class="form-text">@connector.VendorName: made by @connector.Manufacturer@(connector.WebsiteUrl.Length > 0 ? " (" + connector.WebsiteUrl + ")" : string.Empty).</div>
                 }
             }
             else
             {
-                <input type="hidden" asp-for="Input.ProviderId" />
-                <input class="form-control" value="@(Model.Providers.FirstOrDefault(p => p.Id == Model.Input.ProviderId)?.DisplayName)" disabled />
-                <div class="form-text">The provider can't be changed: the devices and punches belong to its adapter.</div>
+                <input type="hidden" asp-for="Input.ConnectorId" />
+                <input class="form-control" value="@(Model.Connectors.FirstOrDefault(p => p.Id == Model.Input.ConnectorId) is { } chosen ? chosen.VendorName + " — " + chosen.DisplayName : string.Empty)" disabled />
+                <div class="form-text">The connector can't be changed: the devices and punches belong to its adapter.</div>
             }
-            <span asp-validation-for="Input.ProviderId" class="text-danger small"></span>
+            <span asp-validation-for="Input.ConnectorId" class="text-danger small"></span>
         </div>
         <div class="col-md-6">
             <label asp-for="Input.Transport" class="form-label"></label>
@@ -57,25 +58,26 @@
             </select>
             <div class="form-text">
                 <strong>Manual file upload</strong>: HR uploads the exported file on the <em>Upload attendance</em> screen; only such
-                integrations are listed there. It is available for every provider. The other choices are listed only as far as the
-                chosen provider supports them. <a asp-controller="Transports" asp-action="Index">Rename or switch off a transport.</a>
+                integrations are listed there. It is available for every connector. The other choices are listed only as far as the
+                chosen connector supports them. <a asp-controller="Transports" asp-action="Index">Rename or switch off a transport.</a>
             </div>
             <span asp-validation-for="Input.Transport" class="text-danger small"></span>
         </div>
+        <partial name="_ConnectionFields" model="@(new ConnectionFieldsModel { AuthMethod = Model.Input.AuthMethod, Settings = Model.Input.Settings, Descriptors = Model.Descriptors, TransportSelectId = "integration-transport" })" />
         <div class="col-md-6" id="integration-file-format">
-            <label asp-for="Input.FileFormatId" class="form-label"></label>
-            <select asp-for="Input.FileFormatId" class="form-select">
-                <option value="">The provider's default file format</option>
-                @foreach (var format in Model.FileFormats)
+            <label asp-for="Input.PayloadFormatId" class="form-label"></label>
+            <select asp-for="Input.PayloadFormatId" class="form-select">
+                <option value="">The connector's default payload format</option>
+                @foreach (var format in Model.PayloadFormats)
                 {
-                    <option value="@format.Id" selected="@(format.Id == Model.Input.FileFormatId)">@format.Name</option>
+                    <option value="@format.Id" selected="@(format.Id == Model.Input.PayloadFormatId)">@format.Name</option>
                 }
             </select>
             <div class="form-text">
-                How the uploaded file is read. A provider with no default file format needs one chosen here before a file can be uploaded.
-                <a asp-controller="FileFormats" asp-action="Index">Define a file format.</a>
+                How the uploaded file is read. A connector with no default payload format needs one chosen here before a file can be uploaded.
+                <a asp-controller="PayloadFormats" asp-action="Index">Define a file format.</a>
             </div>
-            <span asp-validation-for="Input.FileFormatId" class="text-danger small"></span>
+            <span asp-validation-for="Input.PayloadFormatId" class="text-danger small"></span>
         </div>
         <div class="col-md-6" id="integration-default-device">
             <label asp-for="Input.DefaultDeviceId" class="form-label"></label>
@@ -100,6 +102,17 @@
                 Never type the secret itself here. Leave it empty for an integration you only upload files to.
             </div>
             <span asp-validation-for="Input.ConnectionConfigRef" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6" id="integration-payload-key">
+            <label asp-for="Input.PayloadKeyRef" class="form-label"></label>
+            <input asp-for="Input.PayloadKeyRef" class="form-control" autocomplete="off" placeholder="e.g. acme-clock-file-key" />
+            <div class="form-text">
+                This connector's files arrive encrypted. Give the <em>name</em> the decryption key is kept under in configuration, apart from the
+                connection secret. PGP: the armored private key (or JSON with <code>privateKey</code> and <code>passphrase</code>). AES: JSON with
+                <code>key</code>, optional <code>iv</code> and <code>mode</code> (<code>cbc</code> or <code>gcm</code>), keys in base64. Password-protected zip: the password.
+                Never type the key itself here.
+            </div>
+            <span asp-validation-for="Input.PayloadKeyRef" class="text-danger small"></span>
         </div>
         <div class="col-md-6">
             <label asp-for="Input.TimeZoneId" class="form-label"></label>
@@ -142,17 +155,19 @@
 
 <script>
     (function () {
-        var supported = @Json.Serialize(supportedByProvider);
+        var supported = @Json.Serialize(supportedByConnector);
         var pulling = @Json.Serialize(pullingTransports);
         var fileBased = @Json.Serialize(fileTransports);
-        var provider = document.querySelector('[name="Input.ProviderId"]');
+        var encrypted = @Json.Serialize(encryptedConnectors);
+        var payloadKey = document.getElementById('integration-payload-key');
+        var connector = document.querySelector('[name="Input.ConnectorId"]');
         var transport = document.getElementById('integration-transport');
         var schedule = document.getElementById('integration-schedule');
         var fileFormat = document.getElementById('integration-file-format');
         var defaultDevice = document.getElementById('integration-default-device');
 
         function refresh() {
-            var allowed = supported[provider.value] || [];
+            var allowed = supported[connector.value] || [];
             Array.prototype.forEach.call(transport.options, function (option) {
                 var ok = allowed.indexOf(option.value) >= 0;
                 option.hidden = !ok;
@@ -164,9 +179,10 @@
             schedule.hidden = pulling.indexOf(transport.value) < 0;
             fileFormat.hidden = fileBased.indexOf(transport.value) < 0;
             defaultDevice.hidden = fileBased.indexOf(transport.value) < 0;
+            payloadKey.hidden = encrypted.indexOf(connector.value) < 0;
         }
 
-        provider.addEventListener('change', refresh);
+        connector.addEventListener('change', refresh);
         transport.addEventListener('change', refresh);
         refresh();
     })();

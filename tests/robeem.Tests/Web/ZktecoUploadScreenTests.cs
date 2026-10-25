@@ -41,7 +41,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
 
             var integration = new AttendanceIntegration
             {
-                Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
+                Connector = AttendanceTestData.Seeded(db, "zkteco"),
                 DisplayName = "Head office U350",
             };
             db.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" });
@@ -73,7 +73,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
         var model = (UploadViewModel)((ViewResult)await controller.Index(_integrationId, CancellationToken.None)).Model!;
 
         var target = Assert.IsType<robeem.Contracts.Attendance.UploadTarget>(model.Selected);
-        Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], target.FileFormats);
+        Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], target.FileExtensions);
         Assert.Contains(target.Layout.Fields, f => f.Source == "Date/Time");
         Assert.Contains(target.Layout.Fields, f => f.Source == "No. / ID Number");
     }

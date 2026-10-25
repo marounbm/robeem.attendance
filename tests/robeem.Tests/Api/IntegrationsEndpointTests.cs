@@ -32,12 +32,12 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     public static IEnumerable<object[]> Endpoints() =>
     [
         ["GET", "api/attendance/integrations", null!],
-        ["GET", "api/attendance/integrations/providers", null!],
+        ["GET", "api/attendance/integrations/connectors", null!],
         ["GET", "api/attendance/integrations/employee-options", null!],
         ["GET", "api/attendance/integrations/1", null!],
         ["GET", "api/attendance/integrations/1/input", null!],
-        ["POST", "api/attendance/integrations", """{"providerId":1,"displayName":"x"}"""],
-        ["PUT", "api/attendance/integrations/1", """{"providerId":1,"displayName":"x"}"""],
+        ["POST", "api/attendance/integrations", """{"vendorId":1,"displayName":"x"}"""],
+        ["PUT", "api/attendance/integrations/1", """{"vendorId":1,"displayName":"x"}"""],
         ["GET", "api/attendance/integrations/devices", null!],
         ["GET", "api/attendance/integrations/1/devices", null!],
         ["GET", "api/attendance/integrations/1/devices/2", null!],
@@ -82,10 +82,10 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     public async Task Create_Answers201WithTheId_AndARefusalAs400KeyedByTheInputsProperties()
     {
         _integrations.Result = SaveResult.Success(42);
-        var created = await Send("POST", "api/attendance/integrations", Admin, """{"providerId":1,"displayName":"HQ"}""");
+        var created = await Send("POST", "api/attendance/integrations", Admin, """{"vendorId":1,"displayName":"HQ"}""");
 
         _integrations.Result = SaveResult.Invalid("ConnectionConfigRef", "Give the name the secret is kept under.");
-        var refused = await Send("POST", "api/attendance/integrations", Admin, """{"providerId":1,"displayName":"HQ"}""");
+        var refused = await Send("POST", "api/attendance/integrations", Admin, """{"vendorId":1,"displayName":"HQ"}""");
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal(42, (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.Id);
@@ -98,11 +98,11 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     public async Task UpdateAndDelete_Answer204_404_Or400()
     {
         _integrations.Result = SaveResult.Success(1);
-        Assert.Equal(HttpStatusCode.NoContent, (await Send("PUT", "api/attendance/integrations/1", Admin, """{"providerId":1,"displayName":"HQ"}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send("PUT", "api/attendance/integrations/1", Admin, """{"vendorId":1,"displayName":"HQ"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await Send("DELETE", "api/attendance/integrations/1/devices/2", Admin, null)).StatusCode);
 
         _integrations.Result = SaveResult.Missing();
-        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/integrations/9", Admin, """{"providerId":1,"displayName":"HQ"}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/integrations/9", Admin, """{"vendorId":1,"displayName":"HQ"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("DELETE", "api/attendance/integrations/1/devices/2/mappings/9", Admin, null)).StatusCode);
 
         _integrations.Result = SaveResult.Invalid("id", "This device has punches on record, so it can't be deleted.");
@@ -147,7 +147,7 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RunNow_Is200WithTheOutcome_EvenWhenTheProviderFailed()
+    public async Task RunNow_Is200WithTheOutcome_EvenWhenTheVendorFailed()
     {
         _integrations.Outcome = new SyncOutcomeResponse { Status = "Failed", Message = "vendor is down" };
 
@@ -208,7 +208,7 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
 
         public Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken) => Record<IntegrationInput?>("input", Exists ? new IntegrationInput() : null);
 
-        public Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken) => Record<IReadOnlyList<ProviderOption>>("providers", []);
+        public Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken) => Record<IReadOnlyList<ConnectorOption>>("connectors", []);
 
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) => Record<IReadOnlyList<EmployeeOption>>("employeeOptions", []);
 
@@ -240,8 +240,8 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
             return Record<IReadOnlyList<RawNormalizedMappingItem>?>("rawMapping", Exists ? [] : null);
         }
 
-        public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
-            Record<ProviderMappingGuide?>("rawMappingGuide", Exists ? new ProviderMappingGuide { ProviderKey = "x" } : null);
+        public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+            Record<VendorMappingGuide?>("rawMappingGuide", Exists ? new VendorMappingGuide { VendorKey = "x" } : null);
 
         public Task<SyncOutcomeResponse?> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken)
         {

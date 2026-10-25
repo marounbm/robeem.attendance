@@ -10,7 +10,7 @@
         <h1 class="h3 mb-1">Raw → normalized</h1>
         <div class="text-muted">
             <a asp-action="Details" asp-route-id="@integration.Id">@integration.DisplayName</a>
-            · @integration.ProviderName (<code>@guide.ProviderKey</code>)
+            · @integration.VendorName (<code>@guide.VendorKey</code>)
         </div>
     </div>
 </div>
@@ -18,9 +18,9 @@
 <partial name="_StatusMessage" />
 
 <div class="card mb-3">
-    <div class="card-header">How @guide.ProviderKey maps its data</div>
+    <div class="card-header">How @guide.VendorKey maps its data</div>
     <div class="card-body">
-        <partial name="_ProviderLayout" model="guide" />
+        <partial name="_VendorLayout" model="guide" />
     </div>
 </div>
 

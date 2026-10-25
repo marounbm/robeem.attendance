@@ -9,7 +9,7 @@ using robeem.Contracts.Attendance;
 namespace robeem.Api.Controllers;
 
 /// <summary>
-/// The inbound webhook of the <c>generic-webhook</c> provider. The one attendance endpoint with no
+/// The inbound webhook of the <c>generic-webhook</c> vendor. The one attendance endpoint with no
 /// signed-in user: the sender is not a person and has no token. It authenticates by a signature
 /// instead (<see cref="SignatureHeader"/>, HMAC-SHA256 of the raw body under the integration's secret).
 /// </summary>
@@ -30,6 +30,9 @@ public sealed class AttendanceWebhookController : ControllerBase
 {
     public const string SignatureHeader = "X-Signature";
 
+    /// <summary>The header a connection authenticated by an API key presents it in.</summary>
+    public const string ApiKeyHeader = "X-Api-Key";
+
     /// <summary>The largest body accepted.</summary>
     public const int MaxBodyBytes = 1024 * 1024;
 
@@ -42,9 +45,17 @@ public sealed class AttendanceWebhookController : ControllerBase
         _scopes = scopes;
     }
 
-    /// <summary>Takes the pushed events into the integration's raw transactions: 202 with the batch counts.</summary>
+    /// <summary>Takes the pushed events into the integration's raw transactions through its default webhook connection: 202 with the batch counts.</summary>
     [HttpPost("{tenantId}/{integrationId:int}")]
-    public async Task<ActionResult<AttendanceIngestionResult>> Receive(string tenantId, int integrationId, CancellationToken cancellationToken)
+    public Task<ActionResult<AttendanceIngestionResult>> Receive(string tenantId, int integrationId, CancellationToken cancellationToken) =>
+        ReceiveAsync(tenantId, integrationId, null, cancellationToken);
+
+    /// <summary>As <see cref="Receive"/>, through the named webhook connection of the integration.</summary>
+    [HttpPost("{tenantId}/{integrationId:int}/c/{connectionId:int}")]
+    public Task<ActionResult<AttendanceIngestionResult>> ReceiveByConnection(string tenantId, int integrationId, int connectionId, CancellationToken cancellationToken) =>
+        ReceiveAsync(tenantId, integrationId, connectionId, cancellationToken);
+
+    private async Task<ActionResult<AttendanceIngestionResult>> ReceiveAsync(string tenantId, int integrationId, int? connectionId, CancellationToken cancellationToken)
     {
         var body = await ReadBodyAsync(cancellationToken);
         if (body is null)
@@ -59,7 +70,12 @@ public sealed class AttendanceWebhookController : ControllerBase
 
         await using var scope = _scopes.CreateScope(tenant.Id);
         var receipt = await scope.ServiceProvider.GetRequiredService<IWebhookReceiver>()
-            .ReceiveAsync(integrationId, body, Request.Headers[SignatureHeader].ToString(), cancellationToken);
+            .ReceiveAsync(
+                integrationId,
+                connectionId,
+                body,
+                new WebhookCredentials(Request.Headers[SignatureHeader].ToString(), Request.Headers[ApiKeyHeader].ToString(), Request.Headers.Authorization.ToString()),
+                cancellationToken);
 
         return receipt.Outcome switch
         {

@@ -49,7 +49,7 @@ Web             → Contracts
 
 Consequences worth remembering:
 
-- **Application never references Infrastructure.** It declares what it needs as interfaces (`IRobeemDbContext`, `ITenantScopeFactory`, `ISecretStore`, `IAttendanceProvider`, …) and Infrastructure supplies them.
+- **Application never references Infrastructure.** It declares what it needs as interfaces (`IRobeemDbContext`, `ITenantScopeFactory`, `ISecretStore`, `IAttendanceAdapter`, …) and Infrastructure supplies them.
 - **Web never references Application, Infrastructure or Domain.** The only way to data is HTTP to the Api.
 - **The Api returns DTOs, never entities.**
 - **HR does not depend on Attendance.** Attendance may use HR types (`Profile`, `TimeSchedule*`); never the reverse.
@@ -68,7 +68,7 @@ Plain entity classes in the namespace `robeem.DataModel`. No dependencies, no be
 
 | Group | Entities |
 |---|---|
-| Configuration | `AttendanceProvider` (vendor catalog), `AttendanceIntegration` (a tenant's connection to a vendor), `AttendanceDevice`, `AttendancePolicy`, `ExternalEmployeeIdMapping` |
+| Configuration | `AttendanceVendor` and `AttendanceConnectorDefinition` (the vendor catalog: the company, and each software or protocol it offers), `AttendanceIntegration` (a tenant's use of a connector) with its `AttendanceConnection`s (where the data comes from and how that is authenticated), `AttendanceDevice`, `AttendancePolicy`, `ExternalEmployeeIdMapping` |
 | Ingestion | `AttendanceProcessingBatch`, `RawAttendanceTransaction` (immutable) |
 | Normalization | `NormalizedAttendanceTransaction` |
 | Processing | `AttendanceRecord` (versioned), `AttendanceDaySummary`, `AttendanceException` |
@@ -101,7 +101,7 @@ All business rules live here. Services take `IRobeemDbContext` (an abstraction o
 | Payroll | `IPayrollAttendanceExtract` (the **only** way payroll reads attendance; approved, exception-free days of an open pay period), `IPayPeriodService` |
 | Cross-cutting | `ICurrentUser`, `ISecretStore`, `IAttendanceAuditTrail`, `ITenantContext`, `ITenantRegistry`, `ITenantScopeFactory`, `ISeedContributor` |
 
-It also declares the two **extension points for vendors**: `IAttendanceProvider` (how to fetch data from a vendor) and `IAttendanceEventInterpreter` (how that vendor writes timestamps and event types). Registration happens in `AddRobeemApplication()`.
+It also declares the two **extension points for vendors**: `IAttendanceAdapter` (how to fetch data from a vendor) and `IAttendanceEventInterpreter` (how that vendor writes timestamps and event types). Registration happens in `AddRobeemApplication()`.
 
 ### `robeem.Infrastructure` — the outside world
 
@@ -109,11 +109,11 @@ Implements the interfaces Application declared.
 
 - `Persistence/` — `RobeemDbContext` (EF Core + Npgsql), entity configurations, migrations, `TenantDatabaseInitializer` (migrates and seeds every tenant database at startup in Development).
 - `Tenancy/` — `TenantRegistry` (tenants from configuration), `TenantContext` (the current tenant of a scope), `TenantScopeFactory` (a DI scope bound to one tenant, used by background jobs).
-- `Attendance/Providers/` — the code adapters, each an `IAttendanceProvider` plus an `IAttendanceEventInterpreter`, only for a vendor that is not read from files: `SupremaBiostar` (HTTPS pull) and `GenericWebhook` (push). A vendor of exported files (generic CSV, ZKTeco's `.xls` export) has no adapter: it is a provider row plus an `AttendanceFileFormat` row, read by `CustomFormatFileReader` through `TabularFile`. Providers, file formats, device types and the names of the transports are tenant data, managed on the Integrations screens.
+- `Attendance/Providers/` — the code adapters, each an `IAttendanceAdapter` plus an `IAttendanceEventInterpreter`, only for a vendor that is not read from files: `SupremaBiostar` (HTTPS pull) and `GenericWebhook` (push). A vendor of exported files (generic CSV, ZKTeco's `.xls` export, JSON or XML exports) has no adapter: it is a vendor row, a connector row and an `AttendancePayloadFormat` row, read by `CustomFormatFileReader` (through `TabularFile` or `StructuredFile`; an encrypted file is first opened by an `IPayloadDecryptor`). Vendors, connectors, payload formats, device types and the names of the transports are tenant data, managed on the Integrations screens.
 - `Security/` — `ConfigurationSecretStore` (resolves a secret reference to the secret; never logs it).
 - `Seeding/` — `SeedDataRunner`, which runs `ISeedContributor`s and rejects any that touch an entity not marked `ISeedData`.
 
-`AddRobeemInfrastructure()` registers all of it, including each adapter and interpreter as **keyed services under the vendor's `ProviderKey`**.
+`AddRobeemInfrastructure()` registers all of it, including each adapter and interpreter as **keyed services under the connector's `AdapterKey`**.
 
 ### `robeem.Api` — the back end and composition root
 
@@ -199,7 +199,7 @@ Application services depend on interfaces; the Api's `Program.cs` is the only pl
 | `IRobeemDbContext` | `RobeemDbContext` (EF Core, Npgsql, one connection string per tenant) |
 | `ITenantContext`, `ITenantRegistry`, `ITenantScopeFactory` | `TenantContext`, `TenantRegistry`, `TenantScopeFactory` |
 | `ISecretStore` | `ConfigurationSecretStore` |
-| `IAttendanceProvider`, `IAttendanceEventInterpreter` | one pair per vendor, **keyed by `ProviderKey`** |
+| `IAttendanceAdapter`, `IAttendanceEventInterpreter` | one pair per connector, **keyed by `AdapterKey`** |
 | `ISeedContributor` | run by `SeedDataRunner` |
 
 Vendor adapters are looked up by key at run time: ingestion resolves the adapter and normalization resolves the interpreter using the integration's provider key. Adding a vendor is two classes and two registrations; processing, exception, correction and payroll code never change.
@@ -246,7 +246,7 @@ flowchart LR
         Pull["Scheduled pull<br/>(BioStar, ZKTeco…)"]
         Hook[Signed webhook]
     end
-    CSV & Pull & Hook -->|"IAttendanceProvider<br/>+ sanitizer allow-list"| Raw[("RawAttendanceTransaction<br/>immutable")]
+    CSV & Pull & Hook -->|"IAttendanceAdapter<br/>+ sanitizer allow-list"| Raw[("RawAttendanceTransaction<br/>immutable")]
     Raw -->|"NormalizationJob<br/>(async)"| Norm[("NormalizedAttendanceTransaction<br/>duplicates flagged")]
     Norm --> Eng["Processing engine<br/>+ schedule + policy"]
     Eng --> Rec[("AttendanceRecord<br/>DaySummary")]
@@ -292,7 +292,7 @@ Invariants this shape guarantees (full list in [`CLAUDE.md`](CLAUDE.md) §1):
 
 ## 6. Extending the system
 
-- **A new time-clock vendor** — implement `IAttendanceProvider` and `IAttendanceEventInterpreter` in `robeem.Infrastructure/Attendance/Providers`, register both as keyed services under the same `ProviderKey`, and flip the vendor's seed flag in `AttendanceSeedContributor`. Nothing else changes.
+- **A new time-clock vendor** — implement `IAttendanceAdapter` and `IAttendanceEventInterpreter` in `robeem.Infrastructure/Attendance/Providers`, register both as keyed services under the connector's `AdapterKey`, and add the vendor and connector to `AttendanceSeedData`. Nothing else changes.
 - **A new screen** — add DTOs to Contracts, a service to Application (register it in `AddRobeemApplication`), a controller with role attributes to Api, then an `I…ApiClient`/`…ApiClient` pair, a controller and views to Web, and one `NavItem` in `NavigationMenu`.
 - **A new entity** — put it in `robeem.Domain`, implement `ITenantScoped`, add its `DbSet` to `IRobeemDbContext` and `RobeemDbContext`, add an `IEntityTypeConfiguration`, then a migration.
 

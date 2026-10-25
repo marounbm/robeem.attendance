@@ -103,7 +103,7 @@ public sealed class IntegrationSyncJob : IScheduledJob
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                // The service turns a provider failure into an outcome; this is something worse (the
+                // The service turns a vendor failure into an outcome; this is something worse (the
                 // database, say). It must not keep this tenant's other integrations from syncing.
                 _logger.LogError(ex, "Sync of integration {IntegrationId} of tenant {TenantId} threw.", integration.IntegrationId, tenantId);
                 synced++;

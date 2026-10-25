@@ -6,8 +6,8 @@ namespace robeem.Contracts.Attendance;
 public sealed class IntegrationInput
 {
     [Required]
-    [Display(Name = "Provider")]
-    public int ProviderId { get; set; }
+    [Display(Name = "Connector")]
+    public int ConnectorId { get; set; }
 
     [Required]
     [StringLength(255)]
@@ -22,15 +22,34 @@ public sealed class IntegrationInput
     [Display(Name = "Secret reference")]
     public string? ConnectionConfigRef { get; set; }
 
-    /// <summary>Gets or sets how the integration receives attendance: an <c>AttendanceTransport</c> name the provider supports, e.g. FileUpload (manual upload), Webhook or RestApi.</summary>
+    /// <summary>
+    /// Gets or sets the name under which the key that decrypts this integration's files is kept. Required when the connector's
+    /// payload is encrypted, empty otherwise; a reference, never the key.
+    /// </summary>
+    [StringLength(255)]
+    [Display(Name = "Decryption key reference")]
+    public string? PayloadKeyRef { get; set; }
+
+    /// <summary>Gets or sets how the integration receives attendance: an <c>AttendanceTransport</c> name the connector supports, e.g. FileUpload (manual upload), Webhook or RestApi.</summary>
     [Required]
     [StringLength(32)]
     [Display(Name = "Receives attendance by")]
     public string Transport { get; set; } = "FileUpload";
 
-    /// <summary>Gets or sets the custom file format uploads are read by; null for the provider's own layout. Only for FileUpload.</summary>
+    /// <summary>
+    /// Gets or sets how the default connection is authenticated: a <c>ConnectionAuthMethod</c> name the transport allows. Empty:
+    /// the transport's usual one (none for a file upload).
+    /// </summary>
+    [StringLength(32)]
+    [Display(Name = "Authentication")]
+    public string? AuthMethod { get; set; }
+
+    /// <summary>Gets or sets the default connection's non-secret settings, by the keys <see cref="TransportDescriptorItem.Fields"/> declares for the transport.</summary>
+    public Dictionary<string, string> Settings { get; set; } = [];
+
+    /// <summary>Gets or sets the custom file format uploads are read by; null for the connector's default layout. Only for FileUpload.</summary>
     [Display(Name = "File format")]
-    public int? FileFormatId { get; set; }
+    public int? PayloadFormatId { get; set; }
 
     /// <summary>Gets or sets the device (one of this integration's) every punch of an uploaded file is attributed to; null to look up the file's own device ids. Only for FileUpload, and only once the device exists.</summary>
     [Display(Name = "Device for uploaded files")]

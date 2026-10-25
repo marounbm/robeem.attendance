@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using SmartEnum = robeem.System.Contract.SmartEnum;
@@ -6,8 +7,8 @@ using SmartEnum = robeem.System.Contract.SmartEnum;
 namespace robeem.DataModel
 {
     /// <summary>
-    /// The tenant's configured connection to an <see cref="AttendanceProvider"/> (study §12.1). It
-    /// carries the incremental-sync high-water mark.
+    /// The tenant's configured connection to a vendor, made with one of the vendor's
+    /// <see cref="AttendanceConnectorDefinition"/>s (study §12.1). It carries the incremental-sync high-water mark.
     /// </summary>
     [Serializable]
     [Table(nameof(AttendanceIntegration), Schema = nameof(SmartEnum.Module.Attendance))]
@@ -18,42 +19,35 @@ namespace robeem.DataModel
         public string TenantId { get; set; } = string.Empty;
 
         [Required]
-        public int ProviderId { get; set; }
+        public int ConnectorId { get; set; }
 
-        public AttendanceProvider? Provider { get; set; }
+        public AttendanceConnectorDefinition? Connector { get; set; }
 
         [Required]
         [MaxLength(255)]
         public string DisplayName { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets a reference (key) to the connection settings in secrets storage. Never a
-        /// raw secret.
+        /// Gets or sets a reference (key) to the secret that decrypts this integration's files, used when its connector's
+        /// <see cref="AttendanceConnectorDefinition.EncryptionKind"/> is not <see cref="PayloadEncryptionKind.None"/>. Never a raw
+        /// secret; resolved by <c>ISecretStore</c> for one call, apart from the connections' <see cref="AttendanceConnection.SecretRef"/>.
         /// </summary>
-        /// <remarks>Resolved to the secret by <c>ISecretStore</c>, under <c>Secrets:{tenantId}:{reference}</c> in configuration (CLAUDE.md §2.8).</remarks>
         [MaxLength(255)]
-        public string ConnectionConfigRef { get; set; } = string.Empty;
+        public string PayloadKeyRef { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets how this integration receives attendance. One of the provider's
-        /// <see cref="AttendanceProvider.Transports"/>, or file upload, which any provider can be given; only
-        /// <see cref="AttendanceTransport.FileUpload"/> integrations are offered on the Upload attendance screen.
+        /// Gets or sets the file layout uploads are read by; null for the connector's
+        /// <see cref="AttendanceConnectorDefinition.DefaultPayloadFormat"/>.
+        /// Only meaningful when the default connection's transport is <see cref="AttendanceTransport.FileUpload"/>.
         /// </summary>
-        public AttendanceTransport Transport { get; set; } = AttendanceTransport.FileUpload;
+        public int? PayloadFormatId { get; set; }
 
-        /// <summary>
-        /// Gets or sets the file layout uploads are read by; null for the provider's
-        /// <see cref="AttendanceProvider.DefaultFileFormat"/>.
-        /// Only meaningful when <see cref="Transport"/> is <see cref="AttendanceTransport.FileUpload"/>.
-        /// </summary>
-        public int? FileFormatId { get; set; }
-
-        public AttendanceFileFormat? FileFormat { get; set; }
+        public AttendancePayloadFormat? PayloadFormat { get; set; }
 
         /// <summary>
         /// Gets or sets the device every punch of an uploaded file is attributed to, ignoring the device
         /// id in the file: a file has no physical device. One of this integration's own devices; only
-        /// meaningful when <see cref="Transport"/> is <see cref="AttendanceTransport.FileUpload"/>. Null:
+        /// meaningful when the default connection's transport is <see cref="AttendanceTransport.FileUpload"/>. Null:
         /// the file's device id is looked up, and an unregistered one is flagged.
         /// </summary>
         public int? DefaultDeviceId { get; set; }
@@ -68,10 +62,14 @@ namespace robeem.DataModel
         [MaxLength(64)]
         public string? TimeZoneId { get; set; }
 
-        [MaxLength(100)]
-        public string? PollingScheduleCron { get; set; }
+        /// <summary>
+        /// Gets or sets the integration's connections: where its attendance comes from and how that is authenticated. Exactly one is
+        /// the default (<see cref="AttendanceConnection.IsDefault"/>); a device may name another. An integration read without
+        /// its connections loaded has none in memory, which readers treat as a default file upload.
+        /// </summary>
+        public ICollection<AttendanceConnection> Connections { get; set; } = new List<AttendanceConnection>();
 
-        /// <summary>Gets or sets the high-water mark of incremental sync. Its shape is defined by the provider.</summary>
+        /// <summary>Gets or sets the high-water mark of incremental sync. Its shape is defined by the vendor.</summary>
         public string? SyncCursor { get; set; }
 
         public DateTime? LastSuccessfulSyncAt { get; set; }

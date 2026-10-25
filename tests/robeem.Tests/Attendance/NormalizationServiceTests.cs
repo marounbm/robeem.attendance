@@ -26,7 +26,7 @@ public sealed class NormalizationServiceTests : IDisposable
         var employee = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         var integration = new AttendanceIntegration
         {
-            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv"),
+            Connector = AttendanceTestData.Seeded(db, "generic-csv"),
             DisplayName = "HQ",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };

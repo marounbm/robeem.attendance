@@ -7,7 +7,7 @@ using robeem.DataModel;
 namespace robeem.Infrastructure.Attendance.Providers;
 
 /// <summary>
-/// Reads an uploaded file by an <see cref="AttendanceFileFormat"/>: text split by its delimiter or a sheet of a
+/// Reads an uploaded file by an <see cref="AttendancePayloadFormat"/>: text split by its delimiter or a sheet of a
 /// workbook, with or without a header row. Each data row becomes one transaction whose raw payload is the whole
 /// row (header, or <c>column{n}</c>, to text), or only the format's allowlisted columns; the mapped columns also
 /// fill the transaction's fields. A column setting may list several headers: the first non-empty value is used. The
@@ -17,46 +17,57 @@ public sealed class CustomFormatFileReader : ICustomFormatFileReader
 {
     private static readonly JsonSerializerOptions PayloadOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    public async Task<IReadOnlyList<ExternalAttendanceTransaction>> ReadAsync(AttendanceFileFormat format, string path, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ExternalAttendanceTransaction>> ReadAsync(AttendancePayloadFormat format, string path, CancellationToken cancellationToken)
     {
         var delimiter = format.Delimiter.Length == 1 ? format.Delimiter[0] : ',';
-        var rows = await TabularFile.ReadRowsAsync(path, format.FileKind, delimiter, format.SheetNumber, cancellationToken);
+        var table = await TabularFile.ReadTableAsync(path, format.PayloadKind, delimiter, format.SheetNumber, format.RecordPath, cancellationToken);
+        var rows = table.Rows;
         if (rows.Count == 0)
         {
             return [];
         }
 
+        // JSON and XML records are read into a table whose first row names the fields, whatever the format says about header rows.
+        var hasHeaderRow = format.HasHeaderRow || format.PayloadKind is AttendancePayloadKind.Json or AttendancePayloadKind.Xml;
         List<string> headers;
-        IEnumerable<List<string>> data;
-        if (format.HasHeaderRow)
+        int firstDataRow;
+        if (hasHeaderRow)
         {
             headers = CsvDocument.UniqueHeaders(rows[0]);
-            data = rows.Skip(1);
+            firstDataRow = 1;
         }
         else
         {
             headers = Enumerable.Range(1, rows.Max(r => r.Count)).Select(n => $"column{n}").ToList();
-            data = rows;
+            firstDataRow = 0;
         }
 
+        // With a date pattern and a time pattern of their own, a workbook's real date and time cells are not read through the text
+        // they display: the value is written out in the format's first pattern, which the interpreter then reads back.
+        var separate = PayloadFormatLayout.UsesSeparatePatterns(format);
+        var firstDatePattern = PayloadFormatLayout.Patterns(format.DateFormats).FirstOrDefault() ?? string.Empty;
+        var firstTimePattern = PayloadFormatLayout.Patterns(format.TimeFormats).FirstOrDefault() ?? string.Empty;
+        var culture = TimestampCultures.Resolve(format.TimestampCulture);
+
         var interpreter = new CustomFormatInterpreter(format);
-        var employee = Locate(format.EmployeeColumn, headers, format.HasHeaderRow, nameof(format.EmployeeColumn));
-        var timestamp = Locate(format.TimestampColumn, headers, format.HasHeaderRow, nameof(format.TimestampColumn));
-        var date = Locate(format.DateColumn, headers, format.HasHeaderRow, nameof(format.DateColumn));
-        var time = Locate(format.TimeColumn, headers, format.HasHeaderRow, nameof(format.TimeColumn));
-        var type = Locate(format.TypeColumn, headers, format.HasHeaderRow, nameof(format.TypeColumn));
-        var direction = Locate(format.DirectionColumn, headers, format.HasHeaderRow, nameof(format.DirectionColumn));
-        var device = Locate(format.DeviceColumn, headers, format.HasHeaderRow, nameof(format.DeviceColumn));
-        var transactionId = Locate(format.TransactionIdColumn, headers, format.HasHeaderRow, nameof(format.TransactionIdColumn));
+        var employee = Locate(format.EmployeeColumn, headers, hasHeaderRow, nameof(format.EmployeeColumn));
+        var timestamp = Locate(format.TimestampColumn, headers, hasHeaderRow, nameof(format.TimestampColumn));
+        var date = Locate(format.DateColumn, headers, hasHeaderRow, nameof(format.DateColumn));
+        var time = Locate(format.TimeColumn, headers, hasHeaderRow, nameof(format.TimeColumn));
+        var type = Locate(format.TypeColumn, headers, hasHeaderRow, nameof(format.TypeColumn));
+        var direction = Locate(format.DirectionColumn, headers, hasHeaderRow, nameof(format.DirectionColumn));
+        var device = Locate(format.DeviceColumn, headers, hasHeaderRow, nameof(format.DeviceColumn));
+        var transactionId = Locate(format.TransactionIdColumn, headers, hasHeaderRow, nameof(format.TransactionIdColumn));
 
         // With a list of columns to keep, only those enter the payload, under the name the format gives them (CLAUDE.md §1.10).
-        var kept = format.HasHeaderRow
-            ? FileFormatLayout.Aliases(format.PayloadColumns).GroupBy(CsvDocument.NormalizeHeader).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal)
+        var kept = hasHeaderRow
+            ? PayloadFormatLayout.Aliases(format.PayloadColumns).GroupBy(CsvDocument.NormalizeHeader).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal)
             : [];
 
         var transactions = new List<ExternalAttendanceTransaction>();
-        foreach (var row in data)
+        for (var rowIndex = firstDataRow; rowIndex < rows.Count; rowIndex++)
         {
+            var row = rows[rowIndex];
             var payload = new Dictionary<string, string>();
             if (kept.Count > 0)
             {
@@ -78,23 +89,42 @@ public sealed class CustomFormatFileReader : ICustomFormatFileReader
                 }
             }
 
-            string? Cell(IReadOnlyList<int> indexes)
+            int? Pick(IReadOnlyList<int> indexes)
             {
                 // The first non-empty value among the columns the format lists.
                 foreach (var at in indexes)
                 {
                     if (at < row.Count && row[at].Trim().Length > 0)
                     {
-                        return row[at].Trim();
+                        return at;
                     }
                 }
 
                 return null;
             }
 
+            string? Cell(IReadOnlyList<int> indexes) => Pick(indexes) is { } at ? row[at].Trim() : null;
+
+            string? DatePart(IReadOnlyList<int> indexes, bool isDate)
+            {
+                if (Pick(indexes) is not { } at)
+                {
+                    return null;
+                }
+
+                if (separate && table.DateAt(rowIndex, at) is { } value)
+                {
+                    return isDate
+                        ? value.Date.ToString(firstDatePattern, culture)
+                        : DateTime.MinValue.Add(value.TimeOfDay).ToString(firstTimePattern, culture);
+                }
+
+                return row[at].Trim();
+            }
+
             var timestampText = format.TimestampColumn.Length > 0
                 ? Cell(timestamp) ?? string.Empty
-                : string.Join(' ', new[] { Cell(date), Cell(time) }.Where(part => part is not null));
+                : string.Join(' ', new[] { DatePart(date, isDate: true), DatePart(time, isDate: false) }.Where(part => part is not null));
             transactions.Add(new ExternalAttendanceTransaction(JsonSerializer.Serialize(payload, PayloadOptions), timestampText)
             {
                 Timestamp = interpreter.ParseTimestamp(timestampText),
@@ -126,7 +156,7 @@ public sealed class CustomFormatFileReader : ICustomFormatFileReader
             return number <= headers.Count ? [number - 1] : throw new InvalidDataException($"The file has no column {number} ({field}).");
         }
 
-        var names = FileFormatLayout.Aliases(column);
+        var names = PayloadFormatLayout.Aliases(column);
         var indexes = new List<int>();
         foreach (var name in names)
         {

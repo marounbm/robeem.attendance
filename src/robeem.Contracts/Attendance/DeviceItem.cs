@@ -17,6 +17,12 @@ public sealed class DeviceItem
 
     public string Name { get; init; } = string.Empty;
 
+    /// <summary>Gets the connection the device names; null when it uses the integration's default.</summary>
+    public int? ConnectionId { get; init; }
+
+    /// <summary>Gets the name of the connection the device is reached through: the one it names, else the integration's default.</summary>
+    public string ConnectionName { get; init; } = string.Empty;
+
     public int? DeviceTypeId { get; init; }
 
     /// <summary>Gets the name of the device's type; empty when it has none.</summary>

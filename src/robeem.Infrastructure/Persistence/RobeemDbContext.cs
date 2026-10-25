@@ -47,9 +47,11 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<TimeScheduleEmployee> TimeScheduleEmployees => Set<TimeScheduleEmployee>();
 
-    public DbSet<AttendanceProvider> AttendanceProviders => Set<AttendanceProvider>();
+    public DbSet<AttendanceVendor> AttendanceVendors => Set<AttendanceVendor>();
 
     public DbSet<AttendanceIntegration> AttendanceIntegrations => Set<AttendanceIntegration>();
+
+    public DbSet<AttendanceConnection> AttendanceConnections => Set<AttendanceConnection>();
 
     public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
 
@@ -57,11 +59,13 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceTransportDefinition> AttendanceTransportDefinitions => Set<AttendanceTransportDefinition>();
 
-    public DbSet<AttendanceProviderTransport> AttendanceProviderTransports => Set<AttendanceProviderTransport>();
+    public DbSet<AttendanceConnectorDefinition> AttendanceConnectorDefinitions => Set<AttendanceConnectorDefinition>();
 
-    public DbSet<AttendanceFileFormat> AttendanceFileFormats => Set<AttendanceFileFormat>();
+    public DbSet<AttendanceConnectorTransport> AttendanceConnectorTransports => Set<AttendanceConnectorTransport>();
 
-    public DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes => Set<AttendanceFileFormatEventCode>();
+    public DbSet<AttendancePayloadFormat> AttendancePayloadFormats => Set<AttendancePayloadFormat>();
+
+    public DbSet<AttendancePayloadEventCode> AttendancePayloadEventCodes => Set<AttendancePayloadEventCode>();
 
     public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
 

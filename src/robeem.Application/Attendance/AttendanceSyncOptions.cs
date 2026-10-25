@@ -14,7 +14,7 @@ public sealed class AttendanceSyncOptions
     /// <summary>Gets or sets how far before its stored cursor an incremental sync reads again, in minutes, so that late-arriving punches are not missed. The overlap is absorbed by duplicate detection.</summary>
     public int OverlapMinutes { get; set; } = 5;
 
-    /// <summary>Gets or sets how many times a failed provider call is retried, with exponential backoff and jitter.</summary>
+    /// <summary>Gets or sets how many times a failed vendor call is retried, with exponential backoff and jitter.</summary>
     public int RetryAttempts { get; set; } = 3;
 
     /// <summary>Gets or sets the delay before the first retry, in seconds; it doubles each time.</summary>

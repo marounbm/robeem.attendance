@@ -1,0 +1,407 @@
+@model PayloadFormatFormViewModel
+
+<div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">The file</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.Name" class="form-label"></label>
+            <input asp-for="Input.Name" class="form-control" autocomplete="off" placeholder="e.g. Branch clock export" />
+            <span asp-validation-for="Input.Name" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.Description" class="form-label"></label>
+            <input asp-for="Input.Description" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.Description" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.PayloadKind" class="form-label"></label>
+            <select asp-for="Input.PayloadKind" class="form-select">
+                <option value="Auto">Detect from the file (CSV or Excel)</option>
+                <option value="Csv">Text / CSV only</option>
+                <option value="Excel">Excel only</option>
+                <option value="Json">JSON</option>
+                <option value="Xml">XML</option>
+            </select>
+            <span asp-validation-for="Input.PayloadKind" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.Delimiter" class="form-label"></label>
+            <select asp-for="Input.Delimiter" class="form-select">
+                <option value=",">Comma ( , )</option>
+                <option value=";">Semicolon ( ; )</option>
+                <option value="|">Vertical bar ( | )</option>
+                <option value="&#9;">Tab</option>
+            </select>
+            <div class="form-text">For a text file. Ignored for Excel.</div>
+            <span asp-validation-for="Input.Delimiter" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.SheetNumber" class="form-label"></label>
+            <input asp-for="Input.SheetNumber" class="form-control" type="number" min="1" max="50" />
+            <div class="form-text">For an Excel workbook: which sheet holds the punches.</div>
+            <span asp-validation-for="Input.SheetNumber" class="text-danger small"></span>
+        </div>
+        <div class="col-12" id="payload-record-path">
+            <label asp-for="Input.RecordPath" class="form-label"></label>
+            <input asp-for="Input.RecordPath" class="form-control" autocomplete="off" placeholder="e.g. data.punches[*] (JSON) or Punches/Punch (XML)" />
+            <div class="form-text">
+                For JSON or XML: where the repeating punch is. JSON: names separated by <code>.</code>, with <code>[*]</code> over an array
+                (<code>data.punches[*]</code>). XML: element names from the root, separated by <code>/</code> (<code>Punches/Punch</code>).
+                Empty: a JSON array at the top of the file, or the children of the XML root. Each record becomes a row, and
+                every value in it a column named by its path inside the record: <code>employee.id</code>, <code>tags[1]</code>, and for XML
+                <code>@@code</code> for an attribute. Name the columns below by those paths (case and punctuation are ignored).
+            </div>
+            <span asp-validation-for="Input.RecordPath" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3 d-flex flex-column justify-content-center">
+            <div class="form-check">
+                <input asp-for="Input.HasHeaderRow" class="form-check-input" />
+                <label asp-for="Input.HasHeaderRow" class="form-check-label"></label>
+            </div>
+            <div class="form-check">
+                <input asp-for="Input.IsActive" class="form-check-input" />
+                <label asp-for="Input.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-text">An inactive format can't be chosen for another integration; those already using it keep it.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Columns</div>
+    <div class="card-body row g-3">
+        <div class="col-12 form-text mt-0">
+            Name each column by its header, as written in the file's first row (case, spaces and punctuation are ignored). When the
+            file has <strong>no header row</strong>, give the column's number instead: 1 for the first column.
+            To accept several names, separate them with <code>|</code> (for example <code>No.|ID Number</code>): the first one that has a
+            value is used, and a file that has none of them leaves the field empty.
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.EmployeeColumn" class="form-label"></label>
+            <input asp-for="Input.EmployeeColumn" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.EmployeeColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-9">
+            <div class="form-label mb-1">The date and time of a punch are written in</div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="timestamp-mode" id="timestamp-mode-single" value="single" />
+                <label class="form-check-label" for="timestamp-mode-single">One column (date and time together)</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="timestamp-mode" id="timestamp-mode-split" value="split" />
+                <label class="form-check-label" for="timestamp-mode-split">Two columns (a date column and a time column)</label>
+            </div>
+            <div class="form-text">Choose one. The patterns below follow your choice, so each part can have its own.</div>
+            @Html.ValidationMessage("Input.TimestampColumn", new { @class = "text-danger small d-block" })
+        </div>
+        <div class="col-md-3" id="timestamp-single">
+            <label asp-for="Input.TimestampColumn" class="form-label"></label>
+            <input asp-for="Input.TimestampColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">The column that holds both.</div>
+        </div>
+        <div class="col-md-3" id="timestamp-date">
+            <label asp-for="Input.DateColumn" class="form-label"></label>
+            <input asp-for="Input.DateColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">The column that holds the date.</div>
+            <span asp-validation-for="Input.DateColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3" id="timestamp-time">
+            <label asp-for="Input.TimeColumn" class="form-label"></label>
+            <input asp-for="Input.TimeColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">The column that holds the time.</div>
+            <span asp-validation-for="Input.TimeColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.TypeColumn" class="form-label"></label>
+            <input asp-for="Input.TypeColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">Optional: In / Out and similar labels.</div>
+            <span asp-validation-for="Input.TypeColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.DirectionColumn" class="form-label"></label>
+            <input asp-for="Input.DirectionColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">Optional. Tried after the type column.</div>
+            <span asp-validation-for="Input.DirectionColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.DeviceColumn" class="form-label"></label>
+            <input asp-for="Input.DeviceColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">Optional. Must match a registered device's id.</div>
+            <span asp-validation-for="Input.DeviceColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="Input.TransactionIdColumn" class="form-label"></label>
+            <input asp-for="Input.TransactionIdColumn" class="form-control" autocomplete="off" />
+            <div class="form-text">Optional.</div>
+            <span asp-validation-for="Input.TransactionIdColumn" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <label asp-for="Input.PayloadColumns" class="form-label"></label>
+            <input asp-for="Input.PayloadColumns" class="form-control" autocomplete="off" placeholder="e.g. Name|Department|Date/Time|Status" />
+            <div class="form-text">
+                Optional, header row only. Only these columns are stored with the punch, separated by <code>|</code>; any other column is never copied.
+                Leave it empty to keep every column (biometric-looking ones are always removed).
+            </div>
+            <span asp-validation-for="Input.PayloadColumns" class="text-danger small"></span>
+        </div>
+    </div>
+</div>
+
+@{
+    var knownCultures = TimestampPatternCatalog.Cultures;
+    var storedCulture = Model.Input.TimestampCulture ?? string.Empty;
+    var hasJoinedPatterns = !string.IsNullOrWhiteSpace(Model.Input.TimestampFormats);
+}
+
+<div class="card mb-3" id="timestamp-card">
+    <div class="card-header">Timestamps</div>
+    <div class="card-body row g-3">
+        <div class="col-12 form-text mt-0">
+            Patterns are .NET date-time patterns. Your choice above decides which you fill in: <strong>one column</strong> is read by
+            the timestamp patterns; <strong>a date column and a time column</strong> are each read by patterns of their own (you define the date
+            format and the time format separately), and any date pattern may go with any time pattern. List more than one pattern when the file is not consistent: they are tried in order, and the
+            first that reads the text wins. An offset such as <code>Z</code> or <code>+03:00</code> after the time is also accepted; without one,
+            the time is the device's local time.
+        </div>
+
+        <div class="col-12" id="joined-patterns">
+            <label asp-for="Input.TimestampFormats" class="form-label"></label>
+            <select class="form-select form-select-sm w-auto d-inline-block ms-2 pattern-adder" data-target="Input_TimestampFormats" aria-label="Add a common timestamp pattern">
+                <option value="">Add a common pattern…</option>
+                @foreach (var option in TimestampPatternCatalog.Combined)
+                {
+                    <option value="@option.Pattern">@option.Pattern — @option.Example</option>
+                }
+            </select>
+            <textarea asp-for="Input.TimestampFormats" class="form-control font-monospace" rows="3" placeholder="dd/MM/yyyy HH:mm"></textarea>
+            <div class="form-text" id="joined-note-single">
+                One pattern per line, for example <code>dd/MM/yyyy HH:mm</code> or <code>yyyy-MM-dd HH:mm:ss</code>.
+            </div>
+            <div class="form-text" id="joined-note-split" hidden>
+                With two columns, the date and time patterns below are the usual way. Use these only when you would rather describe the date and
+                the time together, written as the date, a space, then the time (<code>dd/MM/yyyy HH:mm</code>). When both are filled, the date
+                and time patterns are used and these are cleared on save.
+            </div>
+            <span asp-validation-for="Input.TimestampFormats" class="text-danger small"></span>
+        </div>
+
+        <div class="col-md-6" id="date-patterns">
+            <label asp-for="Input.DateFormats" class="form-label"></label>
+            <select class="form-select form-select-sm w-auto d-inline-block ms-2 pattern-adder" data-target="Input_DateFormats" aria-label="Add a common date pattern">
+                <option value="">Add a common pattern…</option>
+                @foreach (var option in TimestampPatternCatalog.Dates)
+                {
+                    <option value="@option.Pattern">@option.Pattern — @option.Example</option>
+                }
+            </select>
+            <textarea asp-for="Input.DateFormats" class="form-control font-monospace" rows="3" placeholder="dd/MM/yyyy"></textarea>
+            <div class="form-text">
+                How the date column is written, one pattern per line. If two patterns put the day and the month in opposite orders, the one listed first wins
+                for a date like 03/04/2026.
+            </div>
+            <span asp-validation-for="Input.DateFormats" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6" id="time-patterns">
+            <label asp-for="Input.TimeFormats" class="form-label"></label>
+            <select class="form-select form-select-sm w-auto d-inline-block ms-2 pattern-adder" data-target="Input_TimeFormats" aria-label="Add a common time pattern">
+                <option value="">Add a common pattern…</option>
+                @foreach (var option in TimestampPatternCatalog.Times)
+                {
+                    <option value="@option.Pattern">@option.Pattern — @option.Example</option>
+                }
+            </select>
+            <textarea asp-for="Input.TimeFormats" class="form-control font-monospace" rows="3" placeholder="HH:mm"></textarea>
+            <div class="form-text">How the time column is written, one pattern per line. A time written with AM/PM needs <code>tt</code>, such as <code>hh:mm tt</code>.</div>
+            <span asp-validation-for="Input.TimeFormats" class="text-danger small"></span>
+        </div>
+        @if (hasJoinedPatterns)
+        {
+            <div class="col-12 form-text mt-0" id="legacy-note">
+                This format was saved with patterns that describe the date and the time together. They are used while the date and time patterns are empty.
+            </div>
+        }
+
+        <div class="col-md-6">
+            <label asp-for="Input.TimestampCulture" class="form-label"></label>
+            <select asp-for="Input.TimestampCulture" class="form-select">
+                @foreach (var (tag, name) in knownCultures)
+                {
+                    <option value="@tag">@name</option>
+                }
+                @if (storedCulture.Length > 0 && !knownCultures.Any(c => c.Tag == storedCulture))
+                {
+                    <option value="@storedCulture" selected>@storedCulture</option>
+                }
+            </select>
+            <div class="form-text">
+                Needed only when month or day names appear in the file (<code>MMM</code>, <code>MMMM</code>, <code>ddd</code>). Dates are always read
+                with the Gregorian calendar, and digits must be written 0–9.
+            </div>
+            <span asp-validation-for="Input.TimestampCulture" class="text-danger small"></span>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Type labels</div>
+    <div class="card-body">
+        <p class="form-text mt-0">
+            What the labels in the type or direction column mean. Case, spaces and punctuation are ignored. A punch with no label is stored
+            as unlabeled, and the attendance policy decides what it is. A label that is filled in but not listed here fails that row.
+        </p>
+        <table class="table table-sm align-middle" id="event-codes">
+            <thead><tr><th scope="col">Label in the file</th><th scope="col">Means</th></tr></thead>
+            <tbody>
+                @for (var i = 0; i < Model.Input.EventCodes.Count; i++)
+                {
+                    var code = Model.Input.EventCodes[i];
+                    <tr>
+                        <td><input name="Input.EventCodes[@i].Code" value="@code.Code" class="form-control form-control-sm" autocomplete="off" /></td>
+                        <td>
+                            <select name="Input.EventCodes[@i].EventType" class="form-select form-select-sm">
+                                @foreach (var type in new[] { "CheckIn", "CheckOut", "BreakOut", "BreakIn", "Other", "Unknown" })
+                                {
+                                    <option value="@type" selected="@(type == code.EventType)">@DisplayFormats.Words(type)</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-event-code">Add another label</button>
+        <span asp-validation-for="Input.EventCodes" class="text-danger small"></span>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Try it on a sample file</div>
+    <div class="card-body">
+        <p class="form-text mt-0">
+            Choose a real export and read its first rows by this format, as it stands above. Nothing is saved or stored.
+        </p>
+        <div class="d-flex gap-2 align-items-center">
+            <input type="file" name="sample" class="form-control" />
+            <button type="submit" class="btn btn-outline-primary text-nowrap" asp-action="Preview" asp-route-id="@Model.Id" formenctype="multipart/form-data">Try it</button>
+        </div>
+
+        @if (Model.Preview is { } preview)
+        {
+            @if (preview.Problem.Length > 0)
+            {
+                <div class="alert alert-warning mt-3 mb-0">@preview.Problem</div>
+            }
+            else
+            {
+                @foreach (var warning in preview.Warnings)
+                {
+                    <div class="alert alert-warning mt-3 mb-0" role="status">@warning</div>
+                }
+
+                <p class="mt-3 mb-2">The file has <strong>@preview.TotalRows</strong> data rows. The first @preview.Rows.Count:</p>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>#</th><th>Employee id</th><th>Timestamp as written</th><th>Read as</th><th>Label</th><th>Means</th><th>Device</th><th>Problem</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in preview.Rows)
+                            {
+                                <tr class="@(row.Problem.Length > 0 ? "table-warning" : null)">
+                                    <td>@row.RowNumber</td>
+                                    <td>@row.ExternalEmployeeId</td>
+                                    <td><code>@row.TimestampText</code></td>
+                                    <td>
+                                        @(row.ParsedTimestamp ?? "—")
+                                        @if (row.PatternMatches.Count > 1)
+                                        {
+                                            <div class="small text-muted" title="More than one pattern reads this text; the first listed wins.">
+                                                Read by @row.PatternMatches.Count patterns:
+                                                @foreach (var match in row.PatternMatches)
+                                                {
+                                                    <div><code>@match</code></div>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>@row.TypeText</td>
+                                    <td>@(row.EventType is null ? "—" : DisplayFormats.Words(row.EventType))</td>
+                                    <td>@row.DeviceText</td>
+                                    <td class="text-danger">@row.Problem</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<script>
+    (function () {
+        var body = document.querySelector('#event-codes tbody');
+        var types = ['CheckIn', 'CheckOut', 'BreakOut', 'BreakIn', 'Other', 'Unknown'];
+        var labels = { CheckIn: 'Check in', CheckOut: 'Check out', BreakOut: 'Break out', BreakIn: 'Break in', Other: 'Other', Unknown: 'Unknown' };
+
+        // One timestamp column, or a date column and a time column: an explicit choice, which decides the columns and the pattern boxes
+        // shown. It starts from what is saved. Switching clears the other choice's fields, so the server never sees both.
+        var timestampColumn = document.getElementById('Input_TimestampColumn');
+        var dateColumn = document.getElementById('Input_DateColumn');
+        var timeColumn = document.getElementById('Input_TimeColumn');
+        var single = document.getElementById('timestamp-mode-single');
+        var split = document.getElementById('timestamp-mode-split');
+        var splitSaved = timestampColumn.value.trim().length === 0 && (dateColumn.value.trim().length > 0 || timeColumn.value.trim().length > 0);
+        (splitSaved ? split : single).checked = true;
+
+        function syncPatterns() {
+            var oneColumn = single.checked;
+            document.getElementById('timestamp-single').hidden = !oneColumn;
+            document.getElementById('timestamp-date').hidden = oneColumn;
+            document.getElementById('timestamp-time').hidden = oneColumn;
+            if (oneColumn) { dateColumn.value = ''; timeColumn.value = ''; } else { timestampColumn.value = ''; }
+
+            // The timestamp patterns are always shown. With two columns they are the alternative to the date and time patterns:
+            // they describe the two joined by a space (date, a space, time); the date and time patterns win when both are filled.
+            document.getElementById('date-patterns').hidden = oneColumn;
+            document.getElementById('time-patterns').hidden = oneColumn;
+            document.getElementById('joined-note-single').hidden = !oneColumn;
+            document.getElementById('joined-note-split').hidden = oneColumn;
+        }
+        single.addEventListener('change', syncPatterns);
+        split.addEventListener('change', syncPatterns);
+        syncPatterns();
+
+        // The record path applies to JSON and XML only; their columns are always found by name, so the header-row box is moot.
+        var kind = document.getElementById('Input_PayloadKind');
+        function syncKind() {
+            var structured = kind.value === 'Json' || kind.value === 'Xml';
+            document.getElementById('payload-record-path').hidden = !structured;
+            document.getElementById('Input_HasHeaderRow').disabled = structured;
+        }
+        kind.addEventListener('change', syncKind);
+        syncKind();
+
+        document.querySelectorAll('.pattern-adder').forEach(function (picker) {
+            picker.addEventListener('change', function () {
+                var box = document.getElementById(picker.dataset.target);
+                var lines = box.value.split(/[\r\n;]+/).map(function (l) { return l.trim(); }).filter(Boolean);
+                if (picker.value && lines.indexOf(picker.value) < 0) {
+                    lines.push(picker.value);
+                    box.value = lines.join('\n');
+                }
+                picker.value = '';
+            });
+        });
+
+        document.getElementById('add-event-code').addEventListener('click', function () {
+            var index = body.rows.length;
+            var row = body.insertRow();
+            row.insertCell().innerHTML = '<input name="Input.EventCodes[' + index + '].Code" class="form-control form-control-sm" autocomplete="off" />';
+            row.insertCell().innerHTML = '<select name="Input.EventCodes[' + index + '].EventType" class="form-select form-select-sm">'
+                + types.map(function (t) { return '<option value="' + t + '">' + labels[t] + '</option>'; }).join('') + '</select>';
+        });
+    })();
+</script>

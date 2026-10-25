@@ -22,6 +22,10 @@ public sealed class DeviceFormViewModel
     [BindNever]
     public IReadOnlyList<IntegrationListItem> Integrations { get; set; } = Array.Empty<IntegrationListItem>();
 
+    /// <summary>Gets or sets the connections a device can be reached through: those of the chosen integration (while creating, of every integration, narrowed by the page).</summary>
+    [BindNever]
+    public IReadOnlyList<ConnectionListItem> Connections { get; set; } = Array.Empty<ConnectionListItem>();
+
     /// <summary>Gets or sets the active device types, to choose the device's type from.</summary>
     [BindNever]
     public IReadOnlyList<DeviceTypeOption> DeviceTypes { get; set; } = Array.Empty<DeviceTypeOption>();

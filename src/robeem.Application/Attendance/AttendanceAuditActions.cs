@@ -12,6 +12,9 @@ public static class AttendanceAuditActions
     /// <summary>An integration, one of its devices or one of its vendor-id mappings was created, changed or removed.</summary>
     public const string IntegrationChanged = "IntegrationChanged";
 
+    /// <summary>A person tested a connection. The entry says whether it worked, never what the other end answered.</summary>
+    public const string ConnectionTested = "ConnectionTested";
+
     /// <summary>A pay period was created, closed or reopened.</summary>
     public const string PayPeriodChanged = "PayPeriodChanged";
 

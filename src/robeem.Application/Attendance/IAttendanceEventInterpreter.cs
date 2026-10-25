@@ -4,8 +4,8 @@ namespace robeem.Application.Attendance;
 
 /// <summary>
 /// The per-vendor half of normalization (CLAUDE.md §1.9): how one vendor writes timestamps and
-/// event types. Registered as a keyed service under the provider's <c>ProviderKey</c>, next to its
-/// <see cref="IAttendanceProvider"/>. Vendor-specific knowledge lives here and in the adapter only.
+/// event types. Registered as a keyed service under the vendor's <c>VendorKey</c>, next to its
+/// <see cref="IAttendanceAdapter"/>. Vendor-specific knowledge lives here and in the adapter only.
 /// </summary>
 public interface IAttendanceEventInterpreter
 {

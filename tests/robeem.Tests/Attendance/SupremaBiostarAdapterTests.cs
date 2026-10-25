@@ -306,7 +306,7 @@ public sealed class SupremaBiostarAdapterTests
     {
         var guide = Provider().DescribeMapping();
 
-        Assert.Equal(SupremaBiostarProvider.ProviderKey, guide.ProviderKey);
+        Assert.Equal(SupremaBiostarProvider.VendorKey, guide.VendorKey);
         Assert.Equal(SupremaBiostarInterpreter.EventCodes.Count, guide.EventCodes.Count);
         Assert.Contains(guide.EventCodes, c => c.Code.Contains("PUNCH_TYPE_CHECK_IN") && c.EventType == nameof(NormalizedEventType.CheckIn));
         Assert.Contains(guide.NotStored, n => n.Contains("user record"));
@@ -329,7 +329,7 @@ public sealed class SupremaBiostarAdapterTests
     }
 
     private static AttendanceIntegrationConfig Config() =>
-        new(1, SupremaBiostarProvider.ProviderKey, "biostar-hq") { ConnectionSecret = Secret };
+        new(1, SupremaBiostarProvider.VendorKey, "biostar-hq") { ConnectionSecret = Secret };
 
     private SupremaBiostarProvider Provider() => new(_server, new FixedTimeProvider(Now));
 

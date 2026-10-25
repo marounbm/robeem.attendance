@@ -24,9 +24,11 @@ public interface IRobeemDbContext
 
     DbSet<TimeScheduleEmployee> TimeScheduleEmployees { get; }
 
-    DbSet<AttendanceProvider> AttendanceProviders { get; }
+    DbSet<AttendanceVendor> AttendanceVendors { get; }
 
     DbSet<AttendanceIntegration> AttendanceIntegrations { get; }
+
+    DbSet<AttendanceConnection> AttendanceConnections { get; }
 
     DbSet<AttendanceDevice> AttendanceDevices { get; }
 
@@ -34,11 +36,13 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceTransportDefinition> AttendanceTransportDefinitions { get; }
 
-    DbSet<AttendanceProviderTransport> AttendanceProviderTransports { get; }
+    DbSet<AttendanceConnectorDefinition> AttendanceConnectorDefinitions { get; }
 
-    DbSet<AttendanceFileFormat> AttendanceFileFormats { get; }
+    DbSet<AttendanceConnectorTransport> AttendanceConnectorTransports { get; }
 
-    DbSet<AttendanceFileFormatEventCode> AttendanceFileFormatEventCodes { get; }
+    DbSet<AttendancePayloadFormat> AttendancePayloadFormats { get; }
+
+    DbSet<AttendancePayloadEventCode> AttendancePayloadEventCodes { get; }
 
     DbSet<AttendancePolicy> AttendancePolicies { get; }
 

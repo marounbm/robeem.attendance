@@ -20,9 +20,11 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
     public async Task<IReadOnlyList<TransportItem>> ListAsync(CancellationToken cancellationToken)
     {
         var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
-        var integrations = (await _db.AttendanceIntegrations.AsNoTracking().GroupBy(i => i.Transport).Select(g => new { Transport = g.Key, Count = g.Count() }).ToListAsync(cancellationToken))
+
+        // How many integrations have a connection by each transport.
+        var integrations = (await _db.AttendanceConnections.AsNoTracking().GroupBy(c => c.Transport).Select(g => new { Transport = g.Key, Count = g.Select(c => c.IntegrationId).Distinct().Count() }).ToListAsync(cancellationToken))
             .ToDictionary(g => g.Transport.ToString(), g => g.Count, StringComparer.Ordinal);
-        var providers = await _db.AttendanceProviderTransports.AsNoTracking()
+        var connectors = await _db.AttendanceConnectorTransports.AsNoTracking()
             .GroupBy(t => t.TransportId)
             .Select(g => new { TransportId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.TransportId, g => g.Count, cancellationToken);
@@ -35,10 +37,10 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
                 Key = t.TransportKey,
                 DisplayName = t.DisplayName,
                 IsPull = t.IsPull,
-                UsesFileFormat = t.UsesFileFormat,
+                UsesPayloadFormat = t.UsesPayloadFormat,
                 IsActive = t.IsActive,
                 IntegrationCount = integrations.GetValueOrDefault(t.TransportKey),
-                ProviderCount = providers.GetValueOrDefault(t.Id),
+                ConnectorCount = connectors.GetValueOrDefault(t.Id),
             })
             .ToList();
     }
@@ -63,10 +65,10 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
             return SaveResult.Invalid(nameof(TransportInput.DisplayName), "A name is required (at most 255 characters).");
         }
 
-        // File upload is how every provider can be given files by hand; switching it off would leave nothing to upload by.
+        // File upload is how every connector can be given files by hand; switching it off would leave nothing to upload by.
         if (!input.IsActive && transport.TransportKey == nameof(AttendanceTransport.FileUpload))
         {
-            return SaveResult.Invalid(nameof(TransportInput.IsActive), "File upload can't be switched off: every provider can be given files by hand.");
+            return SaveResult.Invalid(nameof(TransportInput.IsActive), "File upload can't be switched off: every connector can be given files by hand.");
         }
 
         var before = $"{transport.DisplayName}; {(transport.IsActive ? "active" : "inactive")}";

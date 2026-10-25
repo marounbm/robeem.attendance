@@ -7,7 +7,7 @@ using robeem.DataModel;
 namespace robeem.Application.Attendance;
 
 /// <summary>
-/// Stages a provider's transactions as <see cref="RawAttendanceTransaction"/>s of a batch: the
+/// Stages a vendor's transactions as <see cref="RawAttendanceTransaction"/>s of a batch: the
 /// storage step shared by manual upload and scheduled sync. Every transaction is stored, a
 /// malformed one marked Failed (CLAUDE.md §1.1), and biometric fields never reach the database
 /// (CLAUDE.md §1.10). It saves nothing: the caller decides when the rows are committed.
@@ -29,14 +29,17 @@ internal sealed class RawBatchWriter
     public async Task AddTransactionsAsync(
         AttendanceIntegration integration,
         AttendanceProcessingBatch batch,
-        string providerKey,
+        string vendorKey,
         IReadOnlyList<ExternalAttendanceTransaction> transactions,
         CancellationToken cancellationToken)
     {
         var timeZones = await LoadDeviceTimeZonesAsync(integration.Id, cancellationToken);
 
         // An uploaded file has no physical device: the integration's own device takes every punch of it.
-        (int Id, string TimeZoneId)? defaultDevice = integration.Transport == AttendanceTransport.FileUpload
+        // The batch says which connection it came through; a file upload is the default when it names none.
+        var isUpload = batch.ConnectionId is null
+            || !_db.AttendanceConnections.Any(c => c.Id == batch.ConnectionId && c.Transport != AttendanceTransport.FileUpload);
+        (int Id, string TimeZoneId)? defaultDevice = isUpload
             && integration.DefaultDeviceId is { } defaultDeviceId
             && timeZones.Values.FirstOrDefault(d => d.Id == defaultDeviceId) is { Id: > 0 } found
                 ? found
@@ -45,7 +48,7 @@ internal sealed class RawBatchWriter
         string? firstError = null;
         foreach (var transaction in transactions)
         {
-            var raw = ToRawTransaction(transaction, integration.Id, batch, providerKey, timeZones, defaultDevice);
+            var raw = ToRawTransaction(transaction, integration.Id, batch, vendorKey, timeZones, defaultDevice);
             _db.RawAttendanceTransactions.Add(raw);
             batch.RecordsIngested++;
             if (raw.ProcessingStatus == RawTransactionProcessingStatus.Failed)
@@ -78,7 +81,7 @@ internal sealed class RawBatchWriter
         ExternalAttendanceTransaction transaction,
         int integrationId,
         AttendanceProcessingBatch batch,
-        string providerKey,
+        string vendorKey,
         IReadOnlyDictionary<string, (int Id, string TimeZoneId)> devices,
         (int Id, string TimeZoneId)? defaultDevice)
     {
@@ -86,7 +89,7 @@ internal sealed class RawBatchWriter
         {
             IntegrationId = integrationId,
             ImportBatch = batch,
-            SourceSystem = providerKey,
+            SourceSystem = vendorKey,
             DeviceExternalId = transaction.DeviceExternalId,
             ExternalTransactionId = transaction.ExternalTransactionId,
             ExternalEmployeeId = transaction.ExternalEmployeeId,

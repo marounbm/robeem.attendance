@@ -36,7 +36,7 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
         Clock.Local = Monday.At(18, 0);
         AssignSchedule(StandardDay);
 
-        // The fixture's generic-csv provider gets the seeded Generic CSV format as its default, as at startup.
+        // The fixture's generic-csv vendor gets the seeded Generic CSV format as its default, as at startup.
         Database.SeedAttendanceCatalog();
 
         using var db = Database.CreateContext(TestDatabase.TenantA);

@@ -5,6 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- OpenPGP decryption of a connector's encrypted payload (Stage 3). -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageReference Include="ExcelDataReader" Version="3.7.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.4" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
@@ -13,6 +15,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- Password-protected zip archives of a connector's encrypted payload (Stage 3). -->
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
   </ItemGroup>
 
 </Project>

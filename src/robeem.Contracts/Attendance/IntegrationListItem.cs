@@ -1,28 +1,39 @@
 namespace robeem.Contracts.Attendance;
 
-/// <summary>A tenant's connection to an attendance provider, as the integrations screen lists it.</summary>
+/// <summary>A tenant's connection to an attendance vendor, as the integrations screen lists it.</summary>
 public sealed class IntegrationListItem
 {
     public int Id { get; init; }
 
     public string DisplayName { get; init; } = string.Empty;
 
-    public int ProviderId { get; init; }
+    public int ConnectorId { get; init; }
 
-    public string ProviderKey { get; init; } = string.Empty;
+    public string ConnectorName { get; init; } = string.Empty;
 
-    public string ProviderName { get; init; } = string.Empty;
+    public string VendorKey { get; init; } = string.Empty;
+
+    public string VendorName { get; init; } = string.Empty;
 
     /// <summary>Gets how the integration receives attendance: an AttendanceTransport name such as FileUpload.</summary>
     public string Transport { get; init; } = string.Empty;
 
+    /// <summary>Gets how the default connection is authenticated: a ConnectionAuthMethod name.</summary>
+    public string AuthMethod { get; init; } = "None";
+
+    /// <summary>Gets the integration's default connection; null for an integration saved before connections existed that has not been opened since.</summary>
+    public int? DefaultConnectionId { get; init; }
+
+    /// <summary>Gets how many connections the integration has.</summary>
+    public int ConnectionCount { get; init; }
+
     /// <summary>Gets the transport's display name, as the administrators named it; set after the query, from the transport definitions.</summary>
     public string TransportName { get; set; } = string.Empty;
 
-    /// <summary>Gets the file format uploads are read by; null for the provider's default.</summary>
-    public int? FileFormatId { get; init; }
+    /// <summary>Gets the file format uploads are read by; null for the connector's default.</summary>
+    public int? PayloadFormatId { get; init; }
 
-    public string? FileFormatName { get; init; }
+    public string? PayloadFormatName { get; init; }
 
     /// <summary>Gets the configured status: Active, Paused or Failed.</summary>
     public string Status { get; init; } = string.Empty;

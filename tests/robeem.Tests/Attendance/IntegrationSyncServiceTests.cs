@@ -34,13 +34,13 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
 
     public IntegrationSyncServiceTests()
     {
-        _adapters = new ServiceCollection().AddKeyedSingleton<IAttendanceProvider>("generic-csv", _provider).BuildServiceProvider();
+        _adapters = new ServiceCollection().AddKeyedSingleton<IAttendanceAdapter>("generic-csv", _provider).BuildServiceProvider();
         _resilience = new IntegrationResilience(Options.Create(_options), Clock);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();
         integration.SyncCursor = StartCursor.Value;
-        integration.PollingScheduleCron = "*/5 * * * *";
+        db.AttendanceConnections.Add(new AttendanceConnection { IntegrationId = integration.Id, Name = "Default", IsDefault = true, Transport = AttendanceTransport.RestApi, AuthMethod = ConnectionAuthMethod.SessionLogin, PollingSchedule = "*/5 * * * *" });
         db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Single(d => d.IntegrationId == integration.Id).Id, ExternalEmployeeId = "E-1", EmployeeId = EmployeeId });
         db.SaveChanges();
         _integrationId = integration.Id;
@@ -57,7 +57,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         Assert.Equal(SyncOutcomeStatus.Succeeded, outcome.Status);
         Assert.Equal(1, outcome.RecordsIngested);
 
-        // The provider got the stored cursor and the configured overlap.
+        // The adapter got the stored cursor and the configured overlap.
         Assert.Equal(StartCursor, _provider.LastCursor);
         Assert.Equal(TimeSpan.FromMinutes(5), _provider.LastConfig!.SyncOverlap);
 
@@ -78,7 +78,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         _secrets.Set("vendor-key", "s3cret-value");
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            db.AttendanceIntegrations.Single().ConnectionConfigRef = "vendor-key";
+            db.AttendanceConnections.Single().SecretRef = "vendor-key";
             db.SaveChanges();
         }
 
@@ -90,7 +90,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         Assert.Equal("vendor-key", _provider.LastConfig.ConnectionConfigRef);
         Assert.DoesNotContain("s3cret-value", _provider.LastConfig.ToString());
         using var check = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal("vendor-key", check.AttendanceIntegrations.Single().ConnectionConfigRef);
+        Assert.Equal("vendor-key", check.AttendanceConnections.Single().SecretRef);
     }
 
     [Fact]
@@ -101,6 +101,54 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         await SyncAsync();
 
         Assert.Null(_provider.LastConfig!.ConnectionSecret);
+    }
+
+    [Fact]
+    public async Task TheAdapterGetsTheConnectionsSettings_AndTheBatchRecordsTheConnection()
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceConnections.Single().Settings = "{\"baseUrl\":\"https://biostar.example.test:8443\"}";
+            db.SaveChanges();
+        }
+
+        _provider.Changes = (_, _) => new AttendanceBatchResult([Punch("T1", "2026-10-05 08:00:00", "IN")], new SyncCursor("cursor-2"));
+
+        await SyncAsync();
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        var connection = check.AttendanceConnections.Single();
+        Assert.Equal("https://biostar.example.test:8443", _provider.LastConfig!.Settings["baseUrl"]);
+        Assert.Equal(connection.Id, _provider.LastConfig.ConnectionId);
+        Assert.Equal(connection.Id, check.AttendanceProcessingBatches.Single(b => b.BatchType == AttendanceBatchType.IncrementalSync).ConnectionId);
+    }
+
+    [Fact]
+    public async Task ASwitchedOffDefaultConnection_IsNotPulledThrough_AndIsNotPolled()
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceConnections.Single().IsActive = false;
+            db.SaveChanges();
+        }
+
+        var outcome = await SyncAsync();
+
+        Assert.Equal(SyncOutcomeStatus.Skipped, outcome.Status);
+        Assert.Equal(0, _provider.ChangeCalls);
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(await CreateService(check).ListPollingIntegrationsAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AFailedSync_RecordsTheConnectionOnItsFailedBatchToo()
+    {
+        _provider.Changes = (_, _) => throw new InvalidOperationException("down");
+
+        await SyncAsync();
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(check.AttendanceConnections.Single().Id, check.AttendanceProcessingBatches.Single(b => b.Status == AttendanceBatchStatus.Failed).ConnectionId);
     }
 
     [Fact]
@@ -391,12 +439,12 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
     {
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            var provider = db.AttendanceProviders.Single();
+            var provider = db.AttendanceConnectorDefinitions.Single();
             db.AttendanceIntegrations.AddRange(
-                new AttendanceIntegration { Provider = provider, DisplayName = "No cron" },
-                new AttendanceIntegration { Provider = provider, DisplayName = "Off", PollingScheduleCron = "* * * * *", Status = AttendanceIntegrationStatus.Paused });
+                new AttendanceIntegration { Connector = provider, DisplayName = "No cron" }.WithConnection(AttendanceTransport.RestApi),
+                new AttendanceIntegration { Connector = provider, DisplayName = "Off", Status = AttendanceIntegrationStatus.Paused }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
             db.AttendanceIntegrations.Single(i => i.Id == _integrationId).LastSuccessfulSyncAt = Monday;
-            db.AttendanceIntegrations.Add(new AttendanceIntegration { Provider = provider, DisplayName = "Fresh", PollingScheduleCron = "* * * * *" });
+            db.AttendanceIntegrations.Add(new AttendanceIntegration { Connector = provider, DisplayName = "Fresh" }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
             db.SaveChanges();
         }
 
@@ -509,7 +557,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         NullLogger<IntegrationSyncService>.Instance);
 
     /// <summary>An adapter whose answers the test scripts, and which remembers how it was called.</summary>
-    private sealed class ScriptedProvider : IAttendanceProvider
+    private sealed class ScriptedProvider : IAttendanceAdapter
     {
         public Func<SyncCursor?, AttendanceIntegrationConfig, AttendanceBatchResult> Changes { get; set; } = (_, _) => new AttendanceBatchResult([]);
 

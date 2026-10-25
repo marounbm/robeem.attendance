@@ -26,28 +26,32 @@ public sealed class AttendanceSeedTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(
             ["generic-csv", "generic-webhook", "suprema-biostar", "zkteco"],
-            db.AttendanceProviders.Select(p => p.ProviderKey).OrderBy(k => k).ToArray());
+            db.AttendanceVendors.Select(p => p.VendorKey).OrderBy(k => k).ToArray());
+        Assert.Equal(
+            ["generic-csv", "generic-webhook", "suprema-biostar", "zkteco"],
+            db.AttendanceConnectorDefinitions.Select(c => c.ConnectorKey).OrderBy(k => k).ToArray());
         Assert.Equal(["Database", "DeviceSdk", "FileUpload", "RestApi", "Sftp", "Webhook"], db.AttendanceTransportDefinitions.Select(t => t.TransportKey).AsEnumerable().Order(StringComparer.Ordinal));
         Assert.Equal(["Biometric", "Cloud", "Facial", "Mobile", "OnPrem", "RFID"], db.AttendanceDeviceTypes.Select(t => t.Name).OrderBy(n => n).ToArray());
-        Assert.Equal(["Generic CSV", "Suprema BioStar 2 export", "ZKTeco attendance export"], db.AttendanceFileFormats.Select(f => f.Name).OrderBy(n => n).ToArray());
+        Assert.Equal(["Generic CSV", "Suprema BioStar 2 export", "ZKTeco attendance export"], db.AttendancePayloadFormats.Select(f => f.Name).OrderBy(n => n).ToArray());
 
-        // A file-based vendor is read by its default format; an API or webhook vendor by its code adapter.
-        var csv = db.AttendanceProviders.Include(p => p.DefaultFileFormat).Single(p => p.ProviderKey == "generic-csv");
+        // A file-based connector is read by its default payload format; an API or webhook connector by its code adapter.
+        var csv = db.AttendanceConnectorDefinitions.Include(c => c.DefaultPayloadFormat).Include(c => c.Vendor).Single(c => c.ConnectorKey == "generic-csv");
         Assert.True(csv.IsActive);
-        Assert.Equal("Generic CSV", csv.DefaultFileFormat!.Name);
-        Assert.Equal("ZKTeco attendance export", db.AttendanceProviders.Include(p => p.DefaultFileFormat).Single(p => p.ProviderKey == "zkteco").DefaultFileFormat!.Name);
-        Assert.Null(db.AttendanceProviders.Single(p => p.ProviderKey == "suprema-biostar").DefaultFileFormatId);
+        Assert.Equal(("Generic CSV", "generic-csv", null), (csv.DefaultPayloadFormat!.Name, csv.Vendor!.VendorKey, csv.AdapterKey));
+        Assert.Equal("ZKTeco attendance export", db.AttendanceConnectorDefinitions.Include(c => c.DefaultPayloadFormat).Single(c => c.ConnectorKey == "zkteco").DefaultPayloadFormat!.Name);
+        Assert.Null(db.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == "suprema-biostar").DefaultPayloadFormatId);
 
-        var biostar = db.AttendanceProviders.Include(p => p.Transports).ThenInclude(t => t.Transport).Single(p => p.ProviderKey == "suprema-biostar");
+        var biostar = db.AttendanceConnectorDefinitions.Include(c => c.Transports).ThenInclude(t => t.Transport).Single(c => c.ConnectorKey == "suprema-biostar");
         Assert.Equal(["RestApi"], biostar.Transports.Select(t => t.Transport!.TransportKey));
         Assert.True(biostar.SupportsIncrementalSync);
+        Assert.Equal("suprema-biostar", biostar.AdapterKey);
 
-        var webhook = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-webhook");
-        Assert.True(webhook.SupportsWebhooks);
+        var webhook = db.AttendanceConnectorDefinitions.Include(c => c.Transports).ThenInclude(t => t.Transport).Single(c => c.ConnectorKey == "generic-webhook");
+        Assert.Equal(["Webhook"], webhook.Transports.Select(t => t.Transport!.TransportKey));
         Assert.False(webhook.IsActive);
 
         var transports = db.AttendanceTransportDefinitions.ToDictionary(t => t.TransportKey);
-        Assert.Equal(("Manual file upload", false, true), (transports["FileUpload"].DisplayName, transports["FileUpload"].IsPull, transports["FileUpload"].UsesFileFormat));
+        Assert.Equal(("Manual file upload", false, true), (transports["FileUpload"].DisplayName, transports["FileUpload"].IsPull, transports["FileUpload"].UsesPayloadFormat));
         Assert.All(new[] { "Sftp", "RestApi", "Database", "DeviceSdk" }, key => Assert.True(transports[key].IsPull));
         Assert.False(transports["Webhook"].IsPull);
 
@@ -65,17 +69,18 @@ public sealed class AttendanceSeedTests : IDisposable
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
             db.AttendancePolicies.Single().RequiresOvertimePreApproval = true;
-            db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco").DisplayName = "Renamed";
-            db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco").Manufacturer = string.Empty;
-            db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv").DefaultFileFormatId = null;
+            db.AttendanceVendors.Single(p => p.VendorKey == "zkteco").DisplayName = "Renamed";
+            db.AttendanceVendors.Single(p => p.VendorKey == "zkteco").Manufacturer = string.Empty;
+            db.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == "generic-csv").DefaultPayloadFormatId = null;
 
-            // A provider with a transport can only go once the transport link does.
-            var biostar = db.AttendanceProviders.Include(p => p.Transports).Single(p => p.ProviderKey == "suprema-biostar");
-            db.AttendanceProviderTransports.RemoveRange(biostar.Transports);
-            db.AttendanceProviders.Remove(biostar);
+            // A connector with a transport can only go once the transport link does, and a vendor once its connector has.
+            var biostar = db.AttendanceConnectorDefinitions.Include(c => c.Transports).Include(c => c.Vendor).Single(c => c.ConnectorKey == "suprema-biostar");
+            db.AttendanceConnectorTransports.RemoveRange(biostar.Transports);
+            db.AttendanceConnectorDefinitions.Remove(biostar);
+            db.AttendanceVendors.Remove(biostar.Vendor!);
             db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").DisplayName = "Secure FTP";
             db.AttendanceDeviceTypes.Single(t => t.Name == "RFID").IsActive = false;
-            db.AttendanceFileFormats.Single(f => f.Name == "ZKTeco attendance export").PayloadColumns = "Name";
+            db.AttendancePayloadFormats.Single(f => f.Name == "ZKTeco attendance export").PayloadColumns = "Name";
             db.SaveChanges();
         }
 
@@ -83,30 +88,30 @@ public sealed class AttendanceSeedTests : IDisposable
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
         Assert.True(check.AttendancePolicies.Single().RequiresOvertimePreApproval);
-        var zk = check.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+        var zk = check.AttendanceVendors.Single(p => p.VendorKey == "zkteco");
         Assert.Equal(("Renamed", string.Empty), (zk.DisplayName, zk.Manufacturer));
-        Assert.Equal(4, check.AttendanceProviders.Count());
+        Assert.Equal(4, check.AttendanceVendors.Count());
+        Assert.Equal(4, check.AttendanceConnectorDefinitions.Count());
 
         // The cleared default stays cleared: the format exists, so it is not linked again.
-        Assert.Null(check.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv").DefaultFileFormatId);
+        Assert.Null(check.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == "generic-csv").DefaultPayloadFormatId);
         Assert.Equal("Secure FTP", check.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").DisplayName);
         Assert.False(check.AttendanceDeviceTypes.Single(t => t.Name == "RFID").IsActive);
-        Assert.Equal("Name", check.AttendanceFileFormats.Single(f => f.Name == "ZKTeco attendance export").PayloadColumns);
-        Assert.Equal(3, check.AttendanceFileFormats.Count());
+        Assert.Equal("Name", check.AttendancePayloadFormats.Single(f => f.Name == "ZKTeco attendance export").PayloadColumns);
+        Assert.Equal(3, check.AttendancePayloadFormats.Count());
     }
 
     [Fact]
-    public async Task Seed_ReadsTransportsAndDeviceTypesFromTheTextTheyWereOnceStoredAs_AndThenLetsGo()
+    public async Task Seed_NeverPutsBackATransportOrDeviceTypeAnAdministratorChanged()
     {
         await SeedAsync(TestDatabase.TenantA);
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            // As a database from before the catalog was a table has them: text, and no rows in the new tables.
-            var provider = new AttendanceProvider { ProviderKey = "old-vendor", DisplayName = "Old vendor", LegacySupportedTransports = "FileUpload, Sftp,Carrier pigeon" };
-            var integration = new AttendanceIntegration { Provider = provider, DisplayName = "Old clock" };
+            var connector = AttendanceTestData.Connector("old-vendor", "Old vendor").WithTransport(db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp"));
+            var integration = new AttendanceIntegration { Connector = connector, DisplayName = "Old clock" };
             db.AttendanceDevices.AddRange(
-                new AttendanceDevice { Integration = integration, ExternalDeviceId = "A", Name = "Known type", TimeZoneId = "UTC", LegacyDeviceType = "Facial" },
-                new AttendanceDevice { Integration = integration, ExternalDeviceId = "B", Name = "Unlisted type", TimeZoneId = "UTC", LegacyDeviceType = "Palm reader" });
+                new AttendanceDevice { Integration = integration, ExternalDeviceId = "A", Name = "Known type", TimeZoneId = "UTC", DeviceType = db.AttendanceDeviceTypes.Single(t => t.Name == "Facial") },
+                new AttendanceDevice { Integration = integration, ExternalDeviceId = "B", Name = "Unlisted type", TimeZoneId = "UTC", DeviceType = new AttendanceDeviceType { Name = "Palm reader", IsActive = true } });
             db.SaveChanges();
         }
 
@@ -114,18 +119,15 @@ public sealed class AttendanceSeedTests : IDisposable
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var provider = db.AttendanceProviders.Include(p => p.Transports).ThenInclude(t => t.Transport).Single(p => p.ProviderKey == "old-vendor");
-            Assert.Equal(["Sftp"], provider.Transports.Select(t => t.Transport!.TransportKey));
-            Assert.Equal(string.Empty, provider.LegacySupportedTransports);
+            var connector = db.AttendanceConnectorDefinitions.Include(c => c.Transports).ThenInclude(t => t.Transport).Single(c => c.ConnectorKey == "old-vendor");
+            Assert.Equal(["Sftp"], connector.Transports.Select(t => t.Transport!.TransportKey));
 
             var devices = db.AttendanceDevices.Include(d => d.DeviceType).ToDictionary(d => d.ExternalDeviceId);
             Assert.Equal("Facial", devices["A"].DeviceType!.Name);
             Assert.Equal("Palm reader", devices["B"].DeviceType!.Name);
-            Assert.True(devices["B"].DeviceType!.IsActive);
-            Assert.All(devices.Values, d => Assert.Equal(string.Empty, d.LegacyDeviceType));
 
             // An administrator then takes the transport away and changes a device's type.
-            db.AttendanceProviderTransports.RemoveRange(provider.Transports);
+            db.AttendanceConnectorTransports.RemoveRange(connector.Transports);
             devices["A"].DeviceType = db.AttendanceDeviceTypes.Single(t => t.Name == "Mobile");
             db.SaveChanges();
         }
@@ -133,24 +135,24 @@ public sealed class AttendanceSeedTests : IDisposable
         await SeedAsync(TestDatabase.TenantA);
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Empty(check.AttendanceProviders.Include(p => p.Transports).Single(p => p.ProviderKey == "old-vendor").Transports);
+        Assert.Empty(check.AttendanceConnectorDefinitions.Include(c => c.Transports).Single(c => c.ConnectorKey == "old-vendor").Transports);
         Assert.Equal("Mobile", check.AttendanceDevices.Include(d => d.DeviceType).Single(d => d.ExternalDeviceId == "A").DeviceType!.Name);
         Assert.Equal(7, check.AttendanceDeviceTypes.Count());
     }
 
     [Fact]
-    public async Task Seed_LinksTheBuiltInFormatsToTheirProvidersAndUploadIntegrations_TheRunThatCreatesThem()
+    public async Task Seed_LinksTheBuiltInFormatsToTheirConnectorsAndUploadIntegrations_TheRunThatCreatesThem()
     {
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            // A database from before the formats were data: ZKTeco and generic CSV providers, read in code, with their integrations.
-            var zk = new AttendanceProvider { ProviderKey = "zkteco", DisplayName = "ZKTeco" };
-            var hasOwnFormat = new AttendanceFileFormat { Name = "Mine", EmployeeColumn = "1", TimestampColumn = "2", TimestampFormats = "dd/MM/yyyy HH:mm", HasHeaderRow = false };
+            // A database from before the formats were data: ZKTeco and generic CSV connectors, read in code, with their integrations.
+            var zk = AttendanceTestData.Connector("zkteco", "ZKTeco");
+            var hasOwnFormat = new AttendancePayloadFormat { Name = "Mine", EmployeeColumn = "1", TimestampColumn = "2", TimestampFormats = "dd/MM/yyyy HH:mm", HasHeaderRow = false };
             db.AttendanceIntegrations.AddRange(
-                new AttendanceIntegration { Provider = zk, DisplayName = "Uploads" },
-                new AttendanceIntegration { Provider = zk, DisplayName = "Own format", FileFormat = hasOwnFormat },
-                new AttendanceIntegration { Provider = zk, DisplayName = "Pulled", Transport = AttendanceTransport.RestApi },
-                new AttendanceIntegration { Provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV" }, DisplayName = "CSV uploads" });
+                new AttendanceIntegration { Connector = zk, DisplayName = "Uploads" },
+                new AttendanceIntegration { Connector = zk, DisplayName = "Own format", PayloadFormat = hasOwnFormat },
+                new AttendanceIntegration { Connector = zk, DisplayName = "Pulled" }.WithConnection(AttendanceTransport.RestApi),
+                new AttendanceIntegration { Connector = AttendanceTestData.Connector("generic-csv", "Generic CSV"), DisplayName = "CSV uploads" });
             db.SaveChanges();
         }
 
@@ -158,22 +160,22 @@ public sealed class AttendanceSeedTests : IDisposable
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var byName = db.AttendanceIntegrations.Include(i => i.FileFormat).ToDictionary(i => i.DisplayName);
-            Assert.Equal("ZKTeco attendance export", byName["Uploads"].FileFormat!.Name);
-            Assert.Equal("Mine", byName["Own format"].FileFormat!.Name);
-            Assert.Null(byName["Pulled"].FileFormatId);
-            Assert.Equal("Generic CSV", byName["CSV uploads"].FileFormat!.Name);
-            Assert.Equal("ZKTeco attendance export", db.AttendanceProviders.Include(p => p.DefaultFileFormat).Single(p => p.ProviderKey == "zkteco").DefaultFileFormat!.Name);
+            var byName = db.AttendanceIntegrations.Include(i => i.PayloadFormat).ToDictionary(i => i.DisplayName);
+            Assert.Equal("ZKTeco attendance export", byName["Uploads"].PayloadFormat!.Name);
+            Assert.Equal("Mine", byName["Own format"].PayloadFormat!.Name);
+            Assert.Null(byName["Pulled"].PayloadFormatId);
+            Assert.Equal("Generic CSV", byName["CSV uploads"].PayloadFormat!.Name);
+            Assert.Equal("ZKTeco attendance export", db.AttendanceConnectorDefinitions.Include(c => c.DefaultPayloadFormat).Single(c => c.ConnectorKey == "zkteco").DefaultPayloadFormat!.Name);
 
             // An administrator chooses another format for one integration.
-            byName["Uploads"].FileFormat = db.AttendanceFileFormats.Single(f => f.Name == "Mine");
+            byName["Uploads"].PayloadFormat = db.AttendancePayloadFormats.Single(f => f.Name == "Mine");
             db.SaveChanges();
         }
 
         await SeedAsync(TestDatabase.TenantA);
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal("Mine", check.AttendanceIntegrations.Include(i => i.FileFormat).Single(i => i.DisplayName == "Uploads").FileFormat!.Name);
+        Assert.Equal("Mine", check.AttendanceIntegrations.Include(i => i.PayloadFormat).Single(i => i.DisplayName == "Uploads").PayloadFormat!.Name);
     }
 
     [Fact]
@@ -185,25 +187,26 @@ public sealed class AttendanceSeedTests : IDisposable
         foreach (var tenant in new[] { TestDatabase.TenantA, TestDatabase.TenantB })
         {
             using var db = _database.CreateContext(tenant);
-            Assert.Equal(4, db.AttendanceProviders.Count());
+            Assert.Equal(4, db.AttendanceVendors.Count());
+            Assert.Equal(4, db.AttendanceConnectorDefinitions.Count());
             Assert.Equal(6, db.AttendanceTransportDefinitions.Count());
-            Assert.Equal(3, db.AttendanceFileFormats.Count());
+            Assert.Equal(3, db.AttendancePayloadFormats.Count());
             Assert.Single(db.AttendancePolicies);
         }
     }
 
     [Fact]
-    public async Task EveryProviderSeededActive_IsUsable_ByAFormatOrByARegisteredAdapter()
+    public async Task EveryConnectorSeededActive_IsUsable_ByAFormatOrByARegisteredAdapter()
     {
         await SeedAsync(TestDatabase.TenantA);
         using var services = new ServiceCollection().AddRobeemInfrastructure(new ConfigurationBuilder().Build()).BuildServiceProvider();
         var adapters = services.GetRequiredService<IAttendanceAdapterCatalog>();
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var active = db.AttendanceProviders.Where(p => p.IsActive).ToList();
+        var active = db.AttendanceConnectorDefinitions.Include(c => c.Vendor).Where(c => c.IsActive).ToList();
 
-        Assert.Equal(["generic-csv", "suprema-biostar", "zkteco"], active.Select(p => p.ProviderKey).Order());
-        Assert.All(active, p => Assert.True(ProviderUsability.IsUsable(p, adapters), p.ProviderKey));
+        Assert.Equal(["generic-csv", "suprema-biostar", "zkteco"], active.Select(c => c.ConnectorKey).Order());
+        Assert.All(active, c => Assert.True(ConnectorUsability.IsUsable(c, c.Vendor!.IsActive, adapters), c.ConnectorKey));
     }
 
     [Fact]

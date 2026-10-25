@@ -33,8 +33,10 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IIntegrationsApiClient, IntegrationsApiClient>(services);
         AddClient<IUploadsApiClient, UploadsApiClient>(services);
         AddClient<IJobsApiClient, JobsApiClient>(services);
-        AddClient<IFileFormatsApiClient, FileFormatsApiClient>(services);
-        AddClient<IProvidersApiClient, ProvidersApiClient>(services);
+        AddClient<IPayloadFormatsApiClient, PayloadFormatsApiClient>(services);
+        AddClient<IVendorsApiClient, VendorsApiClient>(services);
+        AddClient<IConnectorsApiClient, ConnectorsApiClient>(services);
+        AddClient<IConnectionsApiClient, ConnectionsApiClient>(services);
         AddClient<IDeviceTypesApiClient, DeviceTypesApiClient>(services);
         AddClient<ITransportsApiClient, TransportsApiClient>(services);
         AddClient<IPayPeriodsApiClient, PayPeriodsApiClient>(services);

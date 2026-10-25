@@ -22,11 +22,11 @@ public sealed class CatalogCompositionTests : IDisposable
     public void Dispose() => _services.Dispose();
 
     [Theory]
-    [InlineData(typeof(IAttendanceProviderService))]
+    [InlineData(typeof(IAttendanceVendorService))]
     [InlineData(typeof(IAttendanceDeviceTypeService))]
     [InlineData(typeof(IAttendanceTransportService))]
     [InlineData(typeof(IAttendanceIntegrationService))]
-    [InlineData(typeof(IAttendanceFileFormatService))]
+    [InlineData(typeof(IAttendancePayloadFormatService))]
     [InlineData(typeof(IIngestionService))]
     [InlineData(typeof(INormalizationService))]
     [InlineData(typeof(IAttendanceAdapterCatalog))]
@@ -36,11 +36,11 @@ public sealed class CatalogCompositionTests : IDisposable
         Assert.True(_services.GetRequiredService<IServiceProviderIsService>().IsService(service), $"{service.Name} is not registered.");
 
     [Theory]
-    [InlineData(typeof(AttendanceProviderService))]
+    [InlineData(typeof(AttendanceVendorService))]
     [InlineData(typeof(AttendanceDeviceTypeService))]
     [InlineData(typeof(AttendanceTransportService))]
     [InlineData(typeof(AttendanceIntegrationService))]
-    [InlineData(typeof(AttendanceFileFormatService))]
+    [InlineData(typeof(AttendancePayloadFormatService))]
     [InlineData(typeof(IngestionService))]
     [InlineData(typeof(NormalizationService))]
     public void EveryDependencyOfTheirImplementations_IsRegistered(Type implementation)

@@ -28,7 +28,7 @@ public sealed class AttendanceIngestionController : ControllerBase
     public async Task<IReadOnlyList<UploadedFileItem>> Uploads(int? integrationId, int take = 50, CancellationToken cancellationToken = default) =>
         await _ingestion.ListUploadedFilesAsync(integrationId, take, cancellationToken);
 
-    /// <summary>The integrations a file can be uploaded into, each with the file formats and layout of its provider.</summary>
+    /// <summary>The integrations a file can be uploaded into, each with the file formats and layout of its vendor.</summary>
     [HttpGet("targets")]
     public async Task<IReadOnlyList<UploadTarget>> Targets(CancellationToken cancellationToken) =>
         await _ingestion.ListUploadTargetsAsync(cancellationToken);
@@ -48,7 +48,7 @@ public sealed class AttendanceIngestionController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        // Only an active integration of a file provider takes an upload; anything else is not found, as it is not in the list.
+        // Only an active integration of a file vendor takes an upload; anything else is not found, as it is not in the list.
         if (!(await _ingestion.ListUploadTargetsAsync(cancellationToken)).Any(t => t.IntegrationId == integrationId))
         {
             return NotFound();

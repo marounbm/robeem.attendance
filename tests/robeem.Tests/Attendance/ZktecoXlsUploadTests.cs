@@ -32,7 +32,7 @@ public sealed class ZktecoXlsUploadTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
+            Connector = AttendanceTestData.Seeded(db, "zkteco"),
             DisplayName = "Head office clock",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };

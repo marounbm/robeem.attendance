@@ -18,6 +18,10 @@ public sealed class DeviceInput
     [Display(Name = "Type")]
     public int DeviceTypeId { get; set; }
 
+    /// <summary>Gets or sets the connection the device is reached through: one of the integration's own. Null: the integration's default connection.</summary>
+    [Display(Name = "Connection")]
+    public int? ConnectionId { get; set; }
+
     [StringLength(100)]
     [Display(Name = "Model")]
     public string Model { get; set; } = string.Empty;

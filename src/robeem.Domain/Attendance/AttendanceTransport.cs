@@ -1,7 +1,7 @@
 namespace robeem.DataModel
 {
     /// <summary>
-    /// A way an attendance provider can deliver transactions. <see cref="AttendanceProvider.SupportedTransports"/> stores a comma-separated list of these member names.
+    /// A way an attendance vendor can deliver transactions. <see cref="AttendanceVendor.Transports"/> stores a comma-separated list of these member names.
     /// </summary>
     public enum AttendanceTransport
     {

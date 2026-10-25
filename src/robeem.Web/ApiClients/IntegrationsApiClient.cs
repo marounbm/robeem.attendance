@@ -31,16 +31,16 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
     public Task<IntegrationHealthReport?> GetHealthAsync(int id, CancellationToken cancellationToken) =>
         GetOrNullAsync<IntegrationHealthReport>($"{IntegrationPath(id)}/health", cancellationToken);
 
-    public async Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync($"{Path}/providers", cancellationToken);
-        return await ApiResponses.ReadAsync<List<ProviderOption>>(response, cancellationToken);
+        using var response = await _http.GetAsync($"{Path}/connectors", cancellationToken);
+        return await ApiResponses.ReadAsync<List<ConnectorOption>>(response, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PayloadFormatOption>> ListPayloadFormatOptionsAsync(CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync("api/attendance/file-formats/options", cancellationToken);
-        return await ApiResponses.ReadAsync<List<FileFormatOption>>(response, cancellationToken);
+        using var response = await _http.GetAsync("api/attendance/payload-formats/options", cancellationToken);
+        return await ApiResponses.ReadAsync<List<PayloadFormatOption>>(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken)
@@ -134,8 +134,8 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await GetOrNullAsync<List<RawNormalizedMappingItem>>($"{IntegrationPath(integrationId)}/raw-mapping?{string.Join('&', query)}", cancellationToken);
     }
 
-    public Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
-        GetOrNullAsync<ProviderMappingGuide>($"{IntegrationPath(integrationId)}/raw-mapping/guide", cancellationToken);
+    public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>
+        GetOrNullAsync<VendorMappingGuide>($"{IntegrationPath(integrationId)}/raw-mapping/guide", cancellationToken);
 
     public async Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken)
     {

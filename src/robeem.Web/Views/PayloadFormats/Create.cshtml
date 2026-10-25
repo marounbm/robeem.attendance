@@ -1,0 +1,16 @@
+@model PayloadFormatFormViewModel
+@{
+    ViewData["Title"] = "Add file format";
+}
+
+<h1 class="h3 mb-3">Add file format</h1>
+
+<form method="post" asp-action="Create" enctype="multipart/form-data">
+    <partial name="_PayloadFormatForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Index">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

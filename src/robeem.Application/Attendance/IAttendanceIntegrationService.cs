@@ -5,7 +5,7 @@ using robeem.DataModel;
 namespace robeem.Application.Attendance;
 
 /// <summary>
-/// Setting up the tenant's connections to attendance providers: integrations, their devices, and
+/// Setting up the tenant's connections to attendance vendors: integrations, their devices, and
 /// the mapping of the vendor's employee ids to employees, which is kept per device. An integration is paused, never deleted:
 /// raw transactions point at it (CLAUDE.md §1.2). The connection secret is only ever a reference
 /// (<c>ConnectionConfigRef</c>); the secret itself lives in configuration.
@@ -19,15 +19,15 @@ public interface IAttendanceIntegrationService
     /// <summary>Gets an integration as editable input, or null when it does not exist.</summary>
     Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken);
 
-    /// <summary>Lists the providers of the catalog, active ones first. Only an active provider can be chosen for a new integration.</summary>
-    Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken);
+    /// <summary>Lists the connectors of the catalog, usable ones first. Only a usable connector can be chosen for a new integration.</summary>
+    Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken);
 
     /// <summary>Lists the active employees, for choosing whom a vendor's employee id stands for.</summary>
     Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);
 
     Task<SaveResult> CreateAsync(IntegrationInput input, CancellationToken cancellationToken);
 
-    /// <summary>Updates an integration. Its provider can't change: its devices and raw transactions belong to that adapter.</summary>
+    /// <summary>Updates an integration. Its connector can't change: its devices and raw transactions belong to that adapter.</summary>
     Task<SaveResult> UpdateAsync(int id, IntegrationInput input, CancellationToken cancellationToken);
 
     /// <summary>Lists an integration's devices; null when the integration does not exist.</summary>
@@ -60,12 +60,12 @@ public interface IAttendanceIntegrationService
     /// </summary>
     Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken);
 
-    /// <summary>Describes how the integration's provider maps raw data. Null when the integration does not exist.</summary>
-    Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
+    /// <summary>Describes how the integration's vendor maps raw data. Null when the integration does not exist.</summary>
+    Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Runs a sync, or a reconciliation, now instead of at the integration's next scheduled time.
-    /// Audited. Null when the integration does not exist; a provider failure is the outcome, not an error.
+    /// Audited. Null when the integration does not exist; a vendor failure is the outcome, not an error.
     /// </summary>
     Task<SyncOutcomeResponse?> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken);
 

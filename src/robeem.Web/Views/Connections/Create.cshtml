@@ -1,0 +1,17 @@
+@model ConnectionFormViewModel
+@{
+    ViewData["Title"] = "Add connection";
+}
+
+<h1 class="h3 mb-1">Add connection</h1>
+<p class="text-muted">To @Model.Integration.DisplayName (@Model.Integration.VendorName)</p>
+
+<form method="post" asp-action="Create" asp-route-integrationId="@Model.Integration.Id">
+    <partial name="_ConnectionForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Add</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-integrationId="@Model.Integration.Id">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

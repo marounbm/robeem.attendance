@@ -27,6 +27,10 @@ public sealed class AttendanceTransportsController : ControllerBase
     public async Task<IReadOnlyList<TransportItem>> List(CancellationToken cancellationToken) =>
         await _transports.ListAsync(cancellationToken);
 
+    /// <summary>What each transport declares: its non-secret settings and the authentication it allows. The connection forms are drawn from it.</summary>
+    [HttpGet("descriptors")]
+    public IReadOnlyList<TransportDescriptorItem> Descriptors() => TransportDescriptors.All;
+
     [HttpGet("{id:int}/input")]
     public async Task<ActionResult<TransportInput>> GetInput(int id, CancellationToken cancellationToken) =>
         await _transports.GetInputAsync(id, cancellationToken) is { } input ? input : NotFound();

@@ -373,7 +373,17 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
     private void SetTransport(AttendanceTransport transport)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        db.AttendanceIntegrations.Single().Transport = transport;
+        var integration = db.AttendanceIntegrations.Single();
+        var connection = db.AttendanceConnections.SingleOrDefault(c => c.IntegrationId == integration.Id);
+        if (connection is null)
+        {
+            db.AttendanceConnections.Add(new AttendanceConnection { IntegrationId = integration.Id, Name = "Default", IsDefault = true, Transport = transport });
+        }
+        else
+        {
+            connection.Transport = transport;
+        }
+
         db.SaveChanges();
     }
 

@@ -12,5 +12,5 @@ public sealed class StubAdapterCatalog : IAttendanceAdapterCatalog
         _keys = keys.ToHashSet(StringComparer.Ordinal);
     }
 
-    public bool IsRegistered(string providerKey) => _keys.Contains(providerKey);
+    public bool IsRegistered(string vendorKey) => _keys.Contains(vendorKey);
 }

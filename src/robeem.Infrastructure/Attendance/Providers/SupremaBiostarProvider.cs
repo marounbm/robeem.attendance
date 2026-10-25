@@ -27,9 +27,9 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// unlabeled punch, because the API cannot filter on it and a door event is not for the adapter to
 /// drop (CLAUDE.md §1.1).</para>
 /// </remarks>
-public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMappingGuide
+public sealed class SupremaBiostarProvider : IAttendanceAdapter, IAttendanceMappingGuide
 {
-    public const string ProviderKey = "suprema-biostar";
+    public const string VendorKey = "suprema-biostar";
 
     /// <summary>The name of the <see cref="IHttpClientFactory"/> client that verifies the server's certificate.</summary>
     public const string HttpClientName = "suprema-biostar";
@@ -62,7 +62,7 @@ public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMap
     {
         try
         {
-            var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret);
+            var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret, config.Settings.GetValueOrDefault("baseUrl"));
             await LogoutQuietlyAsync(settings, await LoginAsync(settings, cancellationToken), cancellationToken);
             return new ConnectionValidationResult(true, "Logged in to BioStar.");
         }
@@ -76,7 +76,7 @@ public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMap
     {
         try
         {
-            var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret);
+            var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret, config.Settings.GetValueOrDefault("baseUrl"));
             return new AuthResult(true, await LoginAsync(settings, cancellationToken));
         }
         catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
@@ -87,7 +87,7 @@ public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMap
 
     public async Task<IReadOnlyList<ExternalDeviceDto>> RetrieveDevicesAsync(AttendanceIntegrationConfig config, CancellationToken cancellationToken)
     {
-        var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret);
+        var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret, config.Settings.GetValueOrDefault("baseUrl"));
         var session = await LoginAsync(settings, cancellationToken);
         try
         {
@@ -137,9 +137,9 @@ public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMap
         return new AttendanceBatchResult(transactions, latest is { } at ? new SyncCursor(at.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)) : null);
     }
 
-    public ProviderMappingGuide DescribeMapping() => new()
+    public VendorMappingGuide DescribeMapping() => new()
     {
-        ProviderKey = ProviderKey,
+        VendorKey = VendorKey,
         Summary = "Pulled from the BioStar 2 Local API (events search) with the connection secret. Event times are UTC; the device's time zone does not change them. Events without a T&A key are stored as unlabeled punches, and the tenant's attendance policy decides what happens to them.",
         Fields =
         [
@@ -304,7 +304,7 @@ public sealed class SupremaBiostarProvider : IAttendanceProvider, IAttendanceMap
 
     private async Task<(List<ExternalAttendanceTransaction> Transactions, DateTimeOffset? Latest)> SearchAsync(AttendanceIntegrationConfig config, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
     {
-        var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret);
+        var settings = BiostarConnectionSettings.Parse(config.ConnectionSecret, config.Settings.GetValueOrDefault("baseUrl"));
         var session = await LoginAsync(settings, cancellationToken);
         try
         {

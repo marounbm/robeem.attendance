@@ -1,0 +1,126 @@
+@model ConnectorFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-header">Connector</div>
+    <div class="card-body row g-3">
+        <div class="col-md-6">
+            <label asp-for="Input.DisplayName" class="form-label"></label>
+            <input asp-for="Input.DisplayName" class="form-control" autocomplete="off" placeholder="e.g. ZKTeco attendance export" />
+            <span asp-validation-for="Input.DisplayName" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.VendorId" class="form-label"></label>
+            @if (Model.Id is null)
+            {
+                <select asp-for="Input.VendorId" class="form-select">
+                    @foreach (var vendor in Model.Vendors)
+                    {
+                        <option value="@vendor.Id" selected="@(vendor.Id == Model.Input.VendorId)">@vendor.DisplayName@(vendor.IsActive ? string.Empty : " (inactive)")</option>
+                    }
+                </select>
+                <div class="form-text">The software or protocol belongs to one vendor. <a asp-controller="Vendors" asp-action="Index">Manage vendors.</a></div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Input.VendorId" />
+                <input class="form-control" value="@(Model.Vendors.FirstOrDefault(v => v.Id == Model.Input.VendorId)?.DisplayName)" disabled />
+                <div class="form-text">The vendor can't be changed: the punches of its integrations are tied to it.</div>
+            }
+            <span asp-validation-for="Input.VendorId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ConnectorKey" class="form-label"></label>
+            @if (Model.Id is null)
+            {
+                <input asp-for="Input.ConnectorKey" class="form-control font-monospace" autocomplete="off" placeholder="e.g. my-clock-export" />
+                <div class="form-text">Lower-case letters, digits, <code>.</code> <code>_</code> <code>-</code>. Can't be changed later.</div>
+            }
+            else
+            {
+                <input type="hidden" asp-for="Input.ConnectorKey" />
+                <input class="form-control font-monospace" value="@Model.Input.ConnectorKey" disabled />
+                <div class="form-text">The key can't be changed: integrations are tied to it.</div>
+            }
+            <span asp-validation-for="Input.ConnectorKey" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.AdapterKey" class="form-label"></label>
+            <input asp-for="Input.AdapterKey" class="form-control font-monospace" autocomplete="off" />
+            <div class="form-text">
+                Only for a connector that is pulled over an API or pushes webhooks: the key a code adapter and its interpreter are registered
+                under. Leave it empty for a connector of exported files, which is read by a payload format alone.
+            </div>
+            <span asp-validation-for="Input.AdapterKey" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <label asp-for="Input.Description" class="form-label"></label>
+            <input asp-for="Input.Description" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Input.Description" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.DefaultPayloadFormatId" class="form-label"></label>
+            <select asp-for="Input.DefaultPayloadFormatId" class="form-select">
+                <option value="">None</option>
+                @foreach (var format in Model.PayloadFormats)
+                {
+                    <option value="@format.Id" selected="@(format.Id == Model.Input.DefaultPayloadFormatId)">@format.Name</option>
+                }
+            </select>
+            <div class="form-text">
+                How an uploaded file of this connector is read when its integration names no payload format of its own.
+                <a asp-controller="PayloadFormats" asp-action="Index">Define a payload format.</a>
+            </div>
+            <span asp-validation-for="Input.DefaultPayloadFormatId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <div class="form-label">Transports</div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" checked disabled id="transport-FileUpload" />
+                <label class="form-check-label" for="transport-FileUpload">Manual file upload <span class="text-muted">(every connector has it)</span></label>
+            </div>
+            @* A transport an administrator switched off is offered only to the connector that already has it. *@
+            @foreach (var transport in Model.Transports.Where(t => t.Key != "FileUpload" && (t.IsActive || Model.Input.Transports.Contains(t.Key))))
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="Input.Transports" value="@transport.Key" id="transport-@transport.Key"
+                           checked="@Model.Input.Transports.Contains(transport.Key)" />
+                    <label class="form-check-label" for="transport-@transport.Key">
+                        @transport.DisplayName
+                        @if (!transport.IsActive)
+                        {
+                            <span class="text-muted">(switched off: untick to remove it, it can't be added back)</span>
+                        }
+                    </label>
+                </div>
+            }
+            <div class="form-text">The other ways an integration of this connector can receive attendance. Each needs code behind it. A switched-off transport is not offered; <a asp-controller="Transports" asp-action="Index">switch it on again</a> to use it.</div>
+            <span asp-validation-for="Input.Transports" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.EncryptionKind" class="form-label"></label>
+            <select asp-for="Input.EncryptionKind" class="form-select">
+                <option value="None">Not encrypted</option>
+                <option value="Pgp">PGP (OpenPGP message, private key)</option>
+                <option value="Aes">AES (CBC or GCM, key in the secret)</option>
+                <option value="PasswordProtected">Password-protected zip archive</option>
+            </select>
+            <div class="form-text">The key is never stored here: each integration names the secret that holds it.</div>
+            <span asp-validation-for="Input.EncryptionKind" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <div class="form-check">
+                <input asp-for="Input.SupportsIncrementalSync" class="form-check-input" />
+                <label asp-for="Input.SupportsIncrementalSync" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-check">
+                <input asp-for="Input.IsActive" class="form-check-input" />
+                <label asp-for="Input.IsActive" class="form-check-label"></label>
+            </div>
+            <div class="form-text">An inactive connector can't be chosen for a new integration; integrations that already use it keep working.</div>
+        </div>
+    </div>
+</div>

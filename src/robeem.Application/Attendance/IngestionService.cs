@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Persistence;
+using robeem.Application.Security;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
 
@@ -22,36 +23,48 @@ public sealed class IngestionService : IIngestionService
 
     public async Task<IReadOnlyList<UploadTarget>> ListUploadTargetsAsync(CancellationToken cancellationToken)
     {
-        // Any provider may take manual uploads: the integration's own transport decides.
+        // Any connector may take manual uploads: the integration's default connection decides. An integration with no connection yet takes them.
         var integrations = await _db.AttendanceIntegrations.AsNoTracking()
-            .Where(i => i.Status == AttendanceIntegrationStatus.Active && i.Transport == AttendanceTransport.FileUpload && i.Provider!.IsActive)
+            .Where(i => i.Status == AttendanceIntegrationStatus.Active
+                && !i.Connections.Any(c => c.IsDefault && (c.Transport != AttendanceTransport.FileUpload || !c.IsActive))
+                && i.Connector!.IsActive && i.Connector.Vendor!.IsActive)
             .OrderBy(i => i.DisplayName)
-            .Select(i => new { i.Id, i.DisplayName, i.Transport, i.FileFormatId, Provider = i.Provider! })
+            .Select(i => new
+            {
+                i.Id,
+                i.DisplayName,
+                Transport = AttendanceTransport.FileUpload,
+                i.PayloadFormatId,
+                ConnectorFormatId = i.Connector!.DefaultPayloadFormatId,
+                ConnectorName = i.Connector.DisplayName,
+                VendorKey = i.Connector.Vendor!.VendorKey,
+                VendorName = i.Connector.Vendor.DisplayName,
+            })
             .ToListAsync(cancellationToken);
 
         var effectiveFormatIds = integrations
-            .Select(i => FileFormatResolution.EffectiveFormatId(i.Transport, i.FileFormatId, i.Provider.DefaultFileFormatId))
+            .Select(i => PayloadFormatResolution.EffectiveFormatId(i.Transport, i.PayloadFormatId, i.ConnectorFormatId))
             .Where(id => id != null)
             .Select(id => id!.Value)
             .Distinct()
             .ToList();
         var formats = effectiveFormatIds.Count == 0
             ? []
-            : await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).Where(f => effectiveFormatIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, cancellationToken);
+            : await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).Where(f => effectiveFormatIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, cancellationToken);
 
         return integrations
             .Select(i =>
             {
-                var layout = FileFormatResolution.EffectiveFormatId(i.Transport, i.FileFormatId, i.Provider.DefaultFileFormatId) is { } formatId && formats.TryGetValue(formatId, out var format)
-                    ? FileFormatLayout.Describe(format, i.Provider.ProviderKey)
-                    : NoFormatLayout(i.Provider);
+                var layout = PayloadFormatResolution.EffectiveFormatId(i.Transport, i.PayloadFormatId, i.ConnectorFormatId) is { } formatId && formats.TryGetValue(formatId, out var format)
+                    ? PayloadFormatLayout.Describe(format, i.VendorKey)
+                    : NoFormatLayout(i.VendorKey, i.ConnectorName);
                 return new UploadTarget
                 {
                     IntegrationId = i.Id,
                     DisplayName = i.DisplayName,
-                    ProviderKey = i.Provider.ProviderKey,
-                    ProviderName = i.Provider.DisplayName,
-                    FileFormats = layout.FileFormats,
+                    VendorKey = i.VendorKey,
+                    VendorName = i.VendorName,
+                    FileExtensions = layout.FileExtensions,
                     Layout = layout,
                 };
             })
@@ -62,10 +75,10 @@ public sealed class IngestionService : IIngestionService
         IngestUploadedFileAsync(integrationId, filePath, filePath, null, cancellationToken);
 
     public Task<AttendanceIngestionResult?> IngestUploadedFileAsync(int integrationId, string filePath, string fileName, int? uploadedById, CancellationToken cancellationToken) =>
-        IngestFileAsync(integrationId, filePath, AttendanceBatchType.ManualUpload, new UploadedFileSource(fileName, uploadedById), cancellationToken);
+        IngestFileAsync(integrationId, null, filePath, AttendanceBatchType.ManualUpload, new UploadedFileSource(fileName, uploadedById), cancellationToken);
 
-    public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, string filePath, CancellationToken cancellationToken) =>
-        IngestFileAsync(integrationId, filePath, AttendanceBatchType.Webhook, null, cancellationToken);
+    public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, int? connectionId, string filePath, CancellationToken cancellationToken) =>
+        IngestFileAsync(integrationId, connectionId, filePath, AttendanceBatchType.Webhook, null, cancellationToken);
 
     public async Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken)
     {
@@ -145,34 +158,70 @@ public sealed class IngestionService : IIngestionService
     }
 
     /// <summary>The layout shown for an integration that has no file format: there is nothing to read its files by yet.</summary>
-    private static ProviderMappingGuide NoFormatLayout(AttendanceProvider provider) => new()
+    private static VendorMappingGuide NoFormatLayout(string vendorKey, string connectorName) => new()
     {
-        ProviderKey = provider.ProviderKey,
-        Summary = $"{provider.DisplayName} has no file format of its own, and this integration has none chosen. Edit the integration and choose a file format (or give the provider a default one) before uploading a file.",
+        VendorKey = vendorKey,
+        Summary = $"{connectorName} has no file format of its own, and this integration has none chosen. Edit the integration and choose a file format (or give the connector a default one) before uploading a file.",
     };
 
-    /// <summary>Reads an uploaded file by the integration's file format, else its provider's default. An integration with neither has no way to read a file.</summary>
-    private async Task<IReadOnlyList<ExternalAttendanceTransaction>> ReadUploadAsync(AttendanceIntegration integration, string providerKey, string filePath, CancellationToken cancellationToken)
+    /// <summary>Reads an uploaded file by the integration's file format, else its connector's default. An integration with neither has no way to read a file.</summary>
+    private async Task<IReadOnlyList<ExternalAttendanceTransaction>> ReadUploadAsync(AttendanceIntegration integration, string filePath, CancellationToken cancellationToken)
     {
-        var formatId = FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.Provider!.DefaultFileFormatId)
-            ?? throw new InvalidOperationException($"Integration '{integration.DisplayName}' has no file format, and provider '{providerKey}' has no default one, so its files can't be read. Choose a file format for the integration.");
-        var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
-        return await _services.GetRequiredService<ICustomFormatFileReader>().ReadAsync(format, filePath, cancellationToken);
+        var connector = integration.Connector!;
+        var formatId = PayloadFormatResolution.EffectiveFormatId(AttendanceTransport.FileUpload, integration.PayloadFormatId, connector.DefaultPayloadFormatId)
+            ?? throw new InvalidOperationException($"Integration '{integration.DisplayName}' has no file format, and connector '{connector.ConnectorKey}' has no default one, so its files can't be read. Choose a file format for the integration.");
+        var format = await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+        var reader = _services.GetRequiredService<ICustomFormatFileReader>();
+        if (connector.EncryptionKind == PayloadEncryptionKind.None)
+        {
+            return await reader.ReadAsync(format, filePath, cancellationToken);
+        }
+
+        // An encrypted file is decrypted to a temporary file that exists only for the read. The key is resolved for this call, kept in
+        // no field and put in no message.
+        var decryptor = _services.GetService<IPayloadDecryptorCatalog>()?.Find(connector.EncryptionKind)
+            ?? throw new InvalidOperationException($"This server has no way to decrypt a {connector.EncryptionKind} payload.");
+        var key = await _services.GetRequiredService<ISecretStore>().GetSecretAsync(integration.PayloadKeyRef, cancellationToken)
+            ?? throw new InvalidOperationException($"The decryption key '{integration.PayloadKeyRef}' is not configured, so the file can't be read.");
+        var plainPath = Path.Combine(Path.GetTempPath(), $"robeem-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await decryptor.DecryptAsync(filePath, plainPath, key, cancellationToken);
+            return await reader.ReadAsync(format, plainPath, cancellationToken);
+        }
+        finally
+        {
+            File.Delete(plainPath);
+        }
     }
 
-    private async Task<AttendanceIngestionResult?> IngestFileAsync(int integrationId, string filePath, AttendanceBatchType batchType, UploadedFileSource? upload, CancellationToken cancellationToken)
+    private async Task<AttendanceIngestionResult?> IngestFileAsync(int integrationId, int? connectionId, string filePath, AttendanceBatchType batchType, UploadedFileSource? upload, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations
-            .Include(i => i.Provider)
+            .Include(i => i.Connector).ThenInclude(c => c!.Vendor)
+            .Include(i => i.Connections)
             .SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
         {
             return null;
         }
 
+        // The connection the data came through: the one named (a webhook), else the integration's default.
+        var connection = connectionId is { } named
+            ? integration.Connections.FirstOrDefault(c => c.Id == named)
+            : integration.Connections.FirstOrDefault(c => c.IsDefault);
+
         // The batch is saved first, so a run that dies half-way is still visible. A person's upload
         // is recorded with it, in the same save, whether or not its rows turn out to be readable.
-        var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = batchType };
+        var batch = new AttendanceProcessingBatch
+        {
+            IntegrationId = integration.Id,
+            ConnectionId = connection?.Id,
+            PayloadFormatId = batchType == AttendanceBatchType.ManualUpload
+                ? PayloadFormatResolution.EffectiveFormatId(AttendanceTransport.FileUpload, integration.PayloadFormatId, integration.Connector!.DefaultPayloadFormatId)
+                : null,
+            BatchType = batchType,
+        };
         _db.AttendanceProcessingBatches.Add(batch);
         string? sha256 = null;
         DateTimeOffset? sameFileUploadedAt = null;
@@ -206,24 +255,31 @@ public sealed class IngestionService : IIngestionService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        var providerKey = integration.Provider!.ProviderKey;
+        // The vendor's key is what the raw rows record as their source; the connector's adapter key picks the code that reads them.
+        var vendorKey = integration.Connector!.Vendor!.VendorKey;
         try
         {
             IReadOnlyList<ExternalAttendanceTransaction> transactions;
             if (batchType == AttendanceBatchType.ManualUpload)
             {
-                transactions = await ReadUploadAsync(integration, providerKey, filePath, cancellationToken);
+                transactions = await ReadUploadAsync(integration, filePath, cancellationToken);
             }
             else
             {
-                // Adapters are keyed services, one per AttendanceProvider.ProviderKey (CLAUDE.md §1.9).
-                var provider = _services.GetKeyedService<IAttendanceProvider>(providerKey)
-                    ?? throw new InvalidOperationException($"No adapter is registered for provider '{providerKey}'.");
-                var config = new AttendanceIntegrationConfig(integration.Id, providerKey, integration.ConnectionConfigRef) { UploadFilePath = filePath };
-                transactions = (await provider.RetrieveAttendanceTransactionsAsync(config, null, cancellationToken)).Transactions;
+                // Adapters are keyed services, one per AttendanceConnectorDefinition.AdapterKey (CLAUDE.md §1.9).
+                var adapterKey = integration.Connector.AdapterKey;
+                var adapter = (adapterKey is { Length: > 0 } ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) : null)
+                    ?? throw new InvalidOperationException($"No adapter is registered for connector '{integration.Connector.ConnectorKey}' (adapter key '{adapterKey}').");
+                var config = new AttendanceIntegrationConfig(integration.Id, vendorKey, connection?.SecretRef ?? string.Empty)
+                {
+                    ConnectionId = connection?.Id,
+                    Settings = ConnectionSettingsValidator.Parse(connection?.Settings),
+                    UploadFilePath = filePath,
+                };
+                transactions = (await adapter.RetrieveAttendanceTransactionsAsync(config, null, cancellationToken)).Transactions;
             }
 
-            await _writer.AddTransactionsAsync(integration, batch, providerKey, transactions, cancellationToken);
+            await _writer.AddTransactionsAsync(integration, batch, vendorKey, transactions, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
             return ToResult(batch, sha256, sameFileUploadedAt);
         }

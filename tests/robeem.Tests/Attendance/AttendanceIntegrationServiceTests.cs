@@ -11,9 +11,9 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 {
     private readonly TestDatabase _database = new();
     private readonly FakeSync _sync = new();
-    private readonly int _csvProviderId;
-    private readonly int _inactiveProviderId;
-    private readonly int _unreadableProviderId;
+    private readonly int _csvConnectorId;
+    private readonly int _inactiveConnectorId;
+    private readonly int _unreadableConnectorId;
     private readonly int _employeeId;
     private readonly Dictionary<string, int> _deviceTypeIds;
 
@@ -22,21 +22,21 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         _database.SeedAttendanceCatalog();
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        // The seeded Generic CSV provider (default file format: usable), given two more transports; the seeded ZKTeco one switched off;
-        // and one that is active but has neither a default file format nor a code adapter.
-        var csv = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv");
+        // The seeded Generic CSV connector (default payload format: usable), given two more transports; the seeded ZKTeco one switched off;
+        // and one that is active but has neither a default payload format nor a code adapter.
+        var csv = AttendanceTestData.Seeded(db, "generic-csv");
         foreach (var key in new[] { "Webhook", "RestApi" })
         {
-            csv.Transports.Add(new AttendanceProviderTransport { Transport = db.AttendanceTransportDefinitions.Single(t => t.TransportKey == key) });
+            csv.Transports.Add(new AttendanceConnectorTransport { Transport = db.AttendanceTransportDefinitions.Single(t => t.TransportKey == key) });
         }
 
-        var zk = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco");
+        var zk = AttendanceTestData.Seeded(db, "zkteco");
         zk.IsActive = false;
-        var unreadable = new AttendanceProvider { ProviderKey = "unreadable", DisplayName = "Unreadable" };
+        var unreadable = AttendanceTestData.Connector("unreadable", "Unreadable", adapterKey: "unreadable");
         var ada = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         db.AddRange(unreadable, ada);
         db.SaveChanges();
-        (_csvProviderId, _inactiveProviderId, _unreadableProviderId, _employeeId) = (csv.Id, zk.Id, unreadable.Id, ada.Id);
+        (_csvConnectorId, _inactiveConnectorId, _unreadableConnectorId, _employeeId) = (csv.Id, zk.Id, unreadable.Id, ada.Id);
         _deviceTypeIds = db.AttendanceDeviceTypes.ToDictionary(t => t.Name, t => t.Id, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -50,8 +50,10 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.True(result.Succeeded);
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();
-        Assert.Equal(("HQ clock", "hq-clock", "*/5 * * * *", AttendanceIntegrationStatus.Active), (integration.DisplayName, integration.ConnectionConfigRef, integration.PollingScheduleCron, integration.Status));
-        Assert.Equal(_csvProviderId, integration.ProviderId);
+        var connection = db.AttendanceConnections.Single();
+        Assert.Equal(("HQ clock", "hq-clock", "*/5 * * * *", AttendanceIntegrationStatus.Active), (integration.DisplayName, connection.SecretRef, connection.PollingSchedule, integration.Status));
+        Assert.Equal((integration.Id, true, AttendanceTransport.RestApi, ConnectionAuthMethod.SessionLogin), (connection.IntegrationId, connection.IsDefault, connection.Transport, connection.AuthMethod));
+        Assert.Equal(_csvConnectorId, integration.ConnectorId);
         var entry = Assert.Single(db.AttendanceAuditLogs);
         Assert.Equal((AttendanceAuditActions.IntegrationChanged, integration.Id), (entry.Action, entry.TargetId));
     }
@@ -63,11 +65,12 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 
         Assert.True(result.Succeeded);
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal((string.Empty, null), (db.AttendanceIntegrations.Single().ConnectionConfigRef, db.AttendanceIntegrations.Single().PollingScheduleCron));
+        var connection = db.AttendanceConnections.Single();
+        Assert.Equal((string.Empty, null), (connection.SecretRef, connection.PollingSchedule));
     }
 
     [Fact]
-    public async Task TheTransport_MustBeOneTheProviderSupports()
+    public async Task TheTransport_MustBeOneTheVendorSupports()
     {
         var refused = await CreateAsync(Input(transport: "Sftp"));
         var unknown = await CreateAsync(Input(transport: "Carrier pigeon"));
@@ -77,7 +80,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.Contains("Choose how", unknown.Errors[nameof(IntegrationInput.Transport)]);
         Assert.True(accepted.Succeeded);
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal(AttendanceTransport.Webhook, db.AttendanceIntegrations.Single().Transport);
+        Assert.Equal(AttendanceTransport.Webhook, db.AttendanceConnections.Single(c => c.IntegrationId == accepted.Id).Transport);
     }
 
     [Fact]
@@ -87,12 +90,12 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         var pull = await CreateAsync(Input(name: "Pull", cron: "0 * * * *", transport: "RestApi"));
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Null(db.AttendanceIntegrations.Single(i => i.Id == upload.Id).PollingScheduleCron);
-        Assert.Equal("0 * * * *", db.AttendanceIntegrations.Single(i => i.Id == pull.Id).PollingScheduleCron);
+        Assert.Null(db.AttendanceConnections.Single(c => c.IntegrationId == upload.Id).PollingSchedule);
+        Assert.Equal("0 * * * *", db.AttendanceConnections.Single(c => c.IntegrationId == pull.Id).PollingSchedule);
     }
 
     [Fact]
-    public async Task TheTransport_CanBeChangedWithinWhatTheProviderSupports()
+    public async Task TheTransport_CanBeChangedWithinWhatTheVendorSupports()
     {
         var id = (await CreateAsync(Input())).Id!.Value;
 
@@ -106,51 +109,51 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("ProviderId", 999, "does not exist")]
-    public async Task AnUnknownProvider_IsRefused(string field, int providerId, string fragment)
+    [InlineData("ConnectorId", 999, "does not exist")]
+    public async Task AnUnknownVendor_IsRefused(string field, int connectorId, string fragment)
     {
-        var result = await CreateAsync(Input(providerId: providerId));
+        var result = await CreateAsync(Input(connectorId: connectorId));
 
         Assert.Contains(fragment, result.Errors[field]);
     }
 
     [Fact]
-    public async Task AnInactiveProvider_CanNotBeChosen()
+    public async Task AnInactiveVendor_CanNotBeChosen()
     {
-        var result = await CreateAsync(Input(providerId: _inactiveProviderId));
+        var result = await CreateAsync(Input(connectorId: _inactiveConnectorId));
 
-        Assert.Contains("not active", result.Errors[nameof(IntegrationInput.ProviderId)]);
+        Assert.Contains("not active", result.Errors[nameof(IntegrationInput.ConnectorId)]);
     }
 
     [Fact]
-    public async Task AProviderNothingCanRead_CanNotBeChosen_UntilItHasAFormatOrAnAdapter()
+    public async Task AVendorNothingCanRead_CanNotBeChosen_UntilItHasAFormatOrAnAdapter()
     {
-        var refused = await CreateAsync(Input(providerId: _unreadableProviderId));
-        Assert.Contains("neither a default file format nor a code adapter", refused.Errors[nameof(IntegrationInput.ProviderId)]);
+        var refused = await CreateAsync(Input(connectorId: _unreadableConnectorId));
+        Assert.Contains("neither a default payload format nor a code adapter", refused.Errors[nameof(IntegrationInput.ConnectorId)]);
 
         // A code adapter registered under its key is enough.
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var withAdapter = new AttendanceIntegrationService(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog("unreadable"));
-        Assert.True((await withAdapter.CreateAsync(Input(providerId: _unreadableProviderId), CancellationToken.None)).Succeeded);
+        Assert.True((await withAdapter.CreateAsync(Input(connectorId: _unreadableConnectorId), CancellationToken.None)).Succeeded);
     }
 
     [Fact]
-    public async Task TheProviderList_SaysWhichProvidersAreUsable_AndWhichTransportsEachOffers()
+    public async Task TheVendorList_SaysWhichVendorsAreUsable_AndWhichTransportsEachOffers()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        var providers = await CreateService(db).ListProvidersAsync(CancellationToken.None);
+        var vendors = await CreateService(db).ListConnectorsAsync(CancellationToken.None);
 
-        var csv = providers.Single(p => p.Key == "generic-csv");
+        var csv = vendors.Single(p => p.Key == "generic-csv");
         Assert.True(csv.IsActive);
         Assert.Equal(["FileUpload", "RestApi", "Webhook"], csv.SupportedTransports.Select(t => t.Key).Order(StringComparer.Ordinal));
         Assert.Equal("FileUpload", csv.SupportedTransports[^1].Key);
-        Assert.Contains(csv.SupportedTransports, t => t.Key == "RestApi" && t.DisplayName == "REST API" && t.IsPull && !t.UsesFileFormat);
+        Assert.Contains(csv.SupportedTransports, t => t.Key == "RestApi" && t.DisplayName == "REST API" && t.IsPull && !t.UsesPayloadFormat);
 
         // ZKTeco is switched off; "unreadable" and BioStar are active but have no default format, and this service's catalog has no adapter for them.
-        Assert.False(providers.Single(p => p.Key == "zkteco").IsActive);
-        Assert.False(providers.Single(p => p.Key == "unreadable").IsActive);
-        Assert.False(providers.Single(p => p.Key == "suprema-biostar").IsActive);
+        Assert.False(vendors.Single(p => p.Key == "zkteco").IsActive);
+        Assert.False(vendors.Single(p => p.Key == "unreadable").IsActive);
+        Assert.False(vendors.Single(p => p.Key == "suprema-biostar").IsActive);
     }
 
     [Theory]
@@ -218,13 +221,13 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TheProvider_CanNotBeChangedAfterwards()
+    public async Task TheVendor_CanNotBeChangedAfterwards()
     {
         var id = (await CreateAsync(Input())).Id!.Value;
 
-        var result = await UpdateAsync(id, Input(providerId: _inactiveProviderId));
+        var result = await UpdateAsync(id, Input(connectorId: _inactiveConnectorId));
 
-        Assert.Contains("can't be changed", result.Errors[nameof(IntegrationInput.ProviderId)]);
+        Assert.Contains("can't be changed", result.Errors[nameof(IntegrationInput.ConnectorId)]);
     }
 
     [Fact]
@@ -234,7 +237,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TheList_ShowsCounts_Provider_AndHealth_AndTheInputRoundTrips()
+    public async Task TheList_ShowsCounts_Vendor_AndHealth_AndTheInputRoundTrips()
     {
         var id = (await CreateAsync(Input(name: "B clock", reference: "b-ref", cron: "0 * * * *", transport: "RestApi"))).Id!.Value;
         await CreateAsync(Input(name: "A clock"));
@@ -248,25 +251,25 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 
         Assert.Equal(["A clock", "B clock"], list.Select(i => i.DisplayName));
         var b = list.Single(i => i.DisplayName == "B clock");
-        Assert.Equal((2, 1, "generic-csv", "Generic CSV upload", "Unknown", "Active"), (b.DeviceCount, b.MappingCount, b.ProviderKey, b.ProviderName, b.HealthStatus, b.Status));
+        Assert.Equal((2, 1, "generic-csv", "Generic CSV upload", "Unknown", "Active"), (b.DeviceCount, b.MappingCount, b.VendorKey, b.VendorName, b.HealthStatus, b.Status));
         Assert.Equal(("b-ref", "0 * * * *"), (b.ConnectionConfigRef, b.PollingScheduleCron));
         var input = (await service.GetInputAsync(id, CancellationToken.None))!;
-        Assert.Equal(("B clock", "b-ref", "0 * * * *", "Active", _csvProviderId), (input.DisplayName, input.ConnectionConfigRef, input.PollingScheduleCron, input.Status, input.ProviderId));
+        Assert.Equal(("B clock", "b-ref", "0 * * * *", "Active", _csvConnectorId), (input.DisplayName, input.ConnectionConfigRef, input.PollingScheduleCron, input.Status, input.ConnectorId));
         Assert.Null(await service.GetAsync(999, CancellationToken.None));
         Assert.Null(await service.GetInputAsync(999, CancellationToken.None));
     }
 
     [Fact]
-    public async Task TheProviders_ListActiveOnesFirst()
+    public async Task TheVendors_ListActiveOnesFirst()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        var providers = await CreateService(db).ListProvidersAsync(CancellationToken.None);
+        var vendors = await CreateService(db).ListConnectorsAsync(CancellationToken.None);
 
         // Usable ones first (here only generic CSV has a default format), then the rest by name.
         Assert.Equal(
             [("generic-csv", true), ("generic-webhook", false), ("suprema-biostar", false), ("unreadable", false), ("zkteco", false)],
-            providers.Select(p => (p.Key, p.IsActive)));
+            vendors.Select(p => (p.Key, p.IsActive)));
     }
 
     [Fact]
@@ -427,7 +430,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AMapping_NeedsAKnownEmployee_AndAnUnusedVendorId_PerDevice_CaseSensitively()
+    public async Task AMapping_NeedsAKnownEmployee_AndAnUnusedConnectorId_PerDevice_CaseSensitively()
     {
         var integrationId = (await CreateAsync(Input(name: "One"))).Id!.Value;
         var first = (await AddDeviceAsync(integrationId, Device("DEV-1"))).Id!.Value;
@@ -605,13 +608,15 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.Null(db.AttendanceIntegrations.Single(i => i.Id == id).DefaultDeviceId);
     }
 
-    private static IntegrationInput Input(int providerId = 0, string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active", string transport = "FileUpload", string? zone = null, int? defaultDeviceId = null) => new()
+    private static IntegrationInput Input(int connectorId = 0, string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active", string transport = "FileUpload", string? zone = null, int? defaultDeviceId = null) => new()
     {
         DefaultDeviceId = defaultDeviceId,
         TimeZoneId = zone,
-        ProviderId = providerId,
+        ConnectorId = connectorId,
         DisplayName = name,
-        ConnectionConfigRef = reference,
+
+        // Every authenticated transport needs a secret; a plain upload needs none.
+        ConnectionConfigRef = reference ?? (transport == "FileUpload" ? null : "test-secret"),
         PollingScheduleCron = cron,
         Status = status,
         Transport = transport,
@@ -627,14 +632,14 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
 
     private async Task<robeem.Application.Common.SaveResult> CreateAsync(IntegrationInput input)
     {
-        input.ProviderId = input.ProviderId == 0 ? _csvProviderId : input.ProviderId;
+        input.ConnectorId = input.ConnectorId == 0 ? _csvConnectorId : input.ConnectorId;
         using var db = _database.CreateContext(TestDatabase.TenantA);
         return await CreateService(db).CreateAsync(input, CancellationToken.None);
     }
 
     private async Task<robeem.Application.Common.SaveResult> UpdateAsync(int id, IntegrationInput input)
     {
-        input.ProviderId = input.ProviderId == 0 ? _csvProviderId : input.ProviderId;
+        input.ConnectorId = input.ConnectorId == 0 ? _csvConnectorId : input.ConnectorId;
         using var db = _database.CreateContext(TestDatabase.TenantA);
         return await CreateService(db).UpdateAsync(id, input, CancellationToken.None);
     }

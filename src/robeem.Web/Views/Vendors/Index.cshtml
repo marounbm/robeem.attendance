@@ -1,0 +1,70 @@
+@model VendorsIndexViewModel
+@{
+    ViewData["Title"] = "Vendors";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Vendors</h1>
+    <a class="btn btn-primary" asp-action="Create">Add vendor</a>
+</div>
+
+<p class="text-muted">
+    The companies you receive attendance from. A vendor says who they are; each software or protocol they offer is a
+    <a asp-controller="Connectors" asp-action="Index">connector</a>, which says how its data arrives and is read. A vendor is deactivated, never deleted.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card">
+    @if (Model.Vendors.Count == 0)
+    {
+        <div class="card-body text-muted">No vendors yet. <a asp-action="Create">Add the first one.</a></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Key</th>
+                        <th scope="col">Website</th>
+                        <th scope="col" class="text-end">Connectors</th>
+                        <th scope="col" class="text-end">Integrations</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Vendors)
+                    {
+                        <tr>
+                            <td>
+                                @item.DisplayName
+                                @if (item.Manufacturer.Length > 0)
+                                {
+                                    <div class="small text-muted">@item.Manufacturer</div>
+                                }
+                            </td>
+                            <td><code>@item.VendorKey</code></td>
+                            <td>@(item.WebsiteUrl.Length > 0 ? item.WebsiteUrl : "—")</td>
+                            <td class="text-end">@item.ConnectorCount</td>
+                            <td class="text-end">@item.IntegrationCount</td>
+                            <td>
+                                @if (item.IsActive)
+                                {
+                                    <span class="badge text-bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td class="text-end"><a class="btn btn-sm btn-outline-secondary" asp-action="Edit" asp-route-id="@item.Id">Edit</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

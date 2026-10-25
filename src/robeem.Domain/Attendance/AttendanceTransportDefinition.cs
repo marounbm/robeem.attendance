@@ -32,7 +32,7 @@ namespace robeem.DataModel
         public bool IsPull { get; set; }
 
         /// <summary>Gets or sets a value indicating whether the attendance arrives as a file read by a file format.</summary>
-        public bool UsesFileFormat { get; set; }
+        public bool UsesPayloadFormat { get; set; }
 
         /// <summary>Gets or sets a value indicating whether a new integration can choose this transport. An integration that has it keeps it.</summary>
         public bool IsActive { get; set; } = true;

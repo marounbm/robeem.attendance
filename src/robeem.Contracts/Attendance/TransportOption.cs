@@ -12,7 +12,7 @@ public sealed class TransportOption
     public bool IsPull { get; init; }
 
     /// <summary>Gets a value indicating whether the attendance arrives as a file read by a file format.</summary>
-    public bool UsesFileFormat { get; init; }
+    public bool UsesPayloadFormat { get; init; }
 
     /// <summary>Gets a value indicating whether a new integration can choose it. An integration that already has it keeps it.</summary>
     public bool IsActive { get; init; }

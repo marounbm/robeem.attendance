@@ -26,15 +26,16 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
     public NewVendorAdditivityTests()
     {
         _vendors = new ServiceCollection()
-            .AddKeyedSingleton<IAttendanceProvider>(VendorKey, _provider)
+            .AddKeyedSingleton<IAttendanceAdapter>(VendorKey, _provider)
             .AddKeyedSingleton<IAttendanceEventInterpreter, AcmeInterpreter>(VendorKey)
             .BuildServiceProvider();
         _resilience = new IntegrationResilience(Options.Create(new AttendanceSyncOptions()), Clock);
 
-        // Configuration, not code: the catalog row and the integration of the new vendor.
+        // Configuration, not code: the vendor and connector rows and the integration of the new vendor.
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();
-        db.AttendanceProviders.Single().ProviderKey = VendorKey;
+        db.AttendanceVendors.Single().VendorKey = VendorKey;
+        db.AttendanceConnectorDefinitions.Single().AdapterKey = VendorKey;
         db.RawAttendanceTransactions.Single().ProcessingStatus = RawTransactionProcessingStatus.Normalized;
         db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Single(d => d.IntegrationId == integration.Id).Id, ExternalEmployeeId = "A-77", EmployeeId = EmployeeId });
         db.SaveChanges();
@@ -101,7 +102,7 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
         Assert.Equal(new NormalizationResult(0, 0, 0, 1), result);
         using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Empty(db.NormalizedAttendanceTransactions);
-        Assert.Contains($"for provider '{VendorKey}'", db.RawAttendanceTransactions.Single(r => r.ExternalTransactionId == "X1").ProcessingError);
+        Assert.Contains($"for vendor '{VendorKey}'", db.RawAttendanceTransactions.Single(r => r.ExternalTransactionId == "X1").ProcessingError);
     }
 
     private async Task<SyncOutcome> SyncAsync()
@@ -134,7 +135,7 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
     }
 
     /// <summary>The vendor's adapter: it only picks fields out, and interprets nothing.</summary>
-    private sealed class AcmeProvider : IAttendanceProvider
+    private sealed class AcmeProvider : IAttendanceAdapter
     {
         public IReadOnlyList<ExternalAttendanceTransaction> Transactions { get; set; } =
         [

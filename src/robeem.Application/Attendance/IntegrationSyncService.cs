@@ -52,8 +52,9 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
     {
         var rows = await _db.AttendanceIntegrations
             .AsNoTracking()
-            .Where(i => i.Status == AttendanceIntegrationStatus.Active && i.PollingScheduleCron != null && i.PollingScheduleCron != string.Empty)
-            .Select(i => new PollingIntegration(i.Id, i.PollingScheduleCron!, i.LastSuccessfulSyncAt))
+            .Where(i => i.Status == AttendanceIntegrationStatus.Active
+                && i.Connections.Any(c => c.IsDefault && c.IsActive && c.PollingSchedule != null && c.PollingSchedule != string.Empty))
+            .Select(i => new PollingIntegration(i.Id, i.Connections.Where(c => c.IsDefault).Select(c => c.PollingSchedule!).First(), i.LastSuccessfulSyncAt))
             .ToListAsync(cancellationToken);
 
         // Never-synced first. Done here: the position of NULLs in an ORDER BY differs between databases.
@@ -100,7 +101,8 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
     private async Task<SyncOutcome> RunAsync(int integrationId, Mode mode, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations
-            .Include(i => i.Provider)
+            .Include(i => i.Connector).ThenInclude(c => c!.Vendor)
+            .Include(i => i.Connections)
             .SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
         {
@@ -112,19 +114,30 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
             return new SyncOutcome(SyncOutcomeStatus.Skipped, Message: $"The integration is {integration.Status}.");
         }
 
-        var providerKey = integration.Provider!.ProviderKey;
+        // The integration is pulled through its default connection. One that has none (never configured) is read with no secret and no settings.
+        var connection = integration.Connections.FirstOrDefault(c => c.IsDefault);
+        if (connection is { IsActive: false })
+        {
+            return new SyncOutcome(SyncOutcomeStatus.Skipped, Message: $"The connection '{connection.Name}' is switched off.");
+        }
+
+        // The vendor's key is what the raw rows record as their source; the connector's adapter key picks the code that fetches them.
+        var vendorKey = integration.Connector!.Vendor!.VendorKey;
+        var adapterKey = integration.Connector.AdapterKey;
         var handle = _resilience.Get(_db.CurrentTenantId, integration.Id);
         var batchType = mode == Mode.Incremental ? AttendanceBatchType.IncrementalSync : AttendanceBatchType.Reconciliation;
 
-        // Adapters are keyed services, one per AttendanceProvider.ProviderKey (CLAUDE.md §1.9).
-        var provider = _services.GetKeyedService<IAttendanceProvider>(providerKey);
-        if (provider is null)
+        // Adapters are keyed services, one per AttendanceConnectorDefinition.AdapterKey (CLAUDE.md §1.9).
+        var adapter = adapterKey is { Length: > 0 } ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) : null;
+        if (adapter is null)
         {
-            return await FailAsync(integration.Id, batchType, $"No adapter is registered for provider '{providerKey}'.", handle);
+            return await FailAsync(integration.Id, connection?.Id, batchType, $"No adapter is registered for connector '{integration.Connector.ConnectorKey}' (adapter key '{adapterKey}').", handle);
         }
 
-        var config = new AttendanceIntegrationConfig(integration.Id, providerKey, integration.ConnectionConfigRef)
+        var config = new AttendanceIntegrationConfig(integration.Id, vendorKey, connection?.SecretRef ?? string.Empty)
         {
+            ConnectionId = connection?.Id,
+            Settings = ConnectionSettingsValidator.Parse(connection?.Settings),
             SyncOverlap = TimeSpan.FromMinutes(Math.Max(0, _options.OverlapMinutes)),
         };
         var cursor = string.IsNullOrEmpty(integration.SyncCursor) ? null : new SyncCursor(integration.SyncCursor);
@@ -133,15 +146,15 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         AttendanceBatchResult retrieved;
         try
         {
-            // Retry and the breaker wrap the provider call only: a storage failure says nothing about the vendor.
+            // Retry and the breaker wrap the vendor call only: a storage failure says nothing about the vendor.
             retrieved = await handle.Pipeline.ExecuteAsync(
                 async ct =>
                 {
                     // The secret lives for this call only (CLAUDE.md §2.8), and a secret store that is down is retried like the vendor.
                     var call = config with { ConnectionSecret = await _secrets.GetSecretAsync(config.ConnectionConfigRef, ct) };
                     return mode == Mode.Incremental
-                        ? await provider.GetTransactionChangesAsync(call, cursor, ct)
-                        : await provider.RetrieveAttendanceTransactionsAsync(call, window, ct);
+                        ? await adapter.GetTransactionChangesAsync(call, cursor, ct)
+                        : await adapter.RetrieveAttendanceTransactionsAsync(call, window, ct);
                 },
                 cancellationToken);
         }
@@ -153,7 +166,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         {
             _logger.LogWarning("Integration {IntegrationId}: the circuit breaker is open, {Mode} skipped.", integration.Id, mode);
             await EnsureUnhealthyAsync(integration);
-            return new SyncOutcome(SyncOutcomeStatus.CircuitOpen, Message: "The circuit breaker is open: the provider has been failing.");
+            return new SyncOutcome(SyncOutcomeStatus.CircuitOpen, Message: "The circuit breaker is open: the vendor has been failing.");
         }
         catch (OperationCanceledException)
         {
@@ -161,7 +174,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         }
         catch (Exception ex)
         {
-            return await FailAsync(integration.Id, batchType, ex.GetBaseException().Message, handle, ex);
+            return await FailAsync(integration.Id, connection?.Id, batchType, ex.GetBaseException().Message, handle, ex);
         }
 
         try
@@ -170,11 +183,11 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
             // report's sync success rate counts the quiet syncs too. The empty ones are pruned later
             // (PruneEmptyBatchesAsync). The batch and its rows are committed together, and before
             // anything else changes.
-            var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, BatchType = batchType, StartedAt = _clock.GetLocalNow().DateTime };
+            var batch = new AttendanceProcessingBatch { IntegrationId = integration.Id, ConnectionId = connection?.Id, BatchType = batchType, StartedAt = _clock.GetLocalNow().DateTime };
             _db.AttendanceProcessingBatches.Add(batch);
             if (retrieved.Transactions.Count > 0)
             {
-                await _writer.AddTransactionsAsync(integration, batch, providerKey, retrieved.Transactions, cancellationToken);
+                await _writer.AddTransactionsAsync(integration, batch, vendorKey, retrieved.Transactions, cancellationToken);
             }
             else
             {
@@ -208,12 +221,12 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         }
         catch (Exception ex)
         {
-            return await FailAsync(integration.Id, batchType, ex.GetBaseException().Message, handle, ex);
+            return await FailAsync(integration.Id, connection?.Id, batchType, ex.GetBaseException().Message, handle, ex);
         }
     }
 
     /// <summary>Records a failed run: a Failed batch with the reason, and the integration's health. The cursor is not touched.</summary>
-    private async Task<SyncOutcome> FailAsync(int integrationId, AttendanceBatchType batchType, string message, IntegrationPipeline handle, Exception? exception = null)
+    private async Task<SyncOutcome> FailAsync(int integrationId, int? connectionId, AttendanceBatchType batchType, string message, IntegrationPipeline handle, Exception? exception = null)
     {
         _logger.LogWarning(exception, "Integration {IntegrationId}: {BatchType} failed: {Message}", integrationId, batchType, message);
 
@@ -223,6 +236,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         var batch = new AttendanceProcessingBatch
         {
             IntegrationId = integrationId,
+            ConnectionId = connectionId,
             BatchType = batchType,
             StartedAt = _clock.GetLocalNow().DateTime,
             Status = AttendanceBatchStatus.Failed,

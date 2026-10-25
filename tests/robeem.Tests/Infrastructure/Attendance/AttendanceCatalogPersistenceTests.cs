@@ -14,9 +14,9 @@ public sealed class AttendanceCatalogPersistenceTests : IDisposable
     {
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV" };
-            provider.Transports.Add(new AttendanceProviderTransport { Transport = new AttendanceTransportDefinition { TransportKey = "Sftp", DisplayName = "SFTP drop", IsPull = true } });
-            var integration = new AttendanceIntegration { Provider = provider, DisplayName = "HQ", HealthStatus = AttendanceIntegrationHealth.Degraded };
+            var connector = AttendanceTestData.Connector("generic-csv", "Generic CSV")
+                .WithTransport(new AttendanceTransportDefinition { TransportKey = "Sftp", DisplayName = "SFTP drop", IsPull = true });
+            var integration = new AttendanceIntegration { Connector = connector, DisplayName = "HQ", HealthStatus = AttendanceIntegrationHealth.Degraded };
             db.AttendanceDevices.Add(new AttendanceDevice
             {
                 Integration = integration,
@@ -29,13 +29,13 @@ public sealed class AttendanceCatalogPersistenceTests : IDisposable
         }
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        var device = check.AttendanceDevices.Include(d => d.DeviceType).Include(d => d.Integration).ThenInclude(i => i!.Provider).ThenInclude(p => p!.Transports).ThenInclude(t => t.Transport).Single();
+        var device = check.AttendanceDevices.Include(d => d.DeviceType).Include(d => d.Integration).ThenInclude(i => i!.Connector).ThenInclude(c => c!.Transports).ThenInclude(t => t.Transport).Single();
         Assert.Equal(TestDatabase.TenantA, device.TenantId);
         Assert.Equal("RFID", device.DeviceType!.Name);
         Assert.Equal(TestDatabase.TenantA, device.DeviceType.TenantId);
         Assert.Equal(AttendanceIntegrationHealth.Degraded, device.Integration!.HealthStatus);
-        Assert.Equal("Generic CSV", device.Integration.Provider!.Title);
-        var transport = Assert.Single(device.Integration.Provider.Transports);
+        Assert.Equal("Generic CSV", device.Integration.Connector!.Title);
+        var transport = Assert.Single(device.Integration.Connector.Transports);
         Assert.Equal(("Sftp", TestDatabase.TenantA), (transport.Transport!.TransportKey, transport.TenantId));
 
         var storedHealth = check.Database.SqlQueryRaw<string>("SELECT \"HealthStatus\" AS \"Value\" FROM \"AttendanceIntegration\"").Single();

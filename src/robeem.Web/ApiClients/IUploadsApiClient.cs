@@ -5,7 +5,7 @@ namespace robeem.Web.ApiClients;
 /// <summary>robeem.Api's file upload (<c>api/attendance/ingestion</c>): where a file can go, and sending it.</summary>
 public interface IUploadsApiClient
 {
-    /// <summary>Lists the integrations a file can be uploaded into, each with its provider's file formats and layout.</summary>
+    /// <summary>Lists the integrations a file can be uploaded into, each with its vendor's file formats and layout.</summary>
     Task<IReadOnlyList<UploadTarget>> ListTargetsAsync(CancellationToken cancellationToken);
 
     /// <summary>Lists the files uploaded so far, newest first, each with its SHA-256 and upload time.</summary>

@@ -44,8 +44,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendanceExceptionQuery, AttendanceExceptionQuery>();
         services.AddScoped<IAttendanceTransactionQuery, AttendanceTransactionQuery>();
         services.AddScoped<IAttendanceIntegrationService, AttendanceIntegrationService>();
-        services.AddScoped<IAttendanceFileFormatService, AttendanceFileFormatService>();
-        services.AddScoped<IAttendanceProviderService, AttendanceProviderService>();
+        services.AddScoped<IAttendancePayloadFormatService, AttendancePayloadFormatService>();
+        services.AddScoped<IAttendanceVendorService, AttendanceVendorService>();
+        services.AddScoped<IAttendanceConnectorService, AttendanceConnectorService>();
+        services.AddScoped<IAttendanceConnectionService, AttendanceConnectionService>();
+        services.AddSingleton<IPayloadDecryptorCatalog, PayloadDecryptorCatalog>();
         services.AddScoped<IAttendanceDeviceTypeService, AttendanceDeviceTypeService>();
         services.AddScoped<IAttendanceTransportService, AttendanceTransportService>();
         services.AddScoped<IPayPeriodService, PayPeriodService>();

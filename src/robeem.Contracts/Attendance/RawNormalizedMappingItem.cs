@@ -6,7 +6,7 @@ namespace robeem.Contracts.Attendance;
 /// </summary>
 public sealed class RawNormalizedMappingItem
 {
-    public string ProviderKey { get; init; } = string.Empty;
+    public string VendorKey { get; init; } = string.Empty;
 
     public int IntegrationId { get; init; }
 

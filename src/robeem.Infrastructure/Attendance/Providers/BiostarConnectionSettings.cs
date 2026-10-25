@@ -10,8 +10,11 @@ namespace robeem.Infrastructure.Attendance.Providers;
 /// </summary>
 public sealed record BiostarConnectionSettings(Uri BaseUrl, string LoginId, string Password, bool AllowUntrustedCertificate)
 {
-    /// <summary>Reads the secret. The error never repeats what the secret said.</summary>
-    public static BiostarConnectionSettings Parse(string? secret)
+    /// <summary>
+    /// Reads the secret. The base URL is the connection's own setting when it has one (it is not a secret), else the secret's
+    /// <c>baseUrl</c>, as before settings existed. The error never repeats what the secret said.
+    /// </summary>
+    public static BiostarConnectionSettings Parse(string? secret, string? baseUrlSetting = null)
     {
         const string Expected = "The BioStar connection secret is missing or not valid: it must be JSON with baseUrl (https), loginId and password.";
         if (string.IsNullOrWhiteSpace(secret))
@@ -30,7 +33,7 @@ public sealed record BiostarConnectionSettings(Uri BaseUrl, string LoginId, stri
 
             string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
-            var baseUrl = Text("baseUrl");
+            var baseUrl = string.IsNullOrWhiteSpace(baseUrlSetting) ? Text("baseUrl") : baseUrlSetting;
             var loginId = Text("loginId");
             var password = Text("password");
             if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)

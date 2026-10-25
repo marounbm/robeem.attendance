@@ -17,17 +17,18 @@ dotnet run --project src/robeem.Web --launch-profile http   # second terminal
 
 Run **one** Api instance only (`CLAUDE.md` §2.8).
 
-## 2. Check that the `zkteco` provider is active
+## 2. Check that the `zkteco` vendor and connector are active
 
-Restarting the Api is normally all it takes: at startup (in Development) the seed adds a missing provider and switches on one that was seeded before its adapter existed. It never renames a provider or overwrites vendor details an administrator typed.
+Restarting the Api is normally all it takes: at startup (in Development) the seed adds a missing vendor and connector. It never renames them or overwrites details an administrator typed.
 
-Check: *Integrations > New*, the Provider list must offer "ZKTeco" as selectable. If it is still missing or disabled after a restart (for example outside Development, where the seed does not run at startup), run this in **each tenant database** (for example `robeem_demo`, `robeem_acme`):
+Check: *Integrations > New*, the Connector list must offer "ZKTeco" as selectable. If it is still missing or disabled after a restart (for example outside Development, where the seed does not run at startup), switch both on in the *Vendors* and *Connectors* screens, or run this in **each tenant database** (for example `robeem_demo`, `robeem_acme`):
 
 ```sql
-UPDATE "Attendance"."AttendanceProvider" SET "IsActive" = true WHERE "ProviderKey" = 'zkteco';
+UPDATE "Attendance"."AttendanceVendor" SET "IsActive" = true WHERE "VendorKey" = 'zkteco';
+UPDATE "Attendance"."AttendanceConnectorDefinition" SET "IsActive" = true WHERE "ConnectorKey" = 'zkteco';
 ```
 
-(If the table is not found, check its name with `\dt "Attendance".*` in psql; see `DATABASE.md` §4.1.) A database created after this change gets the provider active by itself.
+(If a table is not found, check its name with `\dt "Attendance".*` in psql; see `DATABASE.md` §4.1.)
 
 ## 3. Create the integration
 

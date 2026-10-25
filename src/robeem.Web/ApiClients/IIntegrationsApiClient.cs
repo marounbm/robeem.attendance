@@ -13,10 +13,10 @@ public interface IIntegrationsApiClient
     /// <summary>Gets an integration as editable input, or null when it does not exist.</summary>
     Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken);
 
     /// <summary>The active custom file formats a manual-upload integration can be set to read its files by.</summary>
-    Task<IReadOnlyList<FileFormatOption>> ListFileFormatOptionsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<PayloadFormatOption>> ListPayloadFormatOptionsAsync(CancellationToken cancellationToken);
 
     /// <summary>The active device types a device can be given.</summary>
     Task<IReadOnlyList<DeviceTypeOption>> ListDeviceTypeOptionsAsync(CancellationToken cancellationToken);
@@ -56,8 +56,8 @@ public interface IIntegrationsApiClient
     /// </summary>
     Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken);
 
-    /// <summary>Describes how the integration's provider maps raw data; null when the integration does not exist.</summary>
-    Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
+    /// <summary>Describes how the integration's vendor maps raw data; null when the integration does not exist.</summary>
+    Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);
 
     /// <summary>Runs a sync now (or, with <paramref name="reconcile"/>, the wider reconciliation).</summary>
     Task<SyncOutcomeResponse> RunAsync(int integrationId, bool reconcile, CancellationToken cancellationToken);

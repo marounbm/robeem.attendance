@@ -11,12 +11,12 @@ using robeem.Contracts.Common;
 
 namespace robeem.Tests.Api;
 
-/// <summary>The provider, device type and transport endpoints: integration administrators only, and how a refusal is answered.</summary>
+/// <summary>The vendor, device type and transport endpoints: integration administrators only, and how a refusal is answered.</summary>
 public sealed class CatalogEndpointTests : IAsyncDisposable
 {
     private static readonly string Admin = TestApi.As(1, AttendanceRoles.IntegrationAdministrator);
 
-    private readonly FakeProviders _providers = new();
+    private readonly FakeVendors _vendors = new();
     private readonly FakeDeviceTypes _types = new();
     private readonly FakeTransports _transports = new();
     private readonly TestApi _api;
@@ -25,7 +25,7 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
     {
         _api = TestApi.Start(services =>
         {
-            services.AddSingleton<IAttendanceProviderService>(_providers);
+            services.AddSingleton<IAttendanceVendorService>(_vendors);
             services.AddSingleton<IAttendanceDeviceTypeService>(_types);
             services.AddSingleton<IAttendanceTransportService>(_transports);
         });
@@ -33,10 +33,10 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
 
     public static IEnumerable<object[]> Endpoints() =>
     [
-        ["GET", "api/attendance/providers", null!],
-        ["GET", "api/attendance/providers/1/input", null!],
-        ["POST", "api/attendance/providers", """{"providerKey":"acme","displayName":"Acme"}"""],
-        ["PUT", "api/attendance/providers/1", """{"providerKey":"acme","displayName":"Acme"}"""],
+        ["GET", "api/attendance/vendors", null!],
+        ["GET", "api/attendance/vendors/1/input", null!],
+        ["POST", "api/attendance/vendors", """{"vendorKey":"acme","displayName":"Acme"}"""],
+        ["PUT", "api/attendance/vendors/1", """{"vendorKey":"acme","displayName":"Acme"}"""],
         ["GET", "api/attendance/device-types", null!],
         ["GET", "api/attendance/device-types/options", null!],
         ["GET", "api/attendance/device-types/1/input", null!],
@@ -68,48 +68,48 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
     [Fact]
     public async Task Create_Answers201WithTheId_AndARefusalAs400KeyedByTheInputsProperties()
     {
-        _providers.Result = SaveResult.Success(42);
-        var created = await Send("POST", "api/attendance/providers", Admin, """{"providerKey":"acme","displayName":"Acme"}""");
+        _vendors.Result = SaveResult.Success(42);
+        var created = await Send("POST", "api/attendance/vendors", Admin, """{"vendorKey":"acme","displayName":"Acme"}""");
 
-        _providers.Result = SaveResult.Invalid("ProviderKey", "Another provider already has this key.");
-        var refused = await Send("POST", "api/attendance/providers", Admin, """{"providerKey":"acme","displayName":"Acme"}""");
+        _vendors.Result = SaveResult.Invalid("VendorKey", "Another vendor already has this key.");
+        var refused = await Send("POST", "api/attendance/vendors", Admin, """{"vendorKey":"acme","displayName":"Acme"}""");
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal(42, (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.Id);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Contains("ProviderKey", (await refused.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors.Keys);
+        Assert.Contains("VendorKey", (await refused.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors.Keys);
     }
 
     [Fact]
-    public async Task AProviderKey_ThatIsNotLowerCaseLettersDigitsAndSeparators_IsRefusedBeforeTheServiceIsCalled()
+    public async Task AVendorKey_ThatIsNotLowerCaseLettersDigitsAndSeparators_IsRefusedBeforeTheServiceIsCalled()
     {
-        var response = await Send("POST", "api/attendance/providers", Admin, """{"providerKey":"Has Spaces","displayName":"Acme"}""");
+        var response = await Send("POST", "api/attendance/vendors", Admin, """{"vendorKey":"Has Spaces","displayName":"Acme"}""");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Empty(_providers.Calls);
+        Assert.Empty(_vendors.Calls);
     }
 
     [Fact]
     public async Task UpdatingAMissingRow_Is404_ForEachKindOfRow()
     {
-        _providers.Result = _types.Result = _transports.Result = SaveResult.Missing();
+        _vendors.Result = _types.Result = _transports.Result = SaveResult.Missing();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/providers/9", Admin, """{"providerKey":"acme","displayName":"Acme"}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/vendors/9", Admin, """{"vendorKey":"acme","displayName":"Acme"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/device-types/9", Admin, """{"name":"x"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/transports/9", Admin, """{"displayName":"x"}""")).StatusCode);
     }
 
     [Fact]
-    public async Task AProviderDeviceTypeOrTransportThatDoesNotExist_Is404_OnItsInput()
+    public async Task AVendorDeviceTypeOrTransportThatDoesNotExist_Is404_OnItsInput()
     {
-        _providers.Exists = _types.Exists = _transports.Exists = false;
+        _vendors.Exists = _types.Exists = _transports.Exists = false;
 
-        Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", "api/attendance/providers/9/input", Admin, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", "api/attendance/vendors/9/input", Admin, null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", "api/attendance/device-types/9/input", Admin, null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", "api/attendance/transports/9/input", Admin, null)).StatusCode);
     }
 
-    private List<string> CallsOfAll() => [.. _providers.Calls, .. _types.Calls, .. _transports.Calls];
+    private List<string> CallsOfAll() => [.. _vendors.Calls, .. _types.Calls, .. _transports.Calls];
 
     private Task<HttpResponseMessage> Send(string method, string url, string? user, string? body)
     {
@@ -127,7 +127,7 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
         return _api.Client.SendAsync(request);
     }
 
-    private sealed class FakeProviders : IAttendanceProviderService
+    private sealed class FakeVendors : IAttendanceVendorService
     {
         public List<string> Calls { get; } = [];
 
@@ -135,25 +135,25 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
 
         public bool Exists { get; set; } = true;
 
-        public Task<IReadOnlyList<ProviderListItem>> ListAsync(CancellationToken cancellationToken)
+        public Task<IReadOnlyList<VendorListItem>> ListAsync(CancellationToken cancellationToken)
         {
             Calls.Add("list");
-            return Task.FromResult<IReadOnlyList<ProviderListItem>>([]);
+            return Task.FromResult<IReadOnlyList<VendorListItem>>([]);
         }
 
-        public Task<ProviderInput?> GetInputAsync(int id, CancellationToken cancellationToken)
+        public Task<VendorInput?> GetInputAsync(int id, CancellationToken cancellationToken)
         {
             Calls.Add("input");
-            return Task.FromResult<ProviderInput?>(Exists ? new ProviderInput() : null);
+            return Task.FromResult<VendorInput?>(Exists ? new VendorInput() : null);
         }
 
-        public Task<SaveResult> CreateAsync(ProviderInput input, CancellationToken cancellationToken)
+        public Task<SaveResult> CreateAsync(VendorInput input, CancellationToken cancellationToken)
         {
             Calls.Add("create");
             return Task.FromResult(Result);
         }
 
-        public Task<SaveResult> UpdateAsync(int id, ProviderInput input, CancellationToken cancellationToken)
+        public Task<SaveResult> UpdateAsync(int id, VendorInput input, CancellationToken cancellationToken)
         {
             Calls.Add("update");
             return Task.FromResult(Result);

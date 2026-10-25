@@ -47,7 +47,7 @@ public sealed class ZktecoFormatTests : IDisposable
         var hiba = new Profile { EmployeeNumber = "21001", FirstName = "Hiba", LastName = "Rahme", Title = "Hiba Rahme" };
         var integration = new AttendanceIntegration
         {
-            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "zkteco"),
+            Connector = AttendanceTestData.Seeded(db, "zkteco"),
             DisplayName = "Head office clock",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
@@ -158,8 +158,8 @@ public sealed class ZktecoFormatTests : IDisposable
     [Fact]
     public void ZktecoNeedsNoCodeAdapter_SoNothingIsRegisteredForItsKey()
     {
-        // A vendor of exported files is data: a file format and a provider row, no adapter and no interpreter.
-        Assert.Null(_services.GetKeyedService<IAttendanceProvider>("zkteco"));
+        // A vendor of exported files is data: a payload format and a vendor row, no adapter and no interpreter.
+        Assert.Null(_services.GetKeyedService<IAttendanceAdapter>("zkteco"));
         Assert.Null(_services.GetKeyedService<IAttendanceEventInterpreter>("zkteco"));
     }
 
@@ -203,9 +203,9 @@ public sealed class ZktecoFormatTests : IDisposable
     [Fact]
     public void Guide_ListsTheCodesAndFormats_TheFormatUses_AndWhatIsNotStored()
     {
-        var guide = FileFormatLayout.Describe(Format(), "zkteco");
+        var guide = PayloadFormatLayout.Describe(Format(), "zkteco");
 
-        Assert.Equal("zkteco", guide.ProviderKey);
+        Assert.Equal("zkteco", guide.VendorKey);
         Assert.Contains(guide.EventCodes, c => c is { Code: "C/In", EventType: nameof(NormalizedEventType.CheckIn) });
         Assert.Contains(guide.EventCodes, c => c is { Code: "OT In", EventType: nameof(NormalizedEventType.Other) });
         Assert.Contains("d-MMM-yy H:mm:ss", guide.TimestampFormats);
@@ -229,10 +229,10 @@ public sealed class ZktecoFormatTests : IDisposable
         Assert.All(transactions, t => Assert.Contains(t.TransactionTypeRaw, new[] { "C/In", "C/Out" }));
     }
 
-    private AttendanceFileFormat Format()
+    private AttendancePayloadFormat Format()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceFileFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "ZKTeco attendance export");
+        return db.AttendancePayloadFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "ZKTeco attendance export");
     }
 
     private CustomFormatInterpreter Interpreter() => new(Format());

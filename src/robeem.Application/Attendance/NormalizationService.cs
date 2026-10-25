@@ -46,7 +46,12 @@ public sealed class NormalizationService : INormalizationService
             .Select(r => r.Id)
             .ToListAsync(cancellationToken);
 
-        var run = new Run();
+        // The payload format version the batch was read by, if it records one: its rows are interpreted by that version even
+        // when the format has been changed since (CLAUDE.md, Stage 4 follow-up).
+        var run = new Run
+        {
+            PayloadFormatId = await _db.AttendanceProcessingBatches.Where(b => b.Id == batchId).Select(b => b.PayloadFormatId).SingleOrDefaultAsync(cancellationToken),
+        };
         foreach (var rawId in pendingIds)
         {
             try
@@ -146,7 +151,7 @@ public sealed class NormalizationService : INormalizationService
         }
         else
         {
-            await FailAsync(raw, $"Unrecognized event type '{OriginalEventType(raw)}' for provider '{integration.ProviderKey}'.", run, cancellationToken);
+            await FailAsync(raw, $"Unrecognized event type '{OriginalEventType(raw)}' for vendor '{integration.VendorKey}'.", run, cancellationToken);
             return;
         }
 
@@ -208,20 +213,24 @@ public sealed class NormalizationService : INormalizationService
 
         var integration = await _db.AttendanceIntegrations
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.Provider!.ProviderKey, i.FileFormatId, ProviderFileFormatId = i.Provider.DefaultFileFormatId, i.TimeZoneId, i.Transport, i.DefaultDeviceId })
+            .Select(i => new { i.Connector!.Vendor!.VendorKey, i.Connector.AdapterKey, i.PayloadFormatId, ConnectorPayloadFormatId = i.Connector.DefaultPayloadFormatId, i.TimeZoneId, DefaultTransport = i.Connections.Where(c => c.IsDefault).Select(c => (AttendanceTransport?)c.Transport).FirstOrDefault(), i.DefaultDeviceId })
             .SingleAsync(cancellationToken);
-        var providerKey = integration.ProviderKey;
+        var vendorKey = integration.VendorKey;
 
-        // An integration that reads its uploads by a file format (its own, else its provider's default) is interpreted by that format's own patterns and labels.
+        // An integration with no connection yet is read as a manual upload, as it was before connections existed.
+        var transport = integration.DefaultTransport ?? AttendanceTransport.FileUpload;
+
+        // An integration that reads its uploads by a payload format (its own, else its connector's default) is interpreted by that format's own patterns and labels.
         IAttendanceEventInterpreter interpreter;
-        if (FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.ProviderFileFormatId) is { } formatId)
+        if ((run.PayloadFormatId ?? PayloadFormatResolution.EffectiveFormatId(transport, integration.PayloadFormatId, integration.ConnectorPayloadFormatId)) is { } formatId)
         {
-            var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+            var format = await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
             interpreter = _services.GetRequiredService<ICustomFormatInterpreterFactory>().Create(format);
         }
         else
         {
-            interpreter = _services.GetKeyedService<IAttendanceEventInterpreter>(providerKey) ?? throw new MissingInterpreterException(providerKey);
+            interpreter = (integration.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceEventInterpreter>(adapterKey) : null)
+                ?? throw new MissingInterpreterException(integration.AdapterKey ?? string.Empty);
         }
 
         var devices = await _db.AttendanceDevices
@@ -236,11 +245,11 @@ public sealed class NormalizationService : INormalizationService
             .ToDictionary(g => g.Key, g => (IReadOnlyDictionary<string, int>)g.ToDictionary(m => m.ExternalEmployeeId, m => m.EmployeeId, StringComparer.Ordinal));
 
         // Only a manual upload has a device of its own for the file; any other transport reports its devices itself.
-        var defaultDevice = integration.Transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is { } defaultDeviceId
+        var defaultDevice = transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is { } defaultDeviceId
             ? devices.Values.FirstOrDefault(d => d.Id == defaultDeviceId)
             : null;
 
-        return run.Integrations[integrationId] = new IntegrationLookups(providerKey, interpreter, devices, employees, integration.TimeZoneId, defaultDevice);
+        return run.Integrations[integrationId] = new IntegrationLookups(vendorKey, interpreter, devices, employees, integration.TimeZoneId, defaultDevice);
     }
 
     private async Task<AttendancePolicy> GetPolicyAsync(int? employeeId, Run run, CancellationToken cancellationToken)
@@ -256,7 +265,7 @@ public sealed class NormalizationService : INormalizationService
     }
 
     private sealed record IntegrationLookups(
-        string ProviderKey,
+        string VendorKey,
         IAttendanceEventInterpreter Interpreter,
         IReadOnlyDictionary<string, AttendanceDevice> Devices,
         IReadOnlyDictionary<int, IReadOnlyDictionary<string, int>> Employees,
@@ -266,6 +275,8 @@ public sealed class NormalizationService : INormalizationService
     /// <summary>Per-run state: counters and lookups loaded once per batch.</summary>
     private sealed class Run
     {
+        public int? PayloadFormatId { get; init; }
+
         public Dictionary<int, IntegrationLookups> Integrations { get; } = [];
 
         public Dictionary<int, AttendancePolicy> Policies { get; } = [];
@@ -279,6 +290,6 @@ public sealed class NormalizationService : INormalizationService
         public int Failed { get; set; }
     }
 
-    private sealed class MissingInterpreterException(string providerKey)
-        : InvalidOperationException($"No attendance event interpreter is registered for provider '{providerKey}'.");
+    private sealed class MissingInterpreterException(string adapterKey)
+        : InvalidOperationException($"No attendance event interpreter is registered under adapter key '{adapterKey}'.");
 }

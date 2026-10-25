@@ -5,5 +5,5 @@ namespace robeem.Infrastructure.Attendance.Providers;
 
 public sealed class CustomFormatInterpreterFactory : ICustomFormatInterpreterFactory
 {
-    public IAttendanceEventInterpreter Create(AttendanceFileFormat format) => new CustomFormatInterpreter(format);
+    public IAttendanceEventInterpreter Create(AttendancePayloadFormat format) => new CustomFormatInterpreter(format);
 }

@@ -6,17 +6,19 @@ using robeem.Web.Models;
 namespace robeem.Web.Controllers;
 
 /// <summary>
-/// Integrations: the connections to attendance providers, health, and sync-now (file upload is the Uploads
+/// Integrations: the connections to attendance vendors, health, and sync-now (file upload is the Uploads
 /// screen; devices and their vendor-id mappings are the Devices screen). An integration is paused, never deleted (raw data points at
 /// it). The connection secret is only ever a reference here; the secret lives in configuration.
 /// </summary>
 public sealed class IntegrationsController : Controller
 {
     private readonly IIntegrationsApiClient _integrations;
+    private readonly IConnectionsApiClient _connections;
 
-    public IntegrationsController(IIntegrationsApiClient integrations)
+    public IntegrationsController(IIntegrationsApiClient integrations, IConnectionsApiClient connections)
     {
         _integrations = integrations;
+        _connections = connections;
     }
 
     [HttpGet]
@@ -26,16 +28,17 @@ public sealed class IntegrationsController : Controller
     [HttpGet]
     public async Task<IActionResult> Create(CancellationToken cancellationToken)
     {
-        var providers = await _integrations.ListProvidersAsync(cancellationToken);
+        var connectors = await _integrations.ListConnectorsAsync(cancellationToken);
         return View(new IntegrationFormViewModel
         {
             Input = new IntegrationInput
             {
-                ProviderId = providers.FirstOrDefault(p => p.IsActive)?.Id ?? 0,
-                Transport = providers.FirstOrDefault(p => p.IsActive)?.SupportedTransports.FirstOrDefault(t => t.IsActive)?.Key ?? "FileUpload",
+                ConnectorId = connectors.FirstOrDefault(p => p.IsActive)?.Id ?? 0,
+                Transport = connectors.FirstOrDefault(p => p.IsActive)?.SupportedTransports.FirstOrDefault(t => t.IsActive)?.Key ?? "FileUpload",
             },
-            Providers = providers,
-            FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken),
+            Connectors = connectors,
+            PayloadFormats = await _integrations.ListPayloadFormatOptionsAsync(cancellationToken),
+            Descriptors = await _connections.ListDescriptorsAsync(cancellationToken),
         });
     }
 
@@ -54,8 +57,9 @@ public sealed class IntegrationsController : Controller
             AddErrors(result, nameof(IntegrationFormViewModel.Input));
         }
 
-        model.Providers = await _integrations.ListProvidersAsync(cancellationToken);
-        model.FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken);
+        model.Connectors = await _integrations.ListConnectorsAsync(cancellationToken);
+        model.PayloadFormats = await _integrations.ListPayloadFormatOptionsAsync(cancellationToken);
+        model.Descriptors = await _connections.ListDescriptorsAsync(cancellationToken);
         return View(model);
     }
 
@@ -71,8 +75,9 @@ public sealed class IntegrationsController : Controller
         {
             Id = id,
             Input = input,
-            Providers = await _integrations.ListProvidersAsync(cancellationToken),
-            FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken),
+            Connectors = await _integrations.ListConnectorsAsync(cancellationToken),
+            PayloadFormats = await _integrations.ListPayloadFormatOptionsAsync(cancellationToken),
+            Descriptors = await _connections.ListDescriptorsAsync(cancellationToken),
             Devices = await _integrations.ListDevicesAsync(id, cancellationToken),
         });
     }
@@ -98,8 +103,9 @@ public sealed class IntegrationsController : Controller
         }
 
         model.Id = id;
-        model.Providers = await _integrations.ListProvidersAsync(cancellationToken);
-        model.FileFormats = await _integrations.ListFileFormatOptionsAsync(cancellationToken);
+        model.Connectors = await _integrations.ListConnectorsAsync(cancellationToken);
+        model.PayloadFormats = await _integrations.ListPayloadFormatOptionsAsync(cancellationToken);
+        model.Descriptors = await _connections.ListDescriptorsAsync(cancellationToken);
         model.Devices = await _integrations.ListDevicesAsync(id, cancellationToken);
         return View(model);
     }
@@ -120,7 +126,7 @@ public sealed class IntegrationsController : Controller
     }
 
     /// <summary>
-    /// Each raw punch of the integration beside the normalized punch it produced, with the provider's
+    /// Each raw punch of the integration beside the normalized punch it produced, with the vendor's
     /// mapping rules. A page of its own, not part of Details: every open of it is a read of raw
     /// attendance that the Api writes to the audit log.
     /// </summary>

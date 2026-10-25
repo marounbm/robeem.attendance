@@ -12,6 +12,9 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 {
     private const int MaxRawMappingTake = 500;
 
+    /// <summary>The name of the connection an integration is created with.</summary>
+    private const string DefaultConnectionName = "Default";
+
     // A reference is a name, like "acme-clock-api" or "kv:acme/clock": not a connection string or a key.
     private static readonly Regex ReferencePattern = new(@"^[A-Za-z0-9][A-Za-z0-9._:/\-]*$", RegexOptions.CultureInvariant);
 
@@ -20,26 +23,28 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     private readonly IAttendanceAuditTrail _audit;
     private readonly IServiceProvider _services;
     private readonly IAttendanceAdapterCatalog _adapters;
+    private readonly IPayloadDecryptorCatalog? _decryptors;
 
-    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit, IServiceProvider services, IAttendanceAdapterCatalog adapters)
+    public AttendanceIntegrationService(IRobeemDbContext db, IIntegrationSyncService sync, IAttendanceAuditTrail audit, IServiceProvider services, IAttendanceAdapterCatalog adapters, IPayloadDecryptorCatalog? decryptors = null)
     {
         _db = db;
         _sync = sync;
         _audit = audit;
         _services = services;
         _adapters = adapters;
+        _decryptors = decryptors;
     }
 
     public async Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken)
     {
-        var items = await Items(_db, _db.AttendanceIntegrations.AsNoTracking()).OrderBy(i => i.DisplayName).ToListAsync(cancellationToken);
+        var items = await QueryItemsAsync(_db, _db.AttendanceIntegrations.AsNoTracking().OrderBy(i => i.DisplayName), cancellationToken);
         await NameTransportsAsync(items, cancellationToken);
         return items;
     }
 
     public async Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken)
     {
-        var item = await Items(_db, _db.AttendanceIntegrations.AsNoTracking().Where(i => i.Id == id)).SingleOrDefaultAsync(cancellationToken);
+        var item = (await QueryItemsAsync(_db, _db.AttendanceIntegrations.AsNoTracking().Where(i => i.Id == id), cancellationToken)).SingleOrDefault();
         if (item is not null)
         {
             await NameTransportsAsync([item], cancellationToken);
@@ -50,40 +55,52 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 
     public async Task<IntegrationInput?> GetInputAsync(int id, CancellationToken cancellationToken)
     {
-        var integration = await _db.AttendanceIntegrations.AsNoTracking().SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
-        return integration is null
-            ? null
-            : new IntegrationInput
-            {
-                ProviderId = integration.ProviderId,
-                DisplayName = integration.DisplayName,
-                ConnectionConfigRef = integration.ConnectionConfigRef,
-                Transport = integration.Transport.ToString(),
-                FileFormatId = integration.FileFormatId,
-                DefaultDeviceId = integration.DefaultDeviceId,
-                TimeZoneId = integration.TimeZoneId,
-                PollingScheduleCron = integration.PollingScheduleCron,
-                Status = integration.Status.ToString(),
-            };
+        var integration = await _db.AttendanceIntegrations.AsNoTracking().Include(i => i.Connections).SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
+        if (integration is null)
+        {
+            return null;
+        }
+
+        // The connection fields of the form are the default connection's; an integration with none reads as a plain upload.
+        var connection = integration.Connections.FirstOrDefault(c => c.IsDefault);
+        return new IntegrationInput
+        {
+            ConnectorId = integration.ConnectorId,
+            DisplayName = integration.DisplayName,
+            ConnectionConfigRef = connection?.SecretRef ?? string.Empty,
+            PayloadKeyRef = integration.PayloadKeyRef,
+            Transport = (connection?.Transport ?? AttendanceTransport.FileUpload).ToString(),
+            AuthMethod = (connection?.AuthMethod ?? ConnectionAuthMethod.None).ToString(),
+            Settings = ConnectionSettingsValidator.Parse(connection?.Settings),
+            PayloadFormatId = integration.PayloadFormatId,
+            DefaultDeviceId = integration.DefaultDeviceId,
+            TimeZoneId = integration.TimeZoneId,
+            PollingScheduleCron = connection?.PollingSchedule,
+            Status = integration.Status.ToString(),
+        };
     }
 
-    public async Task<IReadOnlyList<ProviderOption>> ListProvidersAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ConnectorOption>> ListConnectorsAsync(CancellationToken cancellationToken)
     {
-        var providers = await _db.AttendanceProviders.AsNoTracking().Include(p => p.Transports).ToListAsync(cancellationToken);
+        var connectors = await _db.AttendanceConnectorDefinitions.AsNoTracking().Include(c => c.Vendor).Include(c => c.Transports).ToListAsync(cancellationToken);
         var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
-        return providers
-            .Select(p => new ProviderOption
+        return connectors
+            .Select(c => new ConnectorOption
             {
-                Id = p.Id,
-                Key = p.ProviderKey,
-                DisplayName = p.DisplayName,
-                Manufacturer = p.Manufacturer,
-                WebsiteUrl = p.WebsiteUrl,
-                SupportedTransports = SupportedTransportsOf(p.Transports.Select(t => t.TransportId), definitions),
-                IsActive = ProviderUsability.IsUsable(p, _adapters),
+                Id = c.Id,
+                Key = c.ConnectorKey,
+                DisplayName = c.DisplayName,
+                VendorKey = c.Vendor!.VendorKey,
+                VendorName = c.Vendor.DisplayName,
+                Manufacturer = c.Vendor.Manufacturer,
+                WebsiteUrl = c.Vendor.WebsiteUrl,
+                SupportedTransports = SupportedTransportsOf(c.Transports.Select(t => t.TransportId), definitions),
+                IsActive = ConnectorUsability.IsUsable(c, c.Vendor.IsActive, _adapters, _decryptors),
+                EncryptionKind = c.EncryptionKind.ToString(),
             })
-            .OrderByDescending(p => p.IsActive)
-            .ThenBy(p => p.DisplayName)
+            .OrderByDescending(c => c.IsActive)
+            .ThenBy(c => c.VendorName)
+            .ThenBy(c => c.DisplayName)
             .ToList();
     }
 
@@ -103,69 +120,83 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     public async Task<SaveResult> CreateAsync(IntegrationInput input, CancellationToken cancellationToken)
     {
         var errors = Validate(input);
-        var provider = await _db.AttendanceProviders.AsNoTracking().SingleOrDefaultAsync(p => p.Id == input.ProviderId, cancellationToken);
-        if (provider is null)
+        var connector = await _db.AttendanceConnectorDefinitions.AsNoTracking().Include(c => c.Vendor).SingleOrDefaultAsync(c => c.Id == input.ConnectorId, cancellationToken);
+        if (connector is null)
         {
-            errors[nameof(IntegrationInput.ProviderId)] = "The selected provider does not exist.";
+            errors[nameof(IntegrationInput.ConnectorId)] = "The selected connector does not exist.";
         }
-        else if (!ProviderUsability.IsUsable(provider, _adapters))
+        else if (!ConnectorUsability.IsUsable(connector, connector.Vendor!.IsActive, _adapters, _decryptors))
         {
-            errors[nameof(IntegrationInput.ProviderId)] = provider.IsActive
-                ? "This provider has neither a default file format nor a code adapter, so nothing can read what it delivers."
-                : "This provider is not active, so it can't be used.";
-        }
-
-        if (provider is not null)
-        {
-            await ValidateTransportAsync(input, provider, null, errors, cancellationToken);
+            errors[nameof(IntegrationInput.ConnectorId)] = !connector.IsActive || !connector.Vendor.IsActive
+                ? "This connector is not active (or its vendor is not), so it can't be used."
+                : !(_decryptors?.CanRead(connector.EncryptionKind) ?? connector.EncryptionKind == PayloadEncryptionKind.None)
+                    ? $"This server can't decrypt the {connector.EncryptionKind} payload this connector delivers."
+                    : "This connector has neither a default payload format nor a code adapter, so nothing can read what it delivers.";
         }
 
-        await ValidateFileFormatAsync(input, null, errors, cancellationToken);
+        if (connector is not null)
+        {
+            await ValidateTransportAsync(input, connector, null, errors, cancellationToken);
+            ValidatePayloadKey(input, connector, errors);
+        }
+
+        await ValidatePayloadFormatAsync(input, null, errors, cancellationToken);
         await ValidateDefaultDeviceAsync(input, null, errors, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
         }
 
-        var integration = new AttendanceIntegration { ProviderId = input.ProviderId };
-        Apply(input, integration, await IsPullAsync(input.Transport, cancellationToken));
+        var integration = new AttendanceIntegration { ConnectorId = input.ConnectorId };
+        var connection = new AttendanceConnection { Name = DefaultConnectionName, IsDefault = true };
+        integration.Connections.Add(connection);
+        Apply(input, integration, connection);
         _db.AttendanceIntegrations.Add(integration);
         await _db.SaveChangesAsync(cancellationToken);
 
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Created '{integration.DisplayName}' ({provider!.ProviderKey}, {integration.Transport}).");
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Created '{integration.DisplayName}' ({connector!.ConnectorKey}, {connection.Transport}).");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(integration.Id);
     }
 
     public async Task<SaveResult> UpdateAsync(int id, IntegrationInput input, CancellationToken cancellationToken)
     {
-        var integration = await _db.AttendanceIntegrations.SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
+        var integration = await _db.AttendanceIntegrations.Include(i => i.Connections).SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
         if (integration is null)
         {
             return SaveResult.Missing();
         }
 
+        // An integration that predates connections gets its default one now.
+        var connection = integration.Connections.FirstOrDefault(c => c.IsDefault);
         var errors = Validate(input);
-        if (input.ProviderId != integration.ProviderId)
+        if (input.ConnectorId != integration.ConnectorId)
         {
-            errors[nameof(IntegrationInput.ProviderId)] = "The provider can't be changed: its devices and punches belong to that adapter. Create a new integration instead.";
+            errors[nameof(IntegrationInput.ConnectorId)] = "The connector can't be changed: its devices and punches belong to that adapter. Create a new integration instead.";
         }
         else
         {
-            var provider = await _db.AttendanceProviders.AsNoTracking().SingleAsync(p => p.Id == integration.ProviderId, cancellationToken);
-            await ValidateTransportAsync(input, provider, integration.Transport.ToString(), errors, cancellationToken);
+            var connector = await _db.AttendanceConnectorDefinitions.AsNoTracking().SingleAsync(c => c.Id == integration.ConnectorId, cancellationToken);
+            await ValidateTransportAsync(input, connector, (connection?.Transport ?? AttendanceTransport.FileUpload).ToString(), errors, cancellationToken);
+            ValidatePayloadKey(input, connector, errors);
         }
 
-        await ValidateFileFormatAsync(input, integration.FileFormatId, errors, cancellationToken);
+        await ValidatePayloadFormatAsync(input, integration.PayloadFormatId, errors, cancellationToken);
         await ValidateDefaultDeviceAsync(input, integration.Id, errors, cancellationToken);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
         }
 
-        var before = $"{integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'";
-        Apply(input, integration, await IsPullAsync(input.Transport, cancellationToken));
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Changed. Before: {before}. After: {integration.DisplayName}; {integration.Status}; {integration.Transport}; format {integration.FileFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{integration.PollingScheduleCron}'; ref '{integration.ConnectionConfigRef}'.");
+        if (connection is null)
+        {
+            connection = new AttendanceConnection { Name = DefaultConnectionName, IsDefault = true };
+            integration.Connections.Add(connection);
+        }
+
+        var before = Describe(integration, connection);
+        Apply(input, integration, connection);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceIntegration), integration.Id, $"Changed. Before: {before}. After: {Describe(integration, connection)}.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(integration.Id);
     }
@@ -381,14 +412,15 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     {
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.Transport, i.DefaultDeviceId })
+            .Select(i => new { DefaultTransport = i.Connections.Where(c => c.IsDefault).Select(c => (AttendanceTransport?)c.Transport).FirstOrDefault(), i.DefaultDeviceId })
             .SingleOrDefaultAsync(cancellationToken);
         if (integration is null)
         {
             return null;
         }
 
-        var defaultDeviceInForce = integration.Transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is not null;
+        var transport = integration.DefaultTransport ?? AttendanceTransport.FileUpload;
+        var defaultDeviceInForce = transport == AttendanceTransport.FileUpload && integration.DefaultDeviceId is not null;
         var registered = (await _db.AttendanceDevices.AsNoTracking()
             .Where(d => d.IntegrationId == integrationId)
             .Select(d => d.ExternalDeviceId)
@@ -422,11 +454,11 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             Requeued = resolvable.Count,
             Unresolved = flagged.Count - resolvable.Count,
             HasDeviceForUploads = defaultDeviceInForce,
-            Transport = integration.Transport.ToString(),
+            Transport = transport.ToString(),
             TransportName = await _db.AttendanceTransportDefinitions.AsNoTracking()
-                .Where(t => t.TransportKey == integration.Transport.ToString())
+                .Where(t => t.TransportKey == transport.ToString())
                 .Select(t => t.DisplayName)
-                .SingleOrDefaultAsync(cancellationToken) ?? integration.Transport.ToString(),
+                .SingleOrDefaultAsync(cancellationToken) ?? transport.ToString(),
         };
     }
 
@@ -434,7 +466,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
     {
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.DisplayName, ProviderKey = i.Provider!.ProviderKey })
+            .Select(i => new { i.DisplayName, VendorKey = i.Connector!.Vendor!.VendorKey })
             .SingleOrDefaultAsync(cancellationToken);
         if (integration is null)
         {
@@ -495,7 +527,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             var employee = n?.EmployeeId is { } employeeId && employees.TryGetValue(employeeId, out var e) ? e : null;
             return new RawNormalizedMappingItem
             {
-                ProviderKey = integration.ProviderKey,
+                VendorKey = integration.VendorKey,
                 IntegrationId = integrationId,
                 IntegrationName = integration.DisplayName,
                 BatchId = x.Raw.ImportBatchId,
@@ -523,63 +555,121 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }).ToList();
     }
 
-    public async Task<ProviderMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken)
+    public async Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.Transport, i.FileFormatId, ProviderKey = i.Provider!.ProviderKey, ProviderFileFormatId = i.Provider.DefaultFileFormatId })
+            .Select(i => new { DefaultTransport = i.Connections.Where(c => c.IsDefault).Select(c => (AttendanceTransport?)c.Transport).FirstOrDefault(), i.PayloadFormatId, VendorKey = i.Connector!.Vendor!.VendorKey, i.Connector.AdapterKey, ConnectorPayloadFormatId = i.Connector.DefaultPayloadFormatId })
             .SingleOrDefaultAsync(cancellationToken);
         if (integration is null)
         {
             return null;
         }
 
-        // What reads the integration's data: its file format (own, else its provider's default), else the provider's code adapter.
-        if (FileFormatResolution.EffectiveFormatId(integration.Transport, integration.FileFormatId, integration.ProviderFileFormatId) is { } formatId)
+        // What reads the integration's data: its payload format (own, else its connector's default), else the connector's code adapter.
+        if (PayloadFormatResolution.EffectiveFormatId(integration.DefaultTransport ?? AttendanceTransport.FileUpload, integration.PayloadFormatId, integration.ConnectorPayloadFormatId) is { } formatId)
         {
-            var format = await _db.AttendanceFileFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
-            return FileFormatLayout.Describe(format, integration.ProviderKey);
+            var format = await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+            return PayloadFormatLayout.Describe(format, integration.VendorKey);
         }
 
-        return (_services.GetKeyedService<IAttendanceProvider>(integration.ProviderKey) as IAttendanceMappingGuide)?.DescribeMapping()
-            ?? new ProviderMappingGuide { ProviderKey = integration.ProviderKey, Summary = "Nothing describes how this integration's data is mapped: it has no file format, and its provider's adapter does not describe its mapping." };
+        return (integration.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) as IAttendanceMappingGuide : null)?.DescribeMapping()
+            ?? new VendorMappingGuide { VendorKey = integration.VendorKey, Summary = "Nothing describes how this integration's data is mapped: it has no payload format, and its connector's adapter does not describe its mapping." };
     }
 
-    private static IQueryable<IntegrationListItem> Items(IRobeemDbContext db, IQueryable<AttendanceIntegration> integrations) =>
-        integrations.Select(i => new IntegrationListItem
+    private static string Describe(AttendanceIntegration integration, AttendanceConnection connection) =>
+        $"{integration.DisplayName}; {integration.Status}; {connection.Transport}/{connection.AuthMethod}; format {integration.PayloadFormatId?.ToString() ?? "none"}; device {integration.DefaultDeviceId?.ToString() ?? "none"}; zone '{integration.TimeZoneId}'; cron '{connection.PollingSchedule}'; ref '{connection.SecretRef}'; settings {connection.Settings}";
+
+    /// <summary>The usual authentication of a transport, for an input that names none.</summary>
+    private static string DefaultAuthMethod(string transport) =>
+        Enum.TryParse<AttendanceTransport>(transport, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? TransportDescriptors.Find(parsed)!.AuthMethods[0]
+            : nameof(ConnectionAuthMethod.None);
+
+    /// <summary>The integration form's connection fields as the default connection's input.</summary>
+    private static ConnectionInput ToConnectionInput(IntegrationInput input) => new()
+    {
+        Name = DefaultConnectionName,
+        Transport = input.Transport ?? string.Empty,
+        AuthMethod = string.IsNullOrWhiteSpace(input.AuthMethod) ? DefaultAuthMethod(input.Transport ?? string.Empty) : input.AuthMethod.Trim(),
+        Settings = input.Settings,
+        SecretRef = input.ConnectionConfigRef,
+        PollingSchedule = input.PollingScheduleCron,
+        IsActive = true,
+    };
+
+    private static void Apply(IntegrationInput input, AttendanceIntegration integration, AttendanceConnection connection)
+    {
+        var connectionInput = ToConnectionInput(input);
+        var transport = Enum.Parse<AttendanceTransport>(connectionInput.Transport, ignoreCase: true);
+        var method = Enum.Parse<ConnectionAuthMethod>(connectionInput.AuthMethod, ignoreCase: true);
+
+        integration.DisplayName = input.DisplayName.Trim();
+        integration.PayloadKeyRef = (input.PayloadKeyRef ?? string.Empty).Trim();
+        integration.PayloadFormatId = transport == AttendanceTransport.FileUpload ? input.PayloadFormatId : null;
+        integration.DefaultDeviceId = transport == AttendanceTransport.FileUpload ? input.DefaultDeviceId : null;
+        integration.TimeZoneId = string.IsNullOrWhiteSpace(input.TimeZoneId) ? null : input.TimeZoneId.Trim();
+        integration.Status = Enum.Parse<AttendanceIntegrationStatus>(input.Status, ignoreCase: true);
+
+        connection.Transport = transport;
+        connection.AuthMethod = method;
+        connection.Settings = ConnectionSettingsValidator.Serialize(connectionInput.Settings);
+
+        // No authentication, no secret. Only a transport robeem pulls over has a schedule; an upload or a webhook is pushed to robeem.
+        connection.SecretRef = method == ConnectionAuthMethod.None ? string.Empty : (connectionInput.SecretRef ?? string.Empty).Trim();
+        connection.PollingSchedule = string.IsNullOrWhiteSpace(connectionInput.PollingSchedule) || !ConnectionSettingsValidator.IsPull(transport) ? null : connectionInput.PollingSchedule.Trim();
+    }
+
+    private static async Task<List<IntegrationListItem>> QueryItemsAsync(IRobeemDbContext db, IQueryable<AttendanceIntegration> integrations, CancellationToken cancellationToken)
+    {
+        var rows = await integrations.Select(i => new
+        {
+            i.Id,
+            i.DisplayName,
+            i.ConnectorId,
+            ConnectorName = i.Connector!.DisplayName,
+            VendorKey = i.Connector.Vendor!.VendorKey,
+            VendorName = i.Connector.Vendor.DisplayName,
+            i.PayloadFormatId,
+            PayloadFormatName = i.PayloadFormat!.Name,
+            i.DefaultDeviceId,
+            DefaultDeviceName = i.DefaultDevice!.Name,
+            i.TimeZoneId,
+            i.Status,
+            i.HealthStatus,
+            i.LastSuccessfulSyncAt,
+            Connection = i.Connections.Where(c => c.IsDefault).Select(c => new { c.Id, c.Transport, c.AuthMethod, c.SecretRef, c.PollingSchedule }).FirstOrDefault(),
+            ConnectionCount = i.Connections.Count(),
+            DeviceCount = db.AttendanceDevices.Count(d => d.IntegrationId == i.Id),
+            MappingCount = db.ExternalEmployeeIdMappings.Count(m => m.Device!.IntegrationId == i.Id),
+        }).ToListAsync(cancellationToken);
+
+        // An integration with no default connection is a plain upload.
+        return rows.Select(i => new IntegrationListItem
         {
             Id = i.Id,
             DisplayName = i.DisplayName,
-            ProviderId = i.ProviderId,
-            ProviderKey = i.Provider!.ProviderKey,
-            ProviderName = i.Provider.DisplayName,
-            Transport = i.Transport.ToString(),
-            FileFormatId = i.FileFormatId,
-            FileFormatName = i.FileFormat!.Name,
+            ConnectorId = i.ConnectorId,
+            ConnectorName = i.ConnectorName,
+            VendorKey = i.VendorKey,
+            VendorName = i.VendorName,
+            Transport = (i.Connection?.Transport ?? AttendanceTransport.FileUpload).ToString(),
+            AuthMethod = (i.Connection?.AuthMethod ?? ConnectionAuthMethod.None).ToString(),
+            DefaultConnectionId = i.Connection?.Id,
+            ConnectionCount = i.ConnectionCount,
+            PayloadFormatId = i.PayloadFormatId,
+            PayloadFormatName = i.PayloadFormatName,
             DefaultDeviceId = i.DefaultDeviceId,
-            DefaultDeviceName = i.DefaultDevice!.Name,
+            DefaultDeviceName = i.DefaultDeviceName,
             TimeZoneId = i.TimeZoneId,
             Status = i.Status.ToString(),
             HealthStatus = i.HealthStatus.ToString(),
-            ConnectionConfigRef = i.ConnectionConfigRef,
-            PollingScheduleCron = i.PollingScheduleCron,
+            ConnectionConfigRef = i.Connection?.SecretRef ?? string.Empty,
+            PollingScheduleCron = i.Connection?.PollingSchedule,
             LastSuccessfulSyncAt = i.LastSuccessfulSyncAt,
-            DeviceCount = db.AttendanceDevices.Count(d => d.IntegrationId == i.Id),
-            MappingCount = db.ExternalEmployeeIdMappings.Count(m => m.Device!.IntegrationId == i.Id),
-        });
-
-    private static void Apply(IntegrationInput input, AttendanceIntegration integration, bool isPull)
-    {
-        integration.DisplayName = input.DisplayName.Trim();
-        integration.ConnectionConfigRef = (input.ConnectionConfigRef ?? string.Empty).Trim();
-        integration.Transport = Enum.Parse<AttendanceTransport>(input.Transport, ignoreCase: true);
-        integration.FileFormatId = integration.Transport == AttendanceTransport.FileUpload ? input.FileFormatId : null;
-        integration.DefaultDeviceId = integration.Transport == AttendanceTransport.FileUpload ? input.DefaultDeviceId : null;
-        integration.TimeZoneId = string.IsNullOrWhiteSpace(input.TimeZoneId) ? null : input.TimeZoneId.Trim();
-
-        // Only an integration that pulls has a schedule; an upload or a webhook is pushed to robeem.
-        integration.PollingScheduleCron = string.IsNullOrWhiteSpace(input.PollingScheduleCron) || !isPull ? null : input.PollingScheduleCron.Trim();
-        integration.Status = Enum.Parse<AttendanceIntegrationStatus>(input.Status, ignoreCase: true);
+            DeviceCount = i.DeviceCount,
+            MappingCount = i.MappingCount,
+        }).ToList();
     }
 
     private static void ApplyDevice(DeviceInput input, AttendanceDevice device)
@@ -587,23 +677,45 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         device.ExternalDeviceId = input.ExternalDeviceId.Trim();
         device.Name = input.Name.Trim();
         device.DeviceTypeId = input.DeviceTypeId;
+        device.ConnectionId = input.ConnectionId;
         device.Model = (input.Model ?? string.Empty).Trim();
         device.SoftwareVersion = (input.SoftwareVersion ?? string.Empty).Trim();
         device.SdkVersion = (input.SdkVersion ?? string.Empty).Trim();
         device.TimeZoneId = input.TimeZoneId.Trim();
     }
 
-    /// <summary>The provider's own transports first, then manual file upload, which any provider can be given (its files are read by a file format).</summary>
-    private static IReadOnlyList<TransportOption> SupportedTransportsOf(IEnumerable<int> providerTransportIds, IReadOnlyList<AttendanceTransportDefinition> definitions)
+    /// <summary>The connector's own transports first, then manual file upload, which any connector can be given (its files are read by a payload format).</summary>
+    private static IReadOnlyList<TransportOption> SupportedTransportsOf(IEnumerable<int> connectorTransportIds, IReadOnlyList<AttendanceTransportDefinition> definitions)
     {
-        var own = providerTransportIds.ToHashSet();
+        var own = connectorTransportIds.ToHashSet();
         var fileUpload = nameof(AttendanceTransport.FileUpload);
         return definitions
             .Where(t => t.TransportKey == fileUpload || own.Contains(t.Id))
             .OrderBy(t => t.TransportKey == fileUpload ? 1 : 0)
             .ThenBy(t => Enum.TryParse<AttendanceTransport>(t.TransportKey, out var transport) ? (int)transport : int.MaxValue)
-            .Select(t => new TransportOption { Key = t.TransportKey, DisplayName = t.DisplayName, IsPull = t.IsPull, UsesFileFormat = t.UsesFileFormat, IsActive = t.IsActive })
+            .Select(t => new TransportOption { Key = t.TransportKey, DisplayName = t.DisplayName, IsPull = t.IsPull, UsesPayloadFormat = t.UsesPayloadFormat, IsActive = t.IsActive })
             .ToList();
+    }
+
+    /// <summary>The decryption key of an encrypted payload is named by a reference, like the connection secret, and only an encrypted connector has one.</summary>
+    private static void ValidatePayloadKey(IntegrationInput input, AttendanceConnectorDefinition connector, Dictionary<string, string> errors)
+    {
+        var reference = (input.PayloadKeyRef ?? string.Empty).Trim();
+        if (connector.EncryptionKind == PayloadEncryptionKind.None)
+        {
+            if (reference.Length > 0)
+            {
+                errors[nameof(IntegrationInput.PayloadKeyRef)] = "This connector's payload is not encrypted, so there is no key to name.";
+            }
+        }
+        else if (reference.Length == 0)
+        {
+            errors[nameof(IntegrationInput.PayloadKeyRef)] = $"This connector's payload is encrypted ({connector.EncryptionKind}): name the secret that holds the key.";
+        }
+        else if (reference.Length > 255 || !ReferencePattern.IsMatch(reference))
+        {
+            errors[nameof(IntegrationInput.PayloadKeyRef)] = "Give the name the key is kept under (letters, digits and . _ : / -), never the key itself.";
+        }
     }
 
     private static Dictionary<string, string> Validate(IntegrationInput input)
@@ -616,20 +728,20 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             errors[nameof(IntegrationInput.DisplayName)] = "A name is required (at most 255 characters).";
         }
 
-        var reference = (input.ConnectionConfigRef ?? string.Empty).Trim();
-        if (reference.Length > 0 && (reference.Length > 255 || !ReferencePattern.IsMatch(reference)))
+        // The connection fields are the default connection's: held to what the transport declares, and the errors named by this form's fields.
+        foreach (var (key, message) in ConnectionSettingsValidator.Validate(ToConnectionInput(input)))
         {
-            errors[nameof(IntegrationInput.ConnectionConfigRef)] = "Give the name the secret is kept under (letters, digits and . _ : / -), never the secret itself.";
-        }
-
-        var cron = (input.PollingScheduleCron ?? string.Empty).Trim();
-        if (cron.Length > 100)
-        {
-            errors[nameof(IntegrationInput.PollingScheduleCron)] = "The schedule can be at most 100 characters.";
-        }
-        else if (cron.Length > 0 && !CronSchedule.TryParse(cron, out _))
-        {
-            errors[nameof(IntegrationInput.PollingScheduleCron)] = "Not a valid cron expression: five fields (minute hour day month weekday), or six with seconds first.";
+            var field = key switch
+            {
+                nameof(ConnectionInput.SecretRef) => nameof(IntegrationInput.ConnectionConfigRef),
+                nameof(ConnectionInput.PollingSchedule) => nameof(IntegrationInput.PollingScheduleCron),
+                nameof(ConnectionInput.Name) => null,
+                _ => key,
+            };
+            if (field is not null)
+            {
+                errors[field] = message;
+            }
         }
 
         var zone = (input.TimeZoneId ?? string.Empty).Trim();
@@ -654,10 +766,15 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             .AsNoTracking()
             .Include(d => d.DeviceType)
             .Include(d => d.Integration)
+            .Include(d => d.Connection)
             .Where(d => integrationId == null || d.IntegrationId == integrationId)
             .OrderBy(d => d.Integration!.DisplayName)
             .ThenBy(d => d.Name)
             .ToListAsync(cancellationToken);
+        var defaultConnectionNames = await _db.AttendanceConnections
+            .AsNoTracking()
+            .Where(c => c.IsDefault && (integrationId == null || c.IntegrationId == integrationId))
+            .ToDictionaryAsync(c => c.IntegrationId, c => c.Name, cancellationToken);
         var mappingCounts = await _db.ExternalEmployeeIdMappings
             .AsNoTracking()
             .Where(m => integrationId == null || m.Device!.IntegrationId == integrationId)
@@ -673,6 +790,8 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
                 MappingCount = mappingCounts.GetValueOrDefault(d.Id),
                 ExternalDeviceId = d.ExternalDeviceId,
                 Name = d.Name,
+                ConnectionId = d.ConnectionId,
+                ConnectionName = d.Connection?.Name ?? defaultConnectionNames.GetValueOrDefault(d.IntegrationId, string.Empty),
                 DeviceTypeId = d.DeviceTypeId,
                 DeviceType = d.DeviceType?.Name ?? string.Empty,
                 Model = d.Model,
@@ -694,18 +813,11 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
     }
 
-    /// <summary>Whether robeem fetches the attendance itself, on a schedule, for a transport: from its definition.</summary>
-    private async Task<bool> IsPullAsync(string transport, CancellationToken cancellationToken)
-    {
-        var key = Enum.Parse<AttendanceTransport>(transport, ignoreCase: true).ToString();
-        return await _db.AttendanceTransportDefinitions.AsNoTracking().Where(t => t.TransportKey == key).Select(t => t.IsPull).SingleOrDefaultAsync(cancellationToken);
-    }
-
     /// <summary>
-    /// The chosen transport must be defined, supported by the provider (or be file upload), and available: a
+    /// The chosen transport must be defined, supported by the connector (or be file upload), and available: a
     /// retired one can't be chosen, but an integration that already has it keeps it.
     /// </summary>
-    private async Task ValidateTransportAsync(IntegrationInput input, AttendanceProvider provider, string? currentTransport, Dictionary<string, string> errors, CancellationToken cancellationToken)
+    private async Task ValidateTransportAsync(IntegrationInput input, AttendanceConnectorDefinition connector, string? currentTransport, Dictionary<string, string> errors, CancellationToken cancellationToken)
     {
         if (!Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport) || !Enum.IsDefined(transport))
         {
@@ -714,12 +826,12 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
-        var ownIds = await _db.AttendanceProviderTransports.AsNoTracking().Where(t => t.ProviderId == provider.Id).Select(t => t.TransportId).ToListAsync(cancellationToken);
+        var ownIds = await _db.AttendanceConnectorTransports.AsNoTracking().Where(t => t.ConnectorId == connector.Id).Select(t => t.TransportId).ToListAsync(cancellationToken);
         var supported = SupportedTransportsOf(ownIds, definitions);
         var chosen = supported.FirstOrDefault(t => t.Key == transport.ToString());
         if (chosen is null)
         {
-            errors[nameof(IntegrationInput.Transport)] = $"{provider.DisplayName} can't receive attendance by {transport}. It supports: {(supported.Count == 0 ? "nothing yet" : string.Join(", ", supported.Select(t => t.DisplayName)))}.";
+            errors[nameof(IntegrationInput.Transport)] = $"{connector.DisplayName} can't receive attendance by {transport}. It supports: {(supported.Count == 0 ? "nothing yet" : string.Join(", ", supported.Select(t => t.DisplayName)))}.";
         }
         else if (!chosen.IsActive && chosen.Key != currentTransport)
         {
@@ -727,10 +839,10 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
     }
 
-    private async Task ValidateFileFormatAsync(IntegrationInput input, int? currentFormatId, Dictionary<string, string> errors, CancellationToken cancellationToken)
+    private async Task ValidatePayloadFormatAsync(IntegrationInput input, int? currentFormatId, Dictionary<string, string> errors, CancellationToken cancellationToken)
     {
         // A format only applies to manual uploads; for any other transport it is dropped, not refused.
-        if (input.FileFormatId is not { } formatId
+        if (input.PayloadFormatId is not { } formatId
             || !Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport)
             || transport != AttendanceTransport.FileUpload)
         {
@@ -738,10 +850,10 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         // An integration may keep a format that has since been retired; a new choice must be an active one.
-        var usable = await _db.AttendanceFileFormats.AnyAsync(f => f.Id == formatId && (f.IsActive || f.Id == currentFormatId), cancellationToken);
+        var usable = await _db.AttendancePayloadFormats.AnyAsync(f => f.Id == formatId && (f.IsActive || f.Id == currentFormatId) && !_db.AttendancePayloadFormats.Any(newer => newer.SupersedesId == f.Id), cancellationToken);
         if (!usable)
         {
-            errors[nameof(IntegrationInput.FileFormatId)] = "The selected file format does not exist or is not active.";
+            errors[nameof(IntegrationInput.PayloadFormatId)] = "The selected file format does not exist or is not active.";
         }
     }
 
@@ -777,6 +889,13 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         else if (await _db.AttendanceDevices.AnyAsync(d => d.IntegrationId == integrationId && d.ExternalDeviceId == external && d.Id != existingId, cancellationToken))
         {
             errors[nameof(DeviceInput.ExternalDeviceId)] = "Another device of this integration already has this id.";
+        }
+
+        // A device is reached through one of its own integration's connections, or the integration's default.
+        if (input.ConnectionId is { } connectionId
+            && !await _db.AttendanceConnections.AnyAsync(c => c.Id == connectionId && c.IntegrationId == integrationId, cancellationToken))
+        {
+            errors[nameof(DeviceInput.ConnectionId)] = "Choose one of this integration's own connections, or the default.";
         }
 
         var name = (input.Name ?? string.Empty).Trim();

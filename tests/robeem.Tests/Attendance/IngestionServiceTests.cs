@@ -35,11 +35,11 @@ public sealed class IngestionServiceTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Provider = db.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv"),
+            Connector = AttendanceTestData.Seeded(db, "generic-csv"),
             DisplayName = "HQ uploads",
 
             // Named outright: an integration that does not receive uploads (a test below) still reads this file by it.
-            FileFormat = db.AttendanceFileFormats.Single(f => f.Name == "Generic CSV"),
+            PayloadFormat = db.AttendancePayloadFormats.Single(f => f.Name == "Generic CSV"),
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };
         db.AttendanceDevices.Add(device);
@@ -192,16 +192,16 @@ public sealed class IngestionServiceTests : IDisposable
     {
         using (var seed = _database.CreateContext(TestDatabase.TenantA))
         {
-            var csv = seed.AttendanceProviders.Single(p => p.ProviderKey == "generic-csv");
-            var rest = new AttendanceProvider { ProviderKey = "rest-only", DisplayName = "REST" };
-            var retired = new AttendanceProvider { ProviderKey = "retired", DisplayName = "Retired", IsActive = false };
+            var csv = AttendanceTestData.Seeded(seed, "generic-csv");
+            var rest = AttendanceTestData.Connector("rest-only", "REST");
+            var retired = AttendanceTestData.Connector("retired", "Retired", isActive: false);
             seed.AttendanceIntegrations.AddRange(
-                new AttendanceIntegration { Provider = csv, DisplayName = "B takes uploads" },
-                new AttendanceIntegration { Provider = csv, DisplayName = "A takes uploads" },
-                new AttendanceIntegration { Provider = csv, DisplayName = "Paused", Status = AttendanceIntegrationStatus.Paused },
-                new AttendanceIntegration { Provider = csv, DisplayName = "Pushed by webhook", Transport = AttendanceTransport.Webhook },
-                new AttendanceIntegration { Provider = rest, DisplayName = "Pulls only", Transport = AttendanceTransport.RestApi },
-                new AttendanceIntegration { Provider = retired, DisplayName = "Retired provider" });
+                new AttendanceIntegration { Connector = csv, DisplayName = "B takes uploads" },
+                new AttendanceIntegration { Connector = csv, DisplayName = "A takes uploads" },
+                new AttendanceIntegration { Connector = csv, DisplayName = "Paused", Status = AttendanceIntegrationStatus.Paused },
+                new AttendanceIntegration { Connector = csv, DisplayName = "Pushed by webhook" }.WithConnection(AttendanceTransport.Webhook),
+                new AttendanceIntegration { Connector = rest, DisplayName = "Pulls only" }.WithConnection(AttendanceTransport.RestApi),
+                new AttendanceIntegration { Connector = retired, DisplayName = "Retired provider" });
             seed.SaveChanges();
         }
 
@@ -210,8 +210,8 @@ public sealed class IngestionServiceTests : IDisposable
 
         // The constructor's "HQ uploads" shares the provider, so it counts; paused, webhook, pull-only and retired ones do not.
         Assert.Equal(["A takes uploads", "B takes uploads", "HQ uploads"], targets.Select(t => t.DisplayName));
-        Assert.All(targets, t => Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], t.FileFormats));
-        Assert.All(targets, t => Assert.Equal("Generic CSV upload", t.ProviderName));
+        Assert.All(targets, t => Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], t.FileExtensions));
+        Assert.All(targets, t => Assert.Equal("Generic CSV upload", t.VendorName));
         Assert.Contains(targets[0].Layout.Fields, f => f.Target == "ExternalEmployeeId");
     }
 
@@ -278,11 +278,46 @@ public sealed class IngestionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AnUploadsBatch_RecordsTheConnectionAndThePayloadFormatItWasReadBy()
+    {
+        int connectionId;
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var connection = new AttendanceConnection { IntegrationId = _integrationId, Name = "Default", IsDefault = true };
+            db.AttendanceConnections.Add(connection);
+            db.SaveChanges();
+            connectionId = connection.Id;
+        }
+
+        using var context = _database.CreateContext(TestDatabase.TenantA);
+        var result = await CreateService(context).IngestManualUploadAsync(_integrationId, _csvPath, CancellationToken.None);
+
+        var batch = context.AttendanceProcessingBatches.Single(b => b.Id == result!.BatchId);
+        Assert.Equal(connectionId, batch.ConnectionId);
+        Assert.Equal(context.AttendanceIntegrations.Single().PayloadFormatId, batch.PayloadFormatId);
+        Assert.NotNull(batch.PayloadFormatId);
+    }
+
+    [Fact]
+    public async Task AWebhookBatch_RecordsTheConnectionThatReceivedIt_AndNoPayloadFormat()
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var connection = new AttendanceConnection { IntegrationId = _integrationId, Name = "Push", IsDefault = false, Transport = AttendanceTransport.Webhook };
+        db.AttendanceConnections.Add(connection);
+        db.SaveChanges();
+
+        var result = await CreateService(db).IngestWebhookPayloadAsync(_integrationId, connection.Id, _csvPath, CancellationToken.None);
+
+        var batch = db.AttendanceProcessingBatches.Single(b => b.Id == result!.BatchId);
+        Assert.Equal((connection.Id, null), (batch.ConnectionId, batch.PayloadFormatId));
+    }
+
+    [Fact]
     public async Task AWebhookBody_IsNotTrackedAsAnUploadedFile()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        await CreateService(db).IngestWebhookPayloadAsync(_integrationId, _csvPath, CancellationToken.None);
+        await CreateService(db).IngestWebhookPayloadAsync(_integrationId, null, _csvPath, CancellationToken.None);
 
         Assert.Empty(db.AttendanceUploadedFiles);
     }
@@ -310,7 +345,7 @@ public sealed class IngestionServiceTests : IDisposable
         db.AttendanceDevices.Add(device);
         db.SaveChanges();
         integration.DefaultDeviceId = device.Id;
-        integration.Transport = transport;
+        db.AttendanceConnections.Add(new AttendanceConnection { IntegrationId = integration.Id, Name = "Default", IsDefault = true, Transport = transport });
         db.SaveChanges();
         return device.Id;
     }

@@ -65,7 +65,7 @@ namespace robeem.DataModel
         [Required]
         public string RawPayload { get; set; } = string.Empty;
 
-        /// <summary>Gets or sets the system the record came from, e.g. the provider key or the uploaded file name.</summary>
+        /// <summary>Gets or sets the system the record came from, e.g. the vendor key or the uploaded file name.</summary>
         [Required]
         [MaxLength(255)]
         public string SourceSystem { get; set; } = string.Empty;

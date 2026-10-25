@@ -39,7 +39,7 @@ public sealed class TestDatabase : IDisposable
 
     /// <summary>
     /// Gives a tenant the attendance catalog startup gives it: transports, device types, the built-in file formats
-    /// (generic CSV, ZKTeco) and the providers, each file-based provider linked to its default format. Not the default
+    /// (generic CSV, ZKTeco) and the vendors, each file-based vendor linked to its default format. Not the default
     /// attendance policy: a test that wants one adds its own.
     /// </summary>
     public void SeedAttendanceCatalog(string tenantId = TenantA)

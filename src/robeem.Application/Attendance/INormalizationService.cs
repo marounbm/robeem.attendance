@@ -15,6 +15,6 @@ public interface INormalizationService
     /// with no normalized row and the reason in <c>ProcessingError</c>. Each raw row is saved on its
     /// own, so an interrupted run resumes where it stopped.
     /// </summary>
-    /// <exception cref="InvalidOperationException">No event interpreter is registered for a raw row's provider; its rows stay Pending.</exception>
+    /// <exception cref="InvalidOperationException">No event interpreter is registered for a raw row's vendor; its rows stay Pending.</exception>
     Task<NormalizationResult> NormalizeBatchAsync(int batchId, CancellationToken cancellationToken);
 }

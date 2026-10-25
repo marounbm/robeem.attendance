@@ -8,9 +8,10 @@ public sealed class AttendanceDeviceConfiguration : IEntityTypeConfiguration<Att
 {
     public void Configure(EntityTypeBuilder<AttendanceDevice> builder)
     {
-        // The column the type was stored in before types were a table; the old enum was stored by name.
-        builder.Property(d => d.LegacyDeviceType).HasColumnName("DeviceType").HasMaxLength(32);
         builder.HasOne(d => d.DeviceType).WithMany().HasForeignKey(d => d.DeviceTypeId);
+
+        // The connection a device is reached through, when it is not the integration's default. Restrict, like every foreign key.
+        builder.HasOne(d => d.Connection).WithMany().HasForeignKey(d => d.ConnectionId).OnDelete(DeleteBehavior.Restrict);
 
         // Normalization resolves a punch's device by the vendor's id within its integration.
         builder.HasIndex(d => new { d.TenantId, d.IntegrationId, d.ExternalDeviceId }).IsUnique();

@@ -38,7 +38,7 @@ public sealed class UploadsController : Controller
             return RedirectToAction(nameof(Index), new { integrationId });
         }
 
-        // The file must be in a format the chosen integration's provider reads; the Api would only store it as unusable rows.
+        // The file must be in a format the chosen integration's vendor reads; the Api would only store it as unusable rows.
         var target = (await _uploads.ListTargetsAsync(cancellationToken)).FirstOrDefault(t => t.IntegrationId == integrationId);
         if (target is null)
         {
@@ -47,9 +47,9 @@ public sealed class UploadsController : Controller
         }
 
         var extension = Path.GetExtension(file.FileName);
-        if (target.FileFormats.Count > 0 && !target.FileFormats.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        if (target.FileExtensions.Count > 0 && !target.FileExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
-            TempData["ErrorMessage"] = $"{target.DisplayName} reads {string.Join(", ", target.FileFormats)} files; '{file.FileName}' is not one of them.";
+            TempData["ErrorMessage"] = $"{target.DisplayName} reads {string.Join(", ", target.FileExtensions)} files; '{file.FileName}' is not one of them.";
             return RedirectToAction(nameof(Index), new { integrationId });
         }
 
@@ -71,7 +71,7 @@ public sealed class UploadsController : Controller
             // Every row unusable means the file is not in the layout this integration reads, not that a few rows are bad.
             if (batch.RecordsIngested > 0 && batch.RecordsFailed == batch.RecordsIngested)
             {
-                text += $" Every row failed, so the file is probably not in the layout of {target.DisplayName} ({target.ProviderName}): compare it with the layout above, or choose the integration of the provider that matches the clock.";
+                text += $" Every row failed, so the file is probably not in the layout of {target.DisplayName} ({target.VendorName}): compare it with the layout above, or choose the integration of the vendor that matches the clock.";
             }
 
             TempData[batch.Status == "Failed" ? "ErrorMessage" : "StatusMessage"] = text;

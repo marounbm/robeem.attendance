@@ -19,7 +19,7 @@
                 <select id="device-integration" name="integrationId" class="form-select">
                     @foreach (var integration in Model.Integrations)
                     {
-                        <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.DisplayName (@integration.ProviderName)</option>
+                        <option value="@integration.Id" selected="@(integration.Id == Model.IntegrationId)">@integration.DisplayName (@integration.VendorName)</option>
                     }
                 </select>
             }
@@ -28,6 +28,18 @@
                 <input id="device-integration" class="form-control" value="@Model.Device?.IntegrationName" disabled />
                 <div class="form-text">The integration can't be changed: the device's punches belong to it.</div>
             }
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.ConnectionId" class="form-label"></label>
+            <select asp-for="Input.ConnectionId" class="form-select" id="device-connection">
+                <option value="" data-integration="">The integration's default connection</option>
+                @foreach (var connection in Model.Connections)
+                {
+                    <option value="@connection.Id" data-integration="@connection.IntegrationId" selected="@(connection.Id == Model.Input.ConnectionId)">@connection.Name (@connection.TransportName)@(connection.IsDefault ? " — default" : string.Empty)@(connection.IsActive ? string.Empty : " — off")</option>
+                }
+            </select>
+            <div class="form-text">How this device is reached, when it is not through the integration's default connection.</div>
+            <span asp-validation-for="Input.ConnectionId" class="text-danger small"></span>
         </div>
         <div class="col-md-6">
             <label asp-for="Input.ExternalDeviceId" class="form-label"></label>
@@ -80,3 +92,24 @@
         </div>
     </div>
 </div>
+
+<script>
+    (function () {
+        // A device is reached through one of its own integration's connections: while the integration can still be chosen, show only its.
+        var integration = document.getElementById('device-integration');
+        var connection = document.getElementById('device-connection');
+        if (!integration || integration.tagName !== 'SELECT') { return; }
+
+        function narrow() {
+            Array.prototype.forEach.call(connection.options, function (option) {
+                var ours = option.dataset.integration === '' || option.dataset.integration === integration.value;
+                option.hidden = !ours;
+                option.disabled = !ours;
+            });
+            if (connection.selectedOptions.length && connection.selectedOptions[0].disabled) { connection.value = ''; }
+        }
+
+        integration.addEventListener('change', narrow);
+        narrow();
+    })();
+</script>

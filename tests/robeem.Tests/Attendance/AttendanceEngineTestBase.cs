@@ -24,7 +24,7 @@ public abstract class AttendanceEngineTestBase : IDisposable
         var employee = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
         var integration = new AttendanceIntegration
         {
-            Provider = new AttendanceProvider { ProviderKey = "generic-csv", DisplayName = "Generic CSV" },
+            Connector = AttendanceTestData.Connector("generic-csv", "Generic CSV", adapterKey: "generic-csv"),
             DisplayName = "HQ",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "UTC" };

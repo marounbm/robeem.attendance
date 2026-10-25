@@ -9,7 +9,7 @@
 </div>
 
 <p class="text-muted">
-    A connection to a time-clock provider: how to reach it, when to pull from it, which devices it has, and which of your
+    A connection to a time-clock vendor: how to reach it, when to pull from it, which devices it has, and which of your
     employees its employee ids stand for. Punches are always stored as received; nothing here changes stored punches.
 </p>
 
@@ -27,7 +27,7 @@
                 <thead class="table-light">
                     <tr>
                         <th scope="col">Name</th>
-                        <th scope="col">Provider</th>
+                        <th scope="col">Vendor / connector</th>
                         <th scope="col">Receives by</th>
                         <th scope="col">Status</th>
                         <th scope="col">Health</th>
@@ -43,7 +43,7 @@
                     {
                         <tr>
                             <td><a asp-action="Details" asp-route-id="@item.Id">@item.DisplayName</a></td>
-                            <td>@item.ProviderName</td>
+                            <td>@item.VendorName <span class="text-muted">/ @item.ConnectorName</span></td>
                             <td>@item.TransportName</td>
                             <td><span class="badge text-bg-@(item.Status == "Active" ? "success" : item.Status == "Failed" ? "danger" : "secondary")">@item.Status</span></td>
                             <td><span class="badge text-bg-@DisplayFormats.Badge(item.HealthStatus)">@item.HealthStatus</span></td>

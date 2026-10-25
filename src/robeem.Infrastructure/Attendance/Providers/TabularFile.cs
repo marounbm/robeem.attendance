@@ -23,7 +23,7 @@ internal static class TabularFile
     private const ushort RecordNumberBiff3 = 0x0203;
     private const ushort RecordLabelBiff3 = 0x0204;
 
-    private enum FileFormat
+    private enum DetectedFormat
     {
         Csv,
         Workbook,
@@ -35,9 +35,9 @@ internal static class TabularFile
     {
         switch (await DetectAsync(path, cancellationToken))
         {
-            case FileFormat.Workbook:
+            case DetectedFormat.Workbook:
                 return ReadWorkbook(path);
-            case FileFormat.BareBiff:
+            case DetectedFormat.BareBiff:
                 return ReadBareBiff(await File.ReadAllBytesAsync(path, cancellationToken));
             default:
                 return CsvDocument.Parse(await CsvDocument.ReadFileAsync(path, cancellationToken));
@@ -49,29 +49,46 @@ internal static class TabularFile
     /// <paramref name="sheetNumber"/> of a workbook. <paramref name="kind"/> Auto tells them apart by content;
     /// naming one that the content contradicts is an error rather than garbage rows.
     /// </summary>
-    public static async Task<List<List<string>>> ReadRowsAsync(string path, AttendanceFileKind kind, char delimiter, int sheetNumber, CancellationToken cancellationToken)
+    public static async Task<List<List<string>>> ReadRowsAsync(string path, AttendancePayloadKind kind, char delimiter, int sheetNumber, CancellationToken cancellationToken) =>
+        (await ReadTableAsync(path, kind, delimiter, sheetNumber, string.Empty, cancellationToken)).Rows;
+
+    /// <summary>
+    /// As <see cref="ReadRowsAsync(string, AttendancePayloadKind, char, int, CancellationToken)"/>, and for a workbook also says
+    /// which cells hold a real date or time (<see cref="TabularData.Dates"/>), so a format with separate date and time
+    /// patterns can read them as values instead of through the text they happen to display.
+    /// </summary>
+    public static async Task<TabularData> ReadTableAsync(string path, AttendancePayloadKind kind, char delimiter, int sheetNumber, string recordPath, CancellationToken cancellationToken)
     {
+        // JSON and XML are named by the format, never guessed: their records come from the record path, with a header row of their own.
+        switch (kind)
+        {
+            case AttendancePayloadKind.Json:
+                return await StructuredFile.ReadJsonAsync(path, recordPath, cancellationToken);
+            case AttendancePayloadKind.Xml:
+                return await StructuredFile.ReadXmlAsync(path, recordPath, cancellationToken);
+        }
+
         var detected = await DetectAsync(path, cancellationToken);
-        var isText = detected == FileFormat.Csv;
-        if (kind == AttendanceFileKind.Excel && isText)
+        var isText = detected == DetectedFormat.Csv;
+        if (kind == AttendancePayloadKind.Excel && isText)
         {
             throw new InvalidDataException("The file is not an Excel workbook, which this format expects.");
         }
 
-        if (kind == AttendanceFileKind.Csv && !isText)
+        if (kind == AttendancePayloadKind.Csv && !isText)
         {
             throw new InvalidDataException("The file is an Excel workbook, but this format expects a text (CSV) file.");
         }
 
         return detected switch
         {
-            FileFormat.Workbook => ReadWorkbook(path, sheetNumber),
-            FileFormat.BareBiff => ReadBareBiff(await File.ReadAllBytesAsync(path, cancellationToken)),
-            _ => CsvDocument.Parse(await CsvDocument.ReadFileAsync(path, cancellationToken), delimiter),
+            DetectedFormat.Workbook => ReadWorkbookTable(path, sheetNumber),
+            DetectedFormat.BareBiff => new TabularData(ReadBareBiff(await File.ReadAllBytesAsync(path, cancellationToken)), null),
+            _ => new TabularData(CsvDocument.Parse(await CsvDocument.ReadFileAsync(path, cancellationToken), delimiter), null),
         };
     }
 
-    private static async Task<FileFormat> DetectAsync(string path, CancellationToken cancellationToken)
+    private static async Task<DetectedFormat> DetectAsync(string path, CancellationToken cancellationToken)
     {
         var head = new byte[8];
         int read;
@@ -82,25 +99,27 @@ internal static class TabularFile
 
         if (read >= 4 && head[0] == 0x50 && head[1] == 0x4B && head[2] == 0x03 && head[3] == 0x04)
         {
-            return FileFormat.Workbook; // zip container: .xlsx
+            return DetectedFormat.Workbook; // zip container: .xlsx
         }
 
         if (read >= 8 && head[0] == 0xD0 && head[1] == 0xCF && head[2] == 0x11 && head[3] == 0xE0)
         {
-            return FileFormat.Workbook; // OLE2 container: .xls
+            return DetectedFormat.Workbook; // OLE2 container: .xls
         }
 
         // A bare BIFF stream starts with a BOF record: id 0x0009 (BIFF2), 0x0209 (BIFF3), 0x0409 (BIFF4)
         // or 0x0809 (BIFF5/8), little-endian, followed by its length. No CSV starts with a control byte.
         if (read >= 4 && head[0] == 0x09 && (head[1] is 0x00 or 0x02 or 0x04 or 0x08) && head[3] == 0x00)
         {
-            return FileFormat.BareBiff;
+            return DetectedFormat.BareBiff;
         }
 
-        return FileFormat.Csv;
+        return DetectedFormat.Csv;
     }
 
-    private static List<List<string>> ReadWorkbook(string path, int sheetNumber = 1)
+    private static List<List<string>> ReadWorkbook(string path, int sheetNumber = 1) => ReadWorkbookTable(path, sheetNumber).Rows;
+
+    private static TabularData ReadWorkbookTable(string path, int sheetNumber)
     {
         // Legacy .xls files carry their text in a Windows code page.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -117,18 +136,26 @@ internal static class TabularFile
         }
 
         var rows = new List<List<string>>();
+        var dates = new List<List<DateTime?>>();
         while (reader.Read())
         {
             var row = new List<string>(reader.FieldCount);
+            var typed = new List<DateTime?>(reader.FieldCount);
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                row.Add(CellText(reader.GetValue(i)));
+                var value = reader.GetValue(i);
+                row.Add(CellText(value));
+                typed.Add(value is DateTime date ? date : null);
             }
 
-            AddIfNotBlank(rows, row);
+            if (row.Any(cell => cell.Length > 0))
+            {
+                rows.Add(row);
+                dates.Add(typed);
+            }
         }
 
-        return rows;
+        return new TabularData(rows, dates);
     }
 
     /// <summary>
