@@ -14,3 +14,7 @@ main .card {
 .table th {
   vertical-align: middle;
 }
+
+.validation-summary-valid {
+  display: none;
+}
