@@ -1,3 +1,4 @@
+using robeem.Contracts.Common;
 using robeem.Contracts.HR.Employees;
 
 namespace robeem.Web.ApiClients;
@@ -5,7 +6,8 @@ namespace robeem.Web.ApiClients;
 /// <summary>robeem.Api's employee endpoints (<c>api/employees</c>, <c>api/schedules</c>).</summary>
 public interface IEmployeesApiClient
 {
-    Task<IReadOnlyList<EmployeeListItem>> ListAsync(string? search, bool includeInactive, CancellationToken cancellationToken);
+    /// <summary>Lists one page of employees; a page past the end answers the last.</summary>
+    Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken);
 
     /// <summary>Gets an employee as editable input, or <c>null</c> when it does not exist.</summary>
     Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken);

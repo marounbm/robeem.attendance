@@ -15,6 +15,16 @@ public sealed class RawTransactionListItem
 
     public string? ExternalEmployeeId { get; init; }
 
+    /// <summary>
+    /// Gets the employee the vendor's employee id is mapped to now, on the device that took the punch: the device of an upload, else
+    /// the one the punch was resolved to, else the one with the file's device id. Null when the device is unknown or the id is not mapped on it.
+    /// </summary>
+    public int? EmployeeId { get; init; }
+
+    public string? EmployeeNumber { get; init; }
+
+    public string? EmployeeName { get; init; }
+
     public string? DeviceExternalId { get; init; }
 
     public string TimestampRaw { get; init; } = string.Empty;

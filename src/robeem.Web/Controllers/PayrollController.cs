@@ -21,27 +21,52 @@ public sealed class PayrollController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(int? periodId, DateTime? from, DateTime? to, CancellationToken cancellationToken) =>
-        View(await BuildAsync(periodId, from, to, cancellationToken));
+    public async Task<IActionResult> Index(int? periodId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var range = await ResolveAsync(periodId, from, to, cancellationToken);
+        if (range.Error is not null || range.From is not { } start || range.To is not { } end)
+        {
+            return View(range);
+        }
 
-    /// <summary>The same query as <see cref="Index"/>, as a CSV file with one line per employee day.</summary>
+        // One page of the days, with the totals per employee over all of them; the CSV is the whole range.
+        var size = PayrollIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : PayrollIndexViewModel.DefaultPageSize;
+        var result = await _payroll.GetApprovedPageAsync(start, end, page <= 0 ? 1 : page, size, cancellationToken);
+        return View(new PayrollIndexViewModel
+        {
+            Periods = range.Periods,
+            PeriodId = range.PeriodId,
+            Period = range.Period,
+            From = start,
+            To = end,
+            Days = result.Days.Items,
+            Employees = result.Employees,
+            Page = result.Days.Page,
+            PageSize = size,
+            Total = result.Days.Total,
+        });
+    }
+
+    /// <summary>The same query as <see cref="Index"/>, as a CSV file with one line per employee day: every day, not one page.</summary>
     [HttpGet]
     public async Task<IActionResult> Export(int? periodId, DateTime? from, DateTime? to, CancellationToken cancellationToken)
     {
-        var model = await BuildAsync(periodId, from, to, cancellationToken);
-        if (model.Days is null || model.From is not { } start || model.To is not { } end)
+        var range = await ResolveAsync(periodId, from, to, cancellationToken);
+        if (range.Error is not null || range.From is not { } start || range.To is not { } end)
         {
-            TempData["ErrorMessage"] = model.Error ?? "Choose a pay period or dates to export.";
+            TempData["ErrorMessage"] = range.Error ?? "Choose a pay period or dates to export.";
             return RedirectToAction(nameof(Index));
         }
 
+        var days = await _payroll.GetApprovedAsync(start, end, cancellationToken);
         var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble()
-            .Concat(Encoding.UTF8.GetBytes(PayrollCsv.Build(model.Days)))
+            .Concat(Encoding.UTF8.GetBytes(PayrollCsv.Build(days)))
             .ToArray();
         return File(bytes, "text/csv", $"payroll-{start:yyyy-MM-dd}-{end:yyyy-MM-dd}.csv");
     }
 
-    private async Task<PayrollIndexViewModel> BuildAsync(int? periodId, DateTime? from, DateTime? to, CancellationToken cancellationToken)
+    /// <summary>Works out the dates asked for (a pay period's, else the free ones); the model has no days yet, or says why there can be none.</summary>
+    private async Task<PayrollIndexViewModel> ResolveAsync(int? periodId, DateTime? from, DateTime? to, CancellationToken cancellationToken)
     {
         var periods = await _periods.ListAsync(cancellationToken);
         var period = periodId is { } id ? periods.FirstOrDefault(p => p.Id == id) : null;
@@ -62,7 +87,6 @@ public sealed class PayrollController : Controller
             return new PayrollIndexViewModel { Periods = periods, PeriodId = periodId, From = start, To = end, Error = "The period ends before it starts." };
         }
 
-        var days = await _payroll.GetApprovedAsync(start.Value, end.Value, cancellationToken);
-        return new PayrollIndexViewModel { Periods = periods, PeriodId = periodId, Period = period, From = start, To = end, Days = days };
+        return new PayrollIndexViewModel { Periods = periods, PeriodId = periodId, Period = period, From = start, To = end };
     }
 }

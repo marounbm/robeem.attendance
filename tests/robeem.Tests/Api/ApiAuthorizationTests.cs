@@ -9,6 +9,7 @@ using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Tests.Api;
@@ -37,6 +38,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
             services.AddSingleton<IAttendanceDayCorrectionService>(_days);
             services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
+            services.AddSingleton<IPayrollApprovedPageService, PayrollApprovedPageService>();
             services.AddSingleton<IIntegrationHealthService, FakeHealth>();
             services.AddSingleton<IAttendanceAuditTrail, FakeAudit>();
         });
@@ -88,6 +90,22 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     public async Task APayrollRequestWithAReversedPeriod_IsRefusedAs400()
     {
         Assert.Equal(HttpStatusCode.BadRequest, (await Send(HttpMethod.Get, "api/attendance/payroll/approved?from=2026-10-11&to=2026-10-05", As(null, AttendanceRoles.PayrollAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Send(HttpMethod.Get, "api/attendance/payroll/approved/page?from=2026-10-11&to=2026-10-05", As(null, AttendanceRoles.PayrollAdministrator))).StatusCode);
+    }
+
+    [Fact]
+    public async Task ThePayrollPage_IsForPayrollAdministratorsOnly_AndReadsTheSameGate()
+    {
+        const string url = "api/attendance/payroll/approved/page?from=2026-10-05&to=2026-10-11&page=1&pageSize=20";
+
+        var page = await Send(HttpMethod.Get, url, As(null, AttendanceRoles.PayrollAdministrator));
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Equal((new DateTime(2026, 10, 5), new DateTime(2026, 10, 11)), _payroll.LastRange);
+
+        _payroll.Reset();
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, url, As(7, AttendanceRoles.HRAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get, url, null)).StatusCode);
+        Assert.Null(_payroll.LastRange);
     }
 
     [Fact]
@@ -457,6 +475,8 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     {
         public (DateTime From, DateTime To)? LastRange { get; private set; }
 
+        public void Reset() => LastRange = null;
+
         public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, CancellationToken cancellationToken)
         {
             LastRange = (payPeriodStart, payPeriodEnd);
@@ -482,7 +502,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 
         public Task FlushNewAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<IReadOnlyList<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int take, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AuditLogEntry>>([]);
+        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<AuditLogEntry>());
     }
 }

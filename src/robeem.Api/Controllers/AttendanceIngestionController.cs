@@ -4,6 +4,7 @@ using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Application.Security;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Api.Controllers;
 
@@ -23,10 +24,13 @@ public sealed class AttendanceIngestionController : ControllerBase
         _user = user;
     }
 
-    /// <summary>The upload history, newest first: each file's name, size, SHA-256, upload time and uploader. Optionally one integration's.</summary>
+    /// <summary>One page of the upload history, newest first: each file's name, size, SHA-256, upload time and uploader. Optionally one integration's.</summary>
+    /// <param name="integrationId">Only this integration's uploads.</param>
+    /// <param name="page">The 1-based page (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Uploads per page (default 20, at most 200).</param>
     [HttpGet("uploads")]
-    public async Task<IReadOnlyList<UploadedFileItem>> Uploads(int? integrationId, int take = 50, CancellationToken cancellationToken = default) =>
-        await _ingestion.ListUploadedFilesAsync(integrationId, take, cancellationToken);
+    public async Task<PagedResult<UploadedFileItem>> Uploads(int? integrationId, int page, int pageSize, CancellationToken cancellationToken = default) =>
+        await _ingestion.ListUploadedFilesAsync(integrationId, page <= 0 ? 1 : page, pageSize, cancellationToken);
 
     /// <summary>The integrations a file can be uploaded into, each with the file formats and layout of its vendor.</summary>
     [HttpGet("targets")]

@@ -86,9 +86,42 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
         Assert.Equal(["three", "one"], (await ListAsync("A")).Select(e => e.Details));
         using var db2 = Database.CreateContext(TestDatabase.TenantA);
         var audit2 = CreateAudit(db2);
-        Assert.Equal(["three", "two", "one"], (await audit2.ListAsync(null, null, null, 100, CancellationToken.None)).Select(e => e.Details));
-        Assert.Equal(["two"], (await audit2.ListAsync(null, "Thing", 2, 100, CancellationToken.None)).Select(e => e.Details));
-        Assert.Single(await audit2.ListAsync(null, null, null, 1, CancellationToken.None));
+        Assert.Equal(["three", "two", "one"], (await audit2.ListAsync(null, null, null, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
+        Assert.Equal(["two"], (await audit2.ListAsync(null, "Thing", 2, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
+        Assert.Single((await audit2.ListAsync(null, null, null, 1, 1, CancellationToken.None)).Items);
+    }
+
+    [Fact]
+    public async Task TheLog_IsPaged_NewestFirst_WithTheTotalOfTheFilteredList_AndAPagePastTheEndAnswersTheLast()
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var audit = CreateAudit(db);
+            for (var i = 1; i <= 5; i++)
+            {
+                audit.Record(i % 2 == 0 ? "B" : "A", "Thing", i, $"entry {i}");
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var log = CreateAudit(read);
+        var first = await log.ListAsync(null, null, null, 1, 2, CancellationToken.None);
+        var second = await log.ListAsync(null, null, null, 2, 2, CancellationToken.None);
+        var third = await log.ListAsync(null, null, null, 3, 2, CancellationToken.None);
+        var beyond = await log.ListAsync(null, null, null, 99, 2, CancellationToken.None);
+        var onlyA = await log.ListAsync("A", null, null, 1, 2, CancellationToken.None);
+        var nothing = await log.ListAsync("Nope", null, null, 4, 10, CancellationToken.None);
+
+        // Every page knows the whole list; together the pages are the list once, newest first.
+        Assert.All(new[] { first, second, third }, p => Assert.Equal((5, 2, 3), (p.Total, p.PageSize, p.PageCount)));
+        Assert.Equal(["entry 5", "entry 4", "entry 3", "entry 2", "entry 1"], first.Items.Concat(second.Items).Concat(third.Items).Select(e => e.Details));
+        Assert.Equal((3, 1), (beyond.Page, beyond.Items.Count));
+        Assert.Equal((3, 2, 2), (onlyA.Total, onlyA.Items.Count, onlyA.PageCount));
+        Assert.Equal((0, 1, 0), (nothing.Total, nothing.Page, nothing.Items.Count));
+        Assert.Equal(20, (await log.ListAsync(null, null, null, 1, 0, CancellationToken.None)).PageSize);
+        Assert.Equal(200, (await log.ListAsync(null, null, null, 1, 100000, CancellationToken.None)).PageSize);
     }
 
     [Fact]
@@ -120,6 +153,6 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
     private async Task<IReadOnlyList<robeem.Contracts.Attendance.AuditLogEntry>> ListAsync(string action)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await CreateAudit(db).ListAsync(action, null, null, 100, CancellationToken.None);
+        return (await CreateAudit(db).ListAsync(action, null, null, 1, 100, CancellationToken.None)).Items;
     }
 }

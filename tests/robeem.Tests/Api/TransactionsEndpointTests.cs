@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Tests.Api;
@@ -49,14 +50,16 @@ public sealed class TransactionsEndpointTests : IAsyncDisposable
     {
         var hr = TestApi.As(7, AttendanceRoles.HRAdministrator);
 
-        var ok = await Get("api/attendance/transactions/raw?integrationId=3&batchId=7&status=failed&from=2026-04-01&to=2026-04-30&search=2200&take=20", hr);
+        var ok = await Get("api/attendance/transactions/raw?integrationId=3&batchId=7&status=failed&from=2026-04-01&to=2026-04-30&search=2200&employee=hiba&page=3&pageSize=20", hr);
         var bare = await Get("api/attendance/transactions/raw", hr);
         var refused = await Get("api/attendance/transactions/raw?status=Bogus", hr);
         var number = await Get("api/attendance/transactions/raw?status=99", hr);
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        Assert.Equal(new RawTransactionFilter(3, 7, RawTransactionProcessingStatus.Failed, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "2200", 20), _transactions.RawFilters[0]);
-        Assert.Equal(new RawTransactionFilter(null, null, null, null, null, null, 0), _transactions.RawFilters[1]);
+        Assert.Equal(new RawTransactionFilter(3, 7, RawTransactionProcessingStatus.Failed, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "2200", 3, 20) { Employee = "hiba" }, _transactions.RawFilters[0]);
+
+        // Nothing asked for: the first page, and the size left to the service's default.
+        Assert.Equal(new RawTransactionFilter(null, null, null, null, null, null, 1, 0), _transactions.RawFilters[1]);
         Assert.Equal(HttpStatusCode.OK, bare.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("Pending, Normalized, Failed, Skipped", await refused.Content.ReadAsStringAsync());
@@ -69,12 +72,12 @@ public sealed class TransactionsEndpointTests : IAsyncDisposable
     {
         var admin = TestApi.As(8, AttendanceRoles.IntegrationAdministrator);
 
-        var ok = await Get("api/attendance/transactions/normalized?integrationId=3&rawId=9&employee=hiba&eventType=checkin&duplicate=DuplicateCandidate&flag=FlaggedInvalidSequence&from=2026-04-01&take=5", admin);
+        var ok = await Get("api/attendance/transactions/normalized?integrationId=3&rawId=9&employee=hiba&eventType=checkin&duplicate=DuplicateCandidate&flag=FlaggedInvalidSequence&from=2026-04-01&page=2&pageSize=5", admin);
         var refused = await Get("api/attendance/transactions/normalized?eventType=Nope&duplicate=Nope&flag=Nope", admin);
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Equal(
-            new NormalizedTransactionFilter(3, 9, "hiba", NormalizedEventType.CheckIn, DuplicateStatus.DuplicateCandidate, TransactionExceptionStatus.FlaggedInvalidSequence, new DateTime(2026, 4, 1), null, 5),
+            new NormalizedTransactionFilter(3, 9, "hiba", NormalizedEventType.CheckIn, DuplicateStatus.DuplicateCandidate, TransactionExceptionStatus.FlaggedInvalidSequence, new DateTime(2026, 4, 1), null, 2, 5),
             _transactions.NormalizedFilters.Single());
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         var body = await refused.Content.ReadAsStringAsync();
@@ -102,18 +105,18 @@ public sealed class TransactionsEndpointTests : IAsyncDisposable
 
         public List<NormalizedTransactionFilter> NormalizedFilters { get; } = [];
 
-        public Task<IReadOnlyList<RawTransactionListItem>> ListRawAsync(RawTransactionFilter filter, CancellationToken cancellationToken)
+        public Task<PagedResult<RawTransactionListItem>> ListRawAsync(RawTransactionFilter filter, CancellationToken cancellationToken)
         {
             Calls++;
             RawFilters.Add(filter);
-            return Task.FromResult<IReadOnlyList<RawTransactionListItem>>([]);
+            return Task.FromResult(new PagedResult<RawTransactionListItem> { Page = filter.Page, PageSize = filter.PageSize });
         }
 
-        public Task<IReadOnlyList<NormalizedTransactionListItem>> ListNormalizedAsync(NormalizedTransactionFilter filter, CancellationToken cancellationToken)
+        public Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(NormalizedTransactionFilter filter, CancellationToken cancellationToken)
         {
             Calls++;
             NormalizedFilters.Add(filter);
-            return Task.FromResult<IReadOnlyList<NormalizedTransactionListItem>>([]);
+            return Task.FromResult(new PagedResult<NormalizedTransactionListItem> { Page = filter.Page, PageSize = filter.PageSize });
         }
 
         public Task<IReadOnlyList<TransactionIntegrationOption>> ListIntegrationsAsync(CancellationToken cancellationToken)

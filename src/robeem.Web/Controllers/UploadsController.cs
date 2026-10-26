@@ -10,8 +10,6 @@ namespace robeem.Web.Controllers;
 /// </summary>
 public sealed class UploadsController : Controller
 {
-    private const int HistorySize = 50;
-
     private readonly IUploadsApiClient _uploads;
 
     public UploadsController(IUploadsApiClient uploads)
@@ -20,13 +18,25 @@ public sealed class UploadsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(int? integrationId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(int? integrationId, int page, int pageSize, CancellationToken cancellationToken)
     {
         var targets = await _uploads.ListTargetsAsync(cancellationToken);
 
         // A single choice is chosen for the user; with several, nothing is until they pick one.
         var selected = integrationId is { } id ? targets.FirstOrDefault(t => t.IntegrationId == id) : targets.Count == 1 ? targets[0] : null;
-        return View(new UploadViewModel { Targets = targets, Selected = selected, Uploads = await _uploads.ListUploadsAsync(HistorySize, cancellationToken) });
+
+        // The history is paged on the server and lists every integration's uploads; the choice above does not narrow it.
+        var size = UploadViewModel.PageSizes.Contains(pageSize) ? pageSize : UploadViewModel.DefaultPageSize;
+        var history = await _uploads.ListUploadsAsync(Math.Max(page, 1), size, cancellationToken);
+        return View(new UploadViewModel
+        {
+            Targets = targets,
+            Selected = selected,
+            Uploads = history.Items,
+            Page = history.Page,
+            PageSize = size,
+            Total = history.Total,
+        });
     }
 
     [HttpPost]

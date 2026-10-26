@@ -517,7 +517,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     private async Task<IReadOnlyList<AuditLogEntry>> AuditAsync(string action)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await CreateAudit(db).ListAsync(action, null, null, 100, CancellationToken.None);
+        return (await CreateAudit(db).ListAsync(action, null, null, 1, 100, CancellationToken.None)).Items;
     }
 
     private async Task<int> GivenMissingBreakOutAsync()

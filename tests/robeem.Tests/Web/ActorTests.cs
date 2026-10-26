@@ -168,7 +168,7 @@ public sealed class ActorTests
         var unauthorized = new EmployeesApiClient(new StubHttpHandler(HttpStatusCode.Unauthorized).CreateClient());
         var missing = new EmployeesApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
 
-        await Assert.ThrowsAsync<ApiAccessDeniedException>(() => forbidden.ListAsync(null, false, CancellationToken.None));
+        await Assert.ThrowsAsync<ApiAccessDeniedException>(() => forbidden.ListAsync(null, false, 1, 20, CancellationToken.None));
         await Assert.ThrowsAsync<ApiAccessDeniedException>(() => unauthorized.ListSchedulesAsync(CancellationToken.None));
         await Assert.ThrowsAsync<ApiNotFoundException>(() => missing.ListSchedulesAsync(CancellationToken.None));
     }

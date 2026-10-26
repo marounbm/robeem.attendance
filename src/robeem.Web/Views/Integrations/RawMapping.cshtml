@@ -40,8 +40,13 @@
         </select>
     </div>
     <div class="col-md-2">
-        <label class="form-label small mb-0" for="take">Rows</label>
-        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" />
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select form-select-sm">
+            @foreach (var size in IntegrationRawMappingViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
     </div>
     <div class="col-md-2">
         <button type="submit" class="btn btn-sm btn-primary">Show</button>
@@ -107,3 +112,5 @@
         </tbody>
     </table>
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

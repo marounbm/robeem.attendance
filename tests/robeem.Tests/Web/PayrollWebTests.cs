@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
@@ -129,11 +130,11 @@ public sealed class PayrollWebTests
         var payroll = new FakePayroll();
         var controller = WithTempData(new PayrollController(payroll, new FakePeriods([Closed, Open])));
 
-        var none = (PayrollIndexViewModel)((ViewResult)await controller.Index(null, null, null, CancellationToken.None)).Model!;
+        var none = (PayrollIndexViewModel)((ViewResult)await controller.Index(null, null, null, 0, 0, CancellationToken.None)).Model!;
         Assert.Null(none.Days);
         Assert.Empty(payroll.Asked);
 
-        var chosen = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, CancellationToken.None)).Model!;
+        var chosen = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, 0, 0, CancellationToken.None)).Model!;
         Assert.Equal([(new DateTime(2026, 10, 1), new DateTime(2026, 10, 31))], payroll.Asked);
         Assert.Empty(chosen.Days!);
         Assert.False(chosen.PeriodIsClosed);
@@ -145,9 +146,9 @@ public sealed class PayrollWebTests
         var payroll = new FakePayroll();
         var controller = WithTempData(new PayrollController(payroll, new FakePeriods([Closed, Open])));
 
-        var closed = (PayrollIndexViewModel)((ViewResult)await controller.Index(2, null, null, CancellationToken.None)).Model!;
-        var unknown = (PayrollIndexViewModel)((ViewResult)await controller.Index(99, null, null, CancellationToken.None)).Model!;
-        var backwards = (PayrollIndexViewModel)((ViewResult)await controller.Index(null, new DateTime(2026, 10, 31), new DateTime(2026, 10, 1), CancellationToken.None)).Model!;
+        var closed = (PayrollIndexViewModel)((ViewResult)await controller.Index(2, null, null, 1, 20, CancellationToken.None)).Model!;
+        var unknown = (PayrollIndexViewModel)((ViewResult)await controller.Index(99, null, null, 1, 20, CancellationToken.None)).Model!;
+        var backwards = (PayrollIndexViewModel)((ViewResult)await controller.Index(null, new DateTime(2026, 10, 31), new DateTime(2026, 10, 1), 1, 20, CancellationToken.None)).Model!;
 
         Assert.True(closed.PeriodIsClosed);
         Assert.Equal("That pay period doesn't exist.", unknown.Error);
@@ -161,12 +162,56 @@ public sealed class PayrollWebTests
         var payroll = new FakePayroll { Days = [Day(2, "E-2", 5, 8, 0), Day(1, "E-1", 5, 8, 1), Day(1, "E-1", 6, 7.5, 0)] };
         var controller = WithTempData(new PayrollController(payroll, new FakePeriods([Open])));
 
-        var model = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, CancellationToken.None)).Model!;
+        var model = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, 1, 20, CancellationToken.None)).Model!;
 
         Assert.Equal(["E-1", "E-2"], model.Employees.Select(e => e.EmployeeNumber));
         Assert.Equal(["Employee E-1", "Employee E-2"], model.Employees.Select(e => e.EmployeeName));
         var first = model.Employees[0];
         Assert.Equal((2, TimeSpan.FromHours(15.5), TimeSpan.FromHours(1)), (first.Days, first.WorkingHours, first.OvertimeHours));
+    }
+
+    [Fact]
+    public async Task Payroll_AsksForOnePageOfAListedSize_AndTheTotalsCoverEveryPage()
+    {
+        var payroll = new FakePayroll { Days = [.. Enumerable.Range(1, 25).Select(day => Day(1, "E-1", day, 8, 0))] };
+        var controller = WithTempData(new PayrollController(payroll, new FakePeriods([Open])));
+
+        var model = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, 2, 10, CancellationToken.None)).Model!;
+        await controller.Index(1, null, null, 1, 7, CancellationToken.None);
+
+        Assert.Equal([(2, 10), (1, 20)], payroll.PageAsks);
+        Assert.Equal((2, 10, 25), (model.Page, model.PageSize, model.Total));
+        Assert.Equal(10, model.Days!.Count);
+        Assert.Equal(11, model.Days[0].AttendanceDate.Day);
+        Assert.Equal(25, Assert.Single(model.Employees).Days);
+        Assert.Equal(TimeSpan.FromHours(200), model.Employees[0].WorkingHours);
+    }
+
+    [Fact]
+    public async Task ThePayrollPager_KeepsThePeriodOrTheDates_AndThePageSize()
+    {
+        var controller = WithTempData(new PayrollController(new FakePayroll(), new FakePeriods([Open])));
+
+        var byPeriod = (PayrollIndexViewModel)((ViewResult)await controller.Index(1, null, null, 1, 50, CancellationToken.None)).Model!;
+        var byDates = (PayrollIndexViewModel)((ViewResult)await controller.Index(null, new DateTime(2026, 10, 5), new DateTime(2026, 10, 9), 1, 50, CancellationToken.None)).Model!;
+
+        Assert.Equal(("1", "50"), (byPeriod.Pager.RouteValues["periodId"], byPeriod.Pager.RouteValues["pageSize"]));
+        Assert.False(byPeriod.Pager.RouteValues.ContainsKey("from"));
+        Assert.Equal(("2026-10-05", "2026-10-09"), (byDates.Pager.RouteValues["from"], byDates.Pager.RouteValues["to"]));
+        Assert.False(byDates.Pager.RouteValues.ContainsKey("periodId"));
+    }
+
+    [Fact]
+    public async Task ThePayrollClient_AsksForAPage_AndReadsItsDaysAndTotals()
+    {
+        var json = """{"days":{"items":[{"employeeId":3,"employeeNumber":"E-3","employeeName":"Ada","attendanceDate":"2026-10-05T00:00:00","totalWorkingHours":"08:00:00","totalOvertimeHours":"00:00:00","totalBreakHours":"00:00:00","shifts":[]}],"total":41,"page":2,"pageSize":20},"employees":[{"employeeId":3,"employeeNumber":"E-3","employeeName":"Ada","days":41,"workingHours":"13.16:00:00","overtimeHours":"00:00:00","breakHours":"00:00:00"}]}""";
+        var handler = new StubHttpHandler(HttpStatusCode.OK, json);
+
+        var page = await new PayrollApiClient(handler.CreateClient()).GetApprovedPageAsync(new DateTime(2026, 10, 1), new DateTime(2026, 10, 31), 2, 20, CancellationToken.None);
+
+        Assert.Equal("/api/attendance/payroll/approved/page?from=2026-10-01&to=2026-10-31&page=2&pageSize=20", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((41, 2, 3), (page.Days.Total, page.Days.Page, page.Days.PageCount));
+        Assert.Equal(41, Assert.Single(page.Employees).Days);
     }
 
     [Fact]
@@ -291,10 +336,19 @@ public sealed class PayrollWebTests
 
         public List<(DateTime From, DateTime To)> Asked { get; } = [];
 
+        public List<(int Page, int PageSize)> PageAsks { get; } = [];
+
         public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedAsync(DateTime from, DateTime to, CancellationToken cancellationToken)
         {
             Asked.Add((from, to));
             return Task.FromResult(Days);
+        }
+
+        public Task<PayrollApprovedPage> GetApprovedPageAsync(DateTime from, DateTime to, int page, int pageSize, CancellationToken cancellationToken)
+        {
+            Asked.Add((from, to));
+            PageAsks.Add((page, pageSize));
+            return Task.FromResult(PayrollApprovedPageService.Build(Days, page, pageSize));
         }
     }
 }

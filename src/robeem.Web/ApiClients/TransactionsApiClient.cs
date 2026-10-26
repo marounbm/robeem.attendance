@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.WebUtilities;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -15,23 +16,24 @@ public sealed class TransactionsApiClient : ITransactionsApiClient
         _http = http;
     }
 
-    public async Task<IReadOnlyList<RawTransactionListItem>> ListRawAsync(int? integrationId, int? batchId, string? status, DateTime? from, DateTime? to, string? search, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<RawTransactionListItem>> ListRawAsync(int? integrationId, int? batchId, string? status, DateTime? from, DateTime? to, string? search, string? employee, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var query = new Dictionary<string, string?> { ["take"] = Number(take) };
+        var query = new Dictionary<string, string?> { ["page"] = Number(page), ["pageSize"] = Number(pageSize) };
         Add(query, "integrationId", integrationId);
         Add(query, "batchId", batchId);
         Add(query, "status", status);
         Add(query, "from", from);
         Add(query, "to", to);
         Add(query, "search", search);
+        Add(query, "employee", employee);
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString($"{Path}/raw", query), cancellationToken);
-        return await ApiResponses.ReadAsync<List<RawTransactionListItem>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<RawTransactionListItem>>(response, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var query = new Dictionary<string, string?> { ["take"] = Number(take) };
+        var query = new Dictionary<string, string?> { ["page"] = Number(page), ["pageSize"] = Number(pageSize) };
         Add(query, "integrationId", integrationId);
         Add(query, "rawId", rawId);
         Add(query, "employee", employee);
@@ -42,7 +44,7 @@ public sealed class TransactionsApiClient : ITransactionsApiClient
         Add(query, "to", to);
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString($"{Path}/normalized", query), cancellationToken);
-        return await ApiResponses.ReadAsync<List<NormalizedTransactionListItem>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<NormalizedTransactionListItem>>(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<TransactionIntegrationOption>> ListIntegrationsAsync(CancellationToken cancellationToken)

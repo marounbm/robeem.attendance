@@ -14,6 +14,9 @@ public interface IPayloadFormatsApiClient
 
     Task<ApiSaveResult> UpdateAsync(int id, PayloadFormatInput input, CancellationToken cancellationToken);
 
+    /// <summary>Makes an example file (<c>csv</c>, <c>json</c> or <c>xml</c>) from a format as it stands in the form, saved or not. Stores nothing.</summary>
+    Task<PayloadFormatSample> SampleAsync(PayloadFormatInput input, string kind, CancellationToken cancellationToken);
+
     /// <summary>Reads a sample file by an unsaved format and returns its first rows as understood. Nothing is stored.</summary>
     Task<ApiCommandResult<PayloadFormatPreview>> PreviewAsync(PayloadFormatInput input, Stream file, string fileName, CancellationToken cancellationToken);
 }

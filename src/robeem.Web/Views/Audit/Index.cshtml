@@ -32,11 +32,11 @@
                 <input id="entityId" name="entityId" type="number" min="1" class="form-control" value="@Model.EntityId" />
             </div>
             <div class="col-md-2">
-                <label class="form-label" for="take">Show</label>
-                <select id="take" name="take" class="form-select">
-                    @foreach (var choice in AuditIndexViewModel.TakeChoices)
+                <label class="form-label" for="pageSize">Per page</label>
+                <select id="pageSize" name="pageSize" class="form-select">
+                    @foreach (var size in AuditIndexViewModel.PageSizes)
                     {
-                        <option value="@choice" selected="@(choice == Model.Take)">Latest @choice</option>
+                        <option value="@size" selected="@(size == Model.PageSize)">@size</option>
                     }
                 </select>
             </div>
@@ -89,9 +89,7 @@
                 </tbody>
             </table>
         </div>
-        @if (Model.MayHaveMore)
-        {
-            <div class="card-footer text-muted small">Showing the latest @Model.Entries.Count entries; older ones exist. Narrow the filter or show more.</div>
-        }
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

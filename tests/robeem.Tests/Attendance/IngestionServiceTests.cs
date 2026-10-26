@@ -270,11 +270,24 @@ public sealed class IngestionServiceTests : IDisposable
         Assert.Equal(16, db.RawAttendanceTransactions.Count());
 
         // Newest first; only the second upload of the same bytes is a repeat.
-        var history = await service.ListUploadedFilesAsync(null, 50, CancellationToken.None);
+        var all = await service.ListUploadedFilesAsync(null, 1, 50, CancellationToken.None);
+        var history = all.Items;
         Assert.Equal(["b.csv", "a-copy.csv", "a.csv"], history.Select(h => h.FileName));
         Assert.Equal([false, true, false], history.Select(h => h.RepeatsAnEarlierUpload));
         Assert.All(history, h => Assert.Equal("HQ uploads", h.IntegrationName));
         Assert.Equal(history[1].Sha256, history[2].Sha256);
+        Assert.Equal((3, 1), (all.Total, all.Page));
+
+        // Paged: the pages are the history once, in order, and the repeat is still known on a page that does not hold the first copy.
+        var pageOne = await service.ListUploadedFilesAsync(null, 1, 2, CancellationToken.None);
+        var pageTwo = await service.ListUploadedFilesAsync(null, 2, 2, CancellationToken.None);
+        var beyond = await service.ListUploadedFilesAsync(null, 99, 2, CancellationToken.None);
+        var none = await service.ListUploadedFilesAsync(-5, 1, 0, CancellationToken.None);
+        Assert.All(new[] { pageOne, pageTwo }, p => Assert.Equal((3, 2, 2), (p.Total, p.PageSize, p.PageCount)));
+        Assert.Equal(["b.csv", "a-copy.csv", "a.csv"], pageOne.Items.Concat(pageTwo.Items).Select(h => h.FileName));
+        Assert.Equal([true], pageOne.Items.Skip(1).Select(h => h.RepeatsAnEarlierUpload));
+        Assert.Equal((2, 1), (beyond.Page, beyond.Items.Count));
+        Assert.Equal((0, 0, 20), (none.Total, none.Items.Count, none.PageSize));
     }
 
     [Fact]

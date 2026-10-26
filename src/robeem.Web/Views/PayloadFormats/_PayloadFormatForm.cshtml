@@ -276,6 +276,30 @@
     </div>
 </div>
 
+<div class="card mb-3" id="examples-card">
+    <div class="card-header">Example files</div>
+    <div class="card-body">
+        <p class="form-text mt-0">
+            See what a file this format reads looks like, made from the settings above as they stand (saved or not), with made-up data. Download one
+            to hand to whoever sets up the export. For JSON and XML, name the columns by their path inside a record (<code>employee.id</code>,
+            <code>@@code</code> for an XML attribute) and set the record path; the example nests the values the same way.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var (kind, label) in new[] { ("json", "JSON"), ("xml", "XML"), ("csv", "CSV") })
+            {
+                <div class="btn-group" role="group" aria-label="@label example">
+                    <button type="button" class="btn btn-outline-primary" data-sample-kind="@kind" data-sample-url="@Url.Action("Sample", "PayloadFormats", new { download = false })">Show @label example</button>
+                    <button type="submit" class="btn btn-outline-secondary" name="kind" value="@kind" asp-action="Sample" asp-route-download="true" formnovalidate title="Download the @label example as a file">Download @label</button>
+                </div>
+            }
+        </div>
+        <div class="mt-3" id="sample-output-box" hidden>
+            <div class="small text-muted mb-1" id="sample-output-title"></div>
+            <pre class="border rounded bg-light p-3 mb-0" id="sample-output" style="max-height: 24rem; overflow: auto"></pre>
+        </div>
+    </div>
+</div>
+
 <div class="card mb-3">
     <div class="card-header">Try it on a sample file</div>
     <div class="card-body">
@@ -373,6 +397,23 @@
         single.addEventListener('change', syncPatterns);
         split.addEventListener('change', syncPatterns);
         syncPatterns();
+
+        // The example is made by the server from the form as it stands now, so it follows every edit; nothing is saved.
+        var output = document.getElementById('sample-output');
+        var outputBox = document.getElementById('sample-output-box');
+        document.querySelectorAll('[data-sample-kind]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var data = new FormData(button.closest('form'));
+                data.set('kind', button.dataset.sampleKind);
+                outputBox.hidden = false;
+                document.getElementById('sample-output-title').textContent = button.dataset.sampleKind.toUpperCase() + ' example';
+                output.textContent = 'Making the example…';
+                fetch(button.dataset.sampleUrl, { method: 'POST', body: data })
+                    .then(function (response) { return response.ok ? response.text() : Promise.reject(); })
+                    .then(function (text) { output.textContent = text; })
+                    .catch(function () { output.textContent = 'The example could not be made.'; });
+            });
+        });
 
         // The record path applies to JSON and XML only; their columns are always found by name, so the header-row box is moot.
         var kind = document.getElementById('Input_PayloadKind');

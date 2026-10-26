@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
+using robeem.Contracts.Common;
 using robeem.Contracts.HR.Employees;
 using robeem.DataModel;
 
@@ -13,6 +14,9 @@ namespace robeem.Application.HR.Employees;
 /// </summary>
 public sealed class EmployeeService : IEmployeeService
 {
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 200;
+
     private readonly IRobeemDbContext _db;
 
     public EmployeeService(IRobeemDbContext db)
@@ -20,8 +24,9 @@ public sealed class EmployeeService : IEmployeeService
         _db = db;
     }
 
-    public async Task<IReadOnlyList<EmployeeListItem>> ListAsync(string? search, bool includeInactive, CancellationToken cancellationToken)
+    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
     {
+        var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
         var profiles = _db.Profiles.AsNoTracking();
 
         if (!includeInactive)
@@ -41,29 +46,37 @@ public sealed class EmployeeService : IEmployeeService
                 || (p.Department != null && p.Department.ToLower().Contains(term)));
         }
 
-        var query =
-            from p in profiles
-            join a in _db.TimeScheduleEmployees on p.Id equals a.EmployeeId into assignments
-            from a in assignments.DefaultIfEmpty()
-            join s in _db.TimeSchedules on a.TimeScheduleId equals s.Id into schedules
-            from s in schedules.DefaultIfEmpty()
-            join m in _db.Profiles on p.ManagerId equals m.Id into managers
-            from m in managers.DefaultIfEmpty()
-            orderby p.LastName, p.FirstName, p.EmployeeNumber
-            select new EmployeeListItem
-            {
-                Id = p.Id,
-                EmployeeNumber = p.EmployeeNumber,
-                FullName = p.FirstName + " " + p.LastName,
-                Department = p.Department,
-                JobTitle = p.JobTitle,
-                HireDate = p.HireDate,
-                IsActive = p.IsActive,
-                TimeScheduleTitle = s != null ? s.Title : null,
-                ManagerName = m != null ? m.FirstName + " " + m.LastName : null,
-            };
+        // The total is counted with the same filters as the page; a page past the end is answered with the last page.
+        var total = await profiles.CountAsync(cancellationToken);
+        var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
 
-        return await query.ToListAsync(cancellationToken);
+        // The employee number is unique per tenant, so the order is total and pages never overlap.
+        var query =
+            (from p in profiles
+             join a in _db.TimeScheduleEmployees on p.Id equals a.EmployeeId into assignments
+             from a in assignments.DefaultIfEmpty()
+             join s in _db.TimeSchedules on a.TimeScheduleId equals s.Id into schedules
+             from s in schedules.DefaultIfEmpty()
+             join m in _db.Profiles on p.ManagerId equals m.Id into managers
+             from m in managers.DefaultIfEmpty()
+             orderby p.LastName, p.FirstName, p.EmployeeNumber
+             select new { p, s, m })
+            .Skip((current - 1) * size)
+            .Take(size)
+            .Select(x => new EmployeeListItem
+            {
+                Id = x.p.Id,
+                EmployeeNumber = x.p.EmployeeNumber,
+                FullName = x.p.FirstName + " " + x.p.LastName,
+                Department = x.p.Department,
+                JobTitle = x.p.JobTitle,
+                HireDate = x.p.HireDate,
+                IsActive = x.p.IsActive,
+                TimeScheduleTitle = x.s != null ? x.s.Title : null,
+                ManagerName = x.m != null ? x.m.FirstName + " " + x.m.LastName : null,
+            });
+
+        return new PagedResult<EmployeeListItem> { Items = await query.ToListAsync(cancellationToken), Total = total, Page = current, PageSize = size };
     }
 
     public async Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken)

@@ -26,6 +26,7 @@ public sealed class PayPeriodsEndpointTests : IAsyncDisposable
         {
             services.AddSingleton<IPayPeriodService>(_periods);
             services.AddSingleton<IPayrollAttendanceExtract>(_extract);
+            services.AddSingleton<IPayrollApprovedPageService, PayrollApprovedPageService>();
         });
     }
 

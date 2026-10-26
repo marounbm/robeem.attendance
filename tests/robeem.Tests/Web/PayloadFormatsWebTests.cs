@@ -1,7 +1,9 @@
+using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
@@ -84,6 +86,40 @@ public sealed class PayloadFormatsWebTests
     }
 
     [Fact]
+    public async Task AnExample_IsShownOnThePage_OrSentAsAFile_FromTheFormAsItStands()
+    {
+        var controller = WithTempData(new PayloadFormatsController(new FakeFormats()));
+        var model = new PayloadFormatFormViewModel { Input = new PayloadFormatInput { Name = "Branch export", EmployeeColumn = "emp.id", TimestampColumn = "at", TimestampFormats = "yyyy-MM-dd HH:mm", RecordPath = "data.punches[*]" } };
+
+        var shown = Assert.IsType<ContentResult>(await controller.Sample(model, "json", download: false, CancellationToken.None));
+        var file = Assert.IsType<FileContentResult>(await controller.Sample(model, "XML", download: true, CancellationToken.None));
+
+        Assert.Contains("\"punches\"", shown.Content);
+        Assert.StartsWith("text/plain", shown.ContentType);
+        Assert.Equal(("application/xml", "sample-branch-export.xml"), (file.ContentType, file.FileDownloadName));
+        Assert.StartsWith("<?xml", Encoding.UTF8.GetString(file.FileContents));
+    }
+
+    [Fact]
+    public async Task AnExampleOfAnUnknownKind_IsRefused()
+    {
+        var controller = WithTempData(new PayloadFormatsController(new FakeFormats()));
+
+        Assert.IsType<BadRequestObjectResult>(await controller.Sample(new PayloadFormatFormViewModel(), "pdf", download: false, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheClient_AsksTheApiForAnExampleOfTheKind()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"kind":"json","fileName":"sample-x.json","contentType":"application/json","content":"[]"}""");
+
+        var sample = await new PayloadFormatsApiClient(handler.CreateClient()).SampleAsync(new PayloadFormatInput { Name = "x" }, "json", CancellationToken.None);
+
+        Assert.Equal("/api/attendance/payload-formats/sample?kind=json", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal(("sample-x.json", "[]"), (sample.FileName, sample.Content));
+    }
+
+    [Fact]
     public void ThePayloadFormatsScreen_IsForIntegrationAdministrators()
     {
         var item = NavigationMenu.Sections.SelectMany(s => s.Items).Single(i => i.Controller == "PayloadFormats");
@@ -124,6 +160,9 @@ public sealed class PayloadFormatsWebTests
         public Task<ApiSaveResult> CreateAsync(PayloadFormatInput input, CancellationToken cancellationToken) => Task.FromResult(Save);
 
         public Task<ApiSaveResult> UpdateAsync(int id, PayloadFormatInput input, CancellationToken cancellationToken) => Task.FromResult(Save);
+
+        public Task<PayloadFormatSample> SampleAsync(PayloadFormatInput input, string kind, CancellationToken cancellationToken) =>
+            Task.FromResult(PayloadFormatSampleBuilder.Build(input, kind));
 
         public Task<ApiCommandResult<PayloadFormatPreview>> PreviewAsync(PayloadFormatInput input, Stream file, string fileName, CancellationToken cancellationToken)
         {

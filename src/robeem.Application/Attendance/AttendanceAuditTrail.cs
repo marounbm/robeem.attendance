@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -9,7 +10,8 @@ namespace robeem.Application.Attendance;
 public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
 {
     private const int DetailsMaxLength = 2000;
-    private const int MaxTake = 500;
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 200;
 
     private readonly IRobeemDbContext _db;
     private readonly ICurrentUser _user;
@@ -46,8 +48,9 @@ public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
     {
+        var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
         var entries = _db.AttendanceAuditLogs.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(action))
         {
@@ -64,10 +67,15 @@ public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
             entries = entries.Where(a => a.TargetId == id);
         }
 
-        // Newest first by id: it grows with time and every database can order by it.
-        return await entries
+        // The total is counted with the same filters as the page; a page past the end is answered with the last page.
+        var total = await entries.CountAsync(cancellationToken);
+        var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
+
+        // Newest first by id: it grows with time, is unique (so pages never overlap) and every database can order by it.
+        var rows = await entries
             .OrderByDescending(a => a.Id)
-            .Take(Math.Clamp(take, 1, MaxTake))
+            .Skip((current - 1) * size)
+            .Take(size)
             .Select(a => new AuditLogEntry
             {
                 Id = a.Id,
@@ -79,6 +87,8 @@ public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
                 Details = a.Details,
             })
             .ToListAsync(cancellationToken);
+
+        return new PagedResult<AuditLogEntry> { Items = rows, Total = total, Page = current, PageSize = size };
     }
 
     private AttendanceAuditLog Create(string action, string entityType, int? entityId, string? details, string? actor) => new()

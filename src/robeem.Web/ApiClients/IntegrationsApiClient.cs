@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -118,9 +119,9 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.SaveAsync<MappingInput>(response, mappingId, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var query = new List<string> { $"take={Number(take)}" };
+        var query = new List<string> { $"page={Number(page)}", $"pageSize={Number(pageSize)}" };
         if (batchId is { } batch)
         {
             query.Add($"batchId={Number(batch)}");
@@ -131,7 +132,7 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
             query.Add($"status={Uri.EscapeDataString(status.Trim())}");
         }
 
-        return await GetOrNullAsync<List<RawNormalizedMappingItem>>($"{IntegrationPath(integrationId)}/raw-mapping?{string.Join('&', query)}", cancellationToken);
+        return await GetOrNullAsync<PagedResult<RawNormalizedMappingItem>>($"{IntegrationPath(integrationId)}/raw-mapping?{string.Join('&', query)}", cancellationToken);
     }
 
     public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
 using robeem.Web.Models;
@@ -266,7 +267,7 @@ public sealed class CatalogWebTests
 
         public Task<RenormalizeFlaggedResponse?> RenormalizeFlaggedAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }

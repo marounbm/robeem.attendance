@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Api.Controllers;
@@ -29,16 +30,18 @@ public sealed class AttendanceTransactionsController : ControllerBase
     /// <param name="from">First date the storing batch started, inclusive.</param>
     /// <param name="to">Last date the storing batch started, inclusive.</param>
     /// <param name="search">Part of the vendor's employee, device or transaction id.</param>
-    /// <param name="take">At most this many, newest first (default 100, at most 500).</param>
+    /// <param name="page">The 1-based page, newest punches first (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Punches per page (default 20, at most 200).</param>
+    /// <param name="employee">Part of the employee's number or name: the employee the vendor's id is mapped to on the punch's device.</param>
     [HttpGet("raw")]
-    public async Task<ActionResult<IReadOnlyList<RawTransactionListItem>>> ListRaw(int? integrationId, int? batchId, string? status, DateTime? from, DateTime? to, string? search, int take, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<RawTransactionListItem>>> ListRaw(int? integrationId, int? batchId, string? status, DateTime? from, DateTime? to, string? search, string? employee, int page, int pageSize, CancellationToken cancellationToken)
     {
         if (!TryParse<RawTransactionProcessingStatus>(status, nameof(status), out var parsed))
         {
             return ValidationProblem(ModelState);
         }
 
-        return Ok(await _transactions.ListRawAsync(new RawTransactionFilter(integrationId, batchId, parsed, from, to, search, take), cancellationToken));
+        return Ok(await _transactions.ListRawAsync(new RawTransactionFilter(integrationId, batchId, parsed, from, to, search, page <= 0 ? 1 : page, pageSize) { Employee = employee }, cancellationToken));
     }
 
     /// <param name="integrationId">Only this integration's punches.</param>
@@ -49,9 +52,10 @@ public sealed class AttendanceTransactionsController : ControllerBase
     /// <param name="flag">Only this flag: None, FlaggedInvalidSequence, FlaggedUnrecognizedEmployee or FlaggedUnrecognizedDevice.</param>
     /// <param name="from">First attendance date, inclusive.</param>
     /// <param name="to">Last attendance date, inclusive.</param>
-    /// <param name="take">At most this many, newest first (default 100, at most 500).</param>
+    /// <param name="page">The 1-based page, newest punches first (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Punches per page (default 20, at most 200).</param>
     [HttpGet("normalized")]
-    public async Task<ActionResult<IReadOnlyList<NormalizedTransactionListItem>>> ListNormalized(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int take, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<NormalizedTransactionListItem>>> ListNormalized(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var valid = TryParse<NormalizedEventType>(eventType, nameof(eventType), out var parsedType);
         valid &= TryParse<DuplicateStatus>(duplicate, nameof(duplicate), out var parsedDuplicate);
@@ -61,7 +65,7 @@ public sealed class AttendanceTransactionsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        return Ok(await _transactions.ListNormalizedAsync(new NormalizedTransactionFilter(integrationId, rawId, employee, parsedType, parsedDuplicate, parsedFlag, from, to, take), cancellationToken));
+        return Ok(await _transactions.ListNormalizedAsync(new NormalizedTransactionFilter(integrationId, rawId, employee, parsedType, parsedDuplicate, parsedFlag, from, to, page <= 0 ? 1 : page, pageSize), cancellationToken));
     }
 
     /// <summary>The integrations to filter by.</summary>

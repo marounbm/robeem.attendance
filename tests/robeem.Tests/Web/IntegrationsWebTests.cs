@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
 using robeem.Web.Models;
@@ -228,32 +229,49 @@ public sealed class IntegrationsWebTests
     [Fact]
     public async Task TheClient_AsksForTheRawMappingWithItsFilter_AndMapsA404ToNull()
     {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"rawId":4,"rawStatus":"Failed","processingError":"Unparseable timestamp 'x'","payload":"{}"}]""");
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"rawId":4,"rawStatus":"Failed","processingError":"Unparseable timestamp 'x'","payload":"{}"}],"total":61,"page":2,"pageSize":50}""");
         var missing = new IntegrationsApiClient(new StubHttpHandler(HttpStatusCode.NotFound).CreateClient());
 
-        var rows = await new IntegrationsApiClient(handler.CreateClient()).ListRawMappingAsync(5, 7, "Failed", 50, CancellationToken.None);
+        var page = await new IntegrationsApiClient(handler.CreateClient()).ListRawMappingAsync(5, 7, "Failed", 2, 50, CancellationToken.None);
 
-        Assert.Equal("/api/attendance/integrations/5/raw-mapping?take=50&batchId=7&status=Failed", handler.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Equal(("Failed", "Unparseable timestamp 'x'"), (rows![0].RawStatus, rows[0].ProcessingError));
+        Assert.Equal("/api/attendance/integrations/5/raw-mapping?page=2&pageSize=50&batchId=7&status=Failed", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((61, 2, 2), (page!.Total, page.Page, page.PageCount));
+        var rows = page.Items;
+        Assert.Equal(("Failed", "Unparseable timestamp 'x'"), (rows[0].RawStatus, rows[0].ProcessingError));
         Assert.Null(rows[0].NormalizedId);
-        Assert.Null(await missing.ListRawMappingAsync(9, null, null, 100, CancellationToken.None));
+        Assert.Null(await missing.ListRawMappingAsync(9, null, null, 1, 20, CancellationToken.None));
         Assert.Null(await missing.GetRawMappingGuideAsync(9, CancellationToken.None));
     }
 
     [Fact]
-    public async Task TheRawMappingPage_ClampsHowManyRowsItAsksFor_AndAnUnknownIntegrationIsNotFound()
+    public async Task TheRawMappingPage_OnlyAsksForAListedPageSize_AndAnUnknownIntegrationIsNotFound()
     {
         var integrations = new FakeIntegrations();
         var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
 
-        var page = await controller.RawMapping(5, null, null, 100000, CancellationToken.None);
-        await controller.RawMapping(5, null, null, 0, CancellationToken.None);
+        var page = await controller.RawMapping(5, null, null, 0, 100000, CancellationToken.None);
+        await controller.RawMapping(5, null, null, 2, 50, CancellationToken.None);
 
         Assert.IsType<ViewResult>(page);
-        Assert.Equal([500, 100], integrations.RawMappingTakes);
+        Assert.Equal([(1, 20), (2, 50)], integrations.RawMappingAsks);
 
         integrations.Save = ApiSaveResult.Missing();
-        Assert.IsType<NotFoundResult>(await controller.RawMapping(9, null, null, 100, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.RawMapping(9, null, null, 1, 20, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheRawMappingPager_KeepsTheIntegrationTheFiltersAndThePageSize()
+    {
+        var controller = WithTempData(new IntegrationsController(new FakeIntegrations(), new FakeConnections()));
+
+        var view = Assert.IsType<ViewResult>(await controller.RawMapping(5, 7, "Failed", 2, 50, CancellationToken.None));
+
+        var model = Assert.IsType<IntegrationRawMappingViewModel>(view.Model);
+        Assert.Equal((2, 50, 45), (model.Page, model.PageSize, model.Total));
+        Assert.Equal("5", model.Pager.RouteValues["id"]);
+        Assert.Equal("7", model.Pager.RouteValues["batchId"]);
+        Assert.Equal("Failed", model.Pager.RouteValues["status"]);
+        Assert.Equal("50", model.Pager.RouteValues["pageSize"]);
     }
 
     [Fact]
@@ -396,7 +414,7 @@ public sealed class IntegrationsWebTests
 
         public List<string> Calls { get; } = [];
 
-        public List<int> RawMappingTakes { get; } = [];
+        public List<(int Page, int PageSize)> RawMappingAsks { get; } = [];
 
         public List<DeviceItem> Devices { get; } = [];
 
@@ -439,10 +457,10 @@ public sealed class IntegrationsWebTests
 
         public Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping");
 
-        public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken)
+        public Task<PagedResult<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken)
         {
-            RawMappingTakes.Add(take);
-            return Task.FromResult<IReadOnlyList<RawNormalizedMappingItem>?>(Save.NotFound ? null : []);
+            RawMappingAsks.Add((page, pageSize));
+            return Task.FromResult<PagedResult<RawNormalizedMappingItem>?>(Save.NotFound ? null : new PagedResult<RawNormalizedMappingItem> { Total = 45, Page = page, PageSize = pageSize });
         }
 
         public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>

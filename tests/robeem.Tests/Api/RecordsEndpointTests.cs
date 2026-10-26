@@ -60,13 +60,13 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task TheListDefaultsToTheFirstPageOfTwentyFive_AndRefusesAnUnknownStatus()
+    public async Task TheListDefaultsToTheFirstPageOfTwenty_AndRefusesAnUnknownStatus()
     {
         await _api.Send(HttpMethod.Get, "api/attendance/records", Hr);
         var asked = _records.Filter!;
         var refused = await _api.Send(HttpMethod.Get, "api/attendance/records?status=Weird", Hr);
 
-        Assert.Equal((1, 25), (asked.Page, asked.PageSize));
+        Assert.Equal((1, 20), (asked.Page, asked.PageSize));
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("status", await refused.Content.ReadAsStringAsync());
     }

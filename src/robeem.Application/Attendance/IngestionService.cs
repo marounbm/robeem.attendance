@@ -4,12 +4,16 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
 
 public sealed class IngestionService : IIngestionService
 {
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 200;
+
     private readonly IRobeemDbContext _db;
     private readonly RawBatchWriter _writer;
     private readonly IServiceProvider _services;
@@ -80,12 +84,19 @@ public sealed class IngestionService : IIngestionService
     public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, int? connectionId, string filePath, CancellationToken cancellationToken) =>
         IngestFileAsync(integrationId, connectionId, filePath, AttendanceBatchType.Webhook, null, cancellationToken);
 
-    public async Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var files = await _db.AttendanceUploadedFiles.AsNoTracking()
-            .Where(f => integrationId == null || f.IntegrationId == integrationId)
+        var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
+        var uploads = _db.AttendanceUploadedFiles.AsNoTracking().Where(f => integrationId == null || f.IntegrationId == integrationId);
+
+        // The total is counted with the same filter as the page; a page past the end is answered with the last page.
+        var total = await uploads.CountAsync(cancellationToken);
+        var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
+
+        var files = await uploads
             .OrderByDescending(f => f.Id)
-            .Take(Math.Clamp(take, 1, 500))
+            .Skip((current - 1) * size)
+            .Take(size)
             .Select(f => new
             {
                 f.Id,
@@ -112,7 +123,7 @@ public sealed class IngestionService : IIngestionService
                 .ToListAsync(cancellationToken))
             .ToDictionary(g => g.Sha256, g => g.FirstId, StringComparer.Ordinal);
 
-        return files
+        var items = files
             .Select(f => new UploadedFileItem
             {
                 Id = f.Id,
@@ -130,6 +141,8 @@ public sealed class IngestionService : IIngestionService
                 RepeatsAnEarlierUpload = firstIds[f.Sha256] != f.Id,
             })
             .ToList();
+
+        return new PagedResult<UploadedFileItem> { Items = items, Total = total, Page = current, PageSize = size };
     }
 
     private static AttendanceIngestionResult ToResult(AttendanceProcessingBatch batch, string? sha256 = null, DateTimeOffset? sameFileUploadedAt = null) => new()

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
@@ -26,6 +27,17 @@ public sealed class UploadsWebTests
         Assert.Equal(3, targets[0].IntegrationId);
         Assert.Equal([".xls", ".csv"], targets[0].FileExtensions);
         Assert.Equal("ExternalEmployeeId", targets[0].Layout.Fields.Single().Target);
+    }
+
+    [Fact]
+    public async Task TheClient_AsksForOnePageOfTheUploadHistory()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"id":1,"fileName":"a.csv","sha256":"x"}],"total":41,"page":3,"pageSize":20}""");
+
+        var page = await new UploadsApiClient(handler.CreateClient()).ListUploadsAsync(3, 20, CancellationToken.None);
+
+        Assert.Equal("/api/attendance/ingestion/uploads?page=3&pageSize=20", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((41, 3, 3, "a.csv"), (page.Total, page.Page, page.PageCount, page.Items.Single().FileName));
     }
 
     [Fact]
@@ -61,10 +73,26 @@ public sealed class UploadsWebTests
         var one = new FakeUploads { Targets = [Target(3, ".csv")] };
         var two = new FakeUploads { Targets = [Target(3, ".csv"), Target(4, ".xls")] };
 
-        Assert.Equal(3, Model(await new UploadsController(one).Index(null, CancellationToken.None)).Selected!.IntegrationId);
-        Assert.Null(Model(await new UploadsController(two).Index(null, CancellationToken.None)).Selected);
-        Assert.Equal(4, Model(await new UploadsController(two).Index(4, CancellationToken.None)).Selected!.IntegrationId);
-        Assert.Null(Model(await new UploadsController(two).Index(99, CancellationToken.None)).Selected);
+        Assert.Equal(3, Model(await new UploadsController(one).Index(null, 1, 0, CancellationToken.None)).Selected!.IntegrationId);
+        Assert.Null(Model(await new UploadsController(two).Index(null, 1, 0, CancellationToken.None)).Selected);
+        Assert.Equal(4, Model(await new UploadsController(two).Index(4, 1, 0, CancellationToken.None)).Selected!.IntegrationId);
+        Assert.Null(Model(await new UploadsController(two).Index(99, 1, 0, CancellationToken.None)).Selected);
+    }
+
+    [Fact]
+    public async Task TheUploadHistory_IsPagedOnTheServer_AndThePagerKeepsTheChosenIntegrationAndTheSize()
+    {
+        var uploads = new FakeUploads { Targets = [Target(3, ".csv"), Target(4, ".xls")], HistoryTotal = 95 };
+        var controller = new UploadsController(uploads);
+
+        var model = Model(await controller.Index(4, 3, 50, CancellationToken.None));
+        await controller.Index(null, -2, 7, CancellationToken.None);
+
+        Assert.Equal((3, 50, 95), (model.Page, model.PageSize, model.Total));
+        Assert.Equal(new Dictionary<string, string?> { ["pageSize"] = "50", ["integrationId"] = "4", ["page"] = "2" }, model.Pager.For(2));
+
+        // Asked for page 3 of 50, then (a size that is not offered and a page before the first) page 1 of the default 20.
+        Assert.Equal([(3, 50), (1, 20)], uploads.HistoryAsks);
     }
 
     [Fact]
@@ -191,9 +219,17 @@ public sealed class UploadsWebTests
 
         public List<(int IntegrationId, string FileName)> Sent { get; } = [];
 
+        public int HistoryTotal { get; set; }
+
+        public List<(int Page, int PageSize)> HistoryAsks { get; } = [];
+
         public Task<IReadOnlyList<UploadTarget>> ListTargetsAsync(CancellationToken cancellationToken) => Task.FromResult(Targets);
 
-        public Task<IReadOnlyList<UploadedFileItem>> ListUploadsAsync(int take, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<UploadedFileItem>>([]);
+        public Task<PagedResult<UploadedFileItem>> ListUploadsAsync(int page, int pageSize, CancellationToken cancellationToken)
+        {
+            HistoryAsks.Add((page, pageSize));
+            return Task.FromResult(new PagedResult<UploadedFileItem> { Total = HistoryTotal, Page = page, PageSize = pageSize });
+        }
 
         public Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)
         {

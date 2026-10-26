@@ -18,7 +18,7 @@ namespace robeem.Api.Controllers;
 [Route("api/attendance/records")]
 public sealed class AttendanceRecordsController : ControllerBase
 {
-    private const int DefaultPageSize = 25;
+    private const int DefaultPageSize = 20;
 
     private readonly IAttendanceRecordService _records;
     private readonly ICurrentUser _user;
@@ -35,7 +35,7 @@ public sealed class AttendanceRecordsController : ControllerBase
     /// <param name="status">Only days with this status: Calculated, PendingReview, Approved or Rejected.</param>
     /// <param name="onlyWithExceptions">Only days with an exception that is not closed.</param>
     /// <param name="page">The 1-based page, newest days first (default 1). A page past the end answers the last page.</param>
-    /// <param name="pageSize">Days per page (default 25, at most 200).</param>
+    /// <param name="pageSize">Days per page (default 20, at most 200).</param>
     [HttpGet]
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
     public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)

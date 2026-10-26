@@ -5,14 +5,11 @@ using robeem.Web.Models;
 namespace robeem.Web.Controllers;
 
 /// <summary>
-/// The normalized punches, interpreted from the raw ones, newest first. Read-only: a correction is a
-/// new row elsewhere, never an edit here. Opening the screen is written to the audit log.
+/// The normalized punches, interpreted from the raw ones, newest first, a page at a time (the paging is done by robeem.Api).
+/// Read-only: a correction is a new row elsewhere, never an edit here. Opening the screen, and each page of it, is written to the audit log.
 /// </summary>
 public sealed class NormalizedTransactionsController : Controller
 {
-    private const int DefaultTake = 100;
-    private const int MaxTake = 500;
-
     private readonly ITransactionsApiClient _transactions;
 
     public NormalizedTransactionsController(ITransactionsApiClient transactions)
@@ -21,15 +18,19 @@ public sealed class NormalizedTransactionsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int take, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var type = NormalizedTransactionsIndexViewModel.EventTypes.Contains(eventType ?? string.Empty) ? eventType : null;
         var repeat = NormalizedTransactionsIndexViewModel.DuplicateStatuses.Contains(duplicate ?? string.Empty) ? duplicate : null;
         var chosenFlag = NormalizedTransactionsIndexViewModel.Flags.Contains(flag ?? string.Empty) ? flag : null;
-        var rows = take <= 0 ? DefaultTake : Math.Min(take, MaxTake);
+        var size = NormalizedTransactionsIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : NormalizedTransactionsIndexViewModel.DefaultPageSize;
+        var result = await _transactions.ListNormalizedAsync(integrationId, rawId, employee, type, repeat, chosenFlag, from, to, Math.Max(page, 1), size, cancellationToken);
         return View(new NormalizedTransactionsIndexViewModel
         {
-            Rows = await _transactions.ListNormalizedAsync(integrationId, rawId, employee, type, repeat, chosenFlag, from, to, rows, cancellationToken),
+            Rows = result.Items,
+            Page = result.Page,
+            PageSize = size,
+            Total = result.Total,
             Integrations = await _transactions.ListIntegrationsAsync(cancellationToken),
             IntegrationId = integrationId,
             RawId = rawId,
@@ -39,7 +40,6 @@ public sealed class NormalizedTransactionsController : Controller
             Flag = chosenFlag,
             From = from,
             To = to,
-            Take = rows,
         });
     }
 }

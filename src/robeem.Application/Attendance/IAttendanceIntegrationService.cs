@@ -1,5 +1,6 @@
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -54,11 +55,11 @@ public interface IAttendanceIntegrationService
     Task<SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists the integration's raw punches, newest first, each with the normalized punch it produced
-    /// (empty for a row that is waiting, failed or was skipped). Read only. Audited, because it is a
-    /// direct read of raw and normalized attendance (CLAUDE.md §2.8). Null when the integration does not exist.
+    /// Lists one page of the integration's raw punches, newest first, each with the normalized punch it produced
+    /// (empty for a row that is waiting, failed or was skipped), with the number of rows on every page together. Read only. Audited per
+    /// page, because it is a direct read of raw and normalized attendance (CLAUDE.md §2.8). Null when the integration does not exist.
     /// </summary>
-    Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken);
+    Task<PagedResult<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken);
 
     /// <summary>Describes how the integration's vendor maps raw data. Null when the integration does not exist.</summary>
     Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);

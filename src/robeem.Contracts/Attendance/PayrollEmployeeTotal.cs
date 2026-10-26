@@ -1,4 +1,4 @@
-namespace robeem.Web.Models;
+namespace robeem.Contracts.Attendance;
 
 /// <summary>One employee's totals over the approved days of a payroll query.</summary>
 public sealed record PayrollEmployeeTotal(

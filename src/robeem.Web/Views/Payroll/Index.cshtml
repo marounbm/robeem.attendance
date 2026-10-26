@@ -35,6 +35,15 @@
                 <label class="form-label" for="to">To (inclusive)</label>
                 <input id="to" name="to" type="date" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" />
             </div>
+            <div class="col-md-2">
+                <label class="form-label" for="pageSize">Per page</label>
+                <select id="pageSize" name="pageSize" class="form-select">
+                    @foreach (var size in PayrollIndexViewModel.PageSizes)
+                    {
+                        <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+                    }
+                </select>
+            </div>
             <div class="col-md-4">
                 <button type="submit" class="btn btn-primary">Show</button>
                 @if (Model.Days is not null)
@@ -64,14 +73,14 @@ else
             <a asp-controller="PayPeriods" asp-action="Index">Pay periods</a> (a reason is required).
         </div>
     }
-    else if (Model.Days.Count == 0)
+    else if (Model.Total == 0)
     {
         <div class="alert alert-info" role="status">
             No day in this range is ready for payroll yet. Days appear here once they are approved and have no open exception.
         </div>
     }
 
-    if (Model.Days.Count > 0)
+    if (Model.Total > 0)
     {
         <div class="card mb-4">
             <div class="card-header">Totals per employee</div>
@@ -117,7 +126,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var day in Model.Days.OrderBy(d => d.EmployeeNumber, StringComparer.Ordinal).ThenBy(d => d.AttendanceDate))
+                        @foreach (var day in Model.Days)
                         {
                             <tr>
                                 <td>@day.EmployeeName <span class="small text-muted">@day.EmployeeNumber</span></td>
@@ -137,5 +146,7 @@ else
                 </table>
             </div>
         </div>
+
+        <partial name="_Pager" model="Model.Pager" />
     }
 }

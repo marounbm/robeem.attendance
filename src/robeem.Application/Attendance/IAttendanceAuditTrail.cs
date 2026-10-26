@@ -1,4 +1,5 @@
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -21,6 +22,9 @@ public interface IAttendanceAuditTrail
     /// <summary>Saves the entries of <see cref="RecordNew"/> now that their entities have ids. Does nothing when there are none.</summary>
     Task FlushNewAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists entries, newest first. Reading the trail is not itself recorded.</summary>
-    Task<IReadOnlyList<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int take, CancellationToken cancellationToken);
+    /// <summary>
+    /// Lists one page of entries, newest first, with the number that match on every page together. The page size is 1 to 200 (default 20);
+    /// a page past the end answers the last page. Reading the trail is not itself recorded.
+    /// </summary>
+    Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken);
 }

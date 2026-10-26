@@ -1,4 +1,5 @@
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -51,10 +52,10 @@ public interface IIntegrationsApiClient
     Task<ApiSaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists the integration's raw punches, newest first, each beside the normalized punch it produced;
+    /// Lists one page of the integration's raw punches, newest first, each beside the normalized punch it produced;
     /// null when the integration does not exist. Each call is audited by the Api.
     /// </summary>
-    Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int take, CancellationToken cancellationToken);
+    Task<PagedResult<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken);
 
     /// <summary>Describes how the integration's vendor maps raw data; null when the integration does not exist.</summary>
     Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken);

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Tests.Api;
 
@@ -54,7 +55,13 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
         var listed = await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads") { Headers = { { "X-Test-User", As(AttendanceRoles.HRAdministrator) } } });
         var refused = await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads") { Headers = { { "X-Test-User", As(AttendanceRoles.Manager) } } });
 
-        Assert.Equal("punches.csv", (await listed.Content.ReadFromJsonAsync<List<UploadedFileItem>>())!.Single().FileName);
+        var page = (await listed.Content.ReadFromJsonAsync<PagedResult<UploadedFileItem>>())!;
+        Assert.Equal(("punches.csv", 41), (page.Items.Single().FileName, page.Total));
+        Assert.Equal((null, 1, 0), _ingestion.HistoryAsked);
+
+        // The page and the size asked for are passed on; a page before the first is the first.
+        await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads?integrationId=7&page=3&pageSize=10") { Headers = { { "X-Test-User", As(AttendanceRoles.HRAdministrator) } } });
+        Assert.Equal((7, 3, 10), _ingestion.HistoryAsked);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
     }
 
@@ -151,6 +158,8 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
 
         public List<(string FileName, int? UploadedById)> Uploads { get; } = [];
 
+        public (int? IntegrationId, int Page, int PageSize)? HistoryAsked { get; private set; }
+
         public Task<IReadOnlyList<UploadTarget>> ListUploadTargetsAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<UploadTarget>>(
             [
@@ -174,8 +183,17 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
             return IngestManualUploadAsync(integrationId, filePath, cancellationToken);
         }
 
-        public Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<UploadedFileItem>>([new UploadedFileItem { Id = 1, IntegrationId = 7, FileName = "punches.csv", Sha256 = new string('a', 64) }]);
+        public Task<PagedResult<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int page, int pageSize, CancellationToken cancellationToken)
+        {
+            HistoryAsked = (integrationId, page, pageSize);
+            return Task.FromResult(new PagedResult<UploadedFileItem>
+            {
+                Items = [new UploadedFileItem { Id = 1, IntegrationId = 7, FileName = "punches.csv", Sha256 = new string('a', 64) }],
+                Total = 41,
+                Page = page,
+                PageSize = pageSize,
+            });
+        }
 
         public async Task<AttendanceIngestionResult?> IngestManualUploadAsync(int integrationId, string filePath, CancellationToken cancellationToken)
         {

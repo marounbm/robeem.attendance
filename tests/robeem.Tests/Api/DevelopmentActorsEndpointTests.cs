@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using robeem.Api.Security;
 using robeem.Application.HR.Employees;
+using robeem.Contracts.Common;
 using robeem.Contracts.HR.Employees;
 using robeem.Contracts.Security;
 
@@ -70,7 +71,7 @@ public sealed class DevelopmentActorsEndpointTests
                 new ManagerOption { Id = 4, Name = "Alan Turing (H-1)" },
             ]);
 
-        public Task<IReadOnlyList<EmployeeListItem>> ListAsync(string? search, bool includeInactive, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
 

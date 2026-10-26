@@ -1,4 +1,5 @@
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Application.Attendance;
 
@@ -26,8 +27,11 @@ public interface IIngestionService
     /// </summary>
     Task<AttendanceIngestionResult?> IngestUploadedFileAsync(int integrationId, string filePath, string fileName, int? uploadedById, CancellationToken cancellationToken);
 
-    /// <summary>The upload history, newest first; only the integration's when <paramref name="integrationId"/> is given.</summary>
-    Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken);
+    /// <summary>
+    /// One page of the upload history, newest first, with the number of uploads on every page together; only the integration's when
+    /// <paramref name="integrationId"/> is given. The page size is 1 to 200 (default 20); a page past the end answers the last page.
+    /// </summary>
+    Task<PagedResult<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int page, int pageSize, CancellationToken cancellationToken);
 
     /// <summary>
     /// The same for a body a webhook delivered (already authenticated by the caller), in a new

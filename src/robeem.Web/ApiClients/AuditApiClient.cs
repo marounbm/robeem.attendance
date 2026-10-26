@@ -1,5 +1,6 @@
 using System.Globalization;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -12,9 +13,13 @@ public sealed class AuditApiClient : IAuditApiClient
         _http = http;
     }
 
-    public async Task<IReadOnlyList<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var query = new List<string>();
+        var query = new List<string>
+        {
+            $"page={page.ToString(CultureInfo.InvariantCulture)}",
+            $"pageSize={pageSize.ToString(CultureInfo.InvariantCulture)}",
+        };
         if (!string.IsNullOrWhiteSpace(action))
         {
             query.Add($"action={Uri.EscapeDataString(action.Trim())}");
@@ -30,9 +35,7 @@ public sealed class AuditApiClient : IAuditApiClient
             query.Add($"entityId={id.ToString(CultureInfo.InvariantCulture)}");
         }
 
-        query.Add($"take={take.ToString(CultureInfo.InvariantCulture)}");
-
         using var response = await _http.GetAsync($"api/attendance/audit?{string.Join('&', query)}", cancellationToken);
-        return await ApiResponses.ReadAsync<List<AuditLogEntry>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<AuditLogEntry>>(response, cancellationToken);
     }
 }

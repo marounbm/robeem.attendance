@@ -80,6 +80,25 @@ public sealed class PayloadFormatsController : Controller
         return View(WithBlankCodeRows(model));
     }
 
+    /// <summary>
+    /// An example file (CSV, JSON or XML) made from the format as it stands in the form, saved or not: shown on the page when
+    /// <paramref name="download"/> is false, otherwise sent as a file. The form is never validated here: an unfinished format still gets
+    /// an example, with default names for what is not filled in. Stores nothing.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> Sample(PayloadFormatFormViewModel model, string kind, bool download, CancellationToken cancellationToken)
+    {
+        if (!new[] { "csv", "json", "xml" }.Contains((kind ?? string.Empty).Trim().ToLowerInvariant()))
+        {
+            return BadRequest("The kind of example must be csv, json or xml.");
+        }
+
+        var sample = await _formats.SampleAsync(model.Input, kind!, cancellationToken);
+        return download
+            ? File(System.Text.Encoding.UTF8.GetBytes(sample.Content), sample.ContentType, sample.FileName)
+            : Content(sample.Content, "text/plain; charset=utf-8");
+    }
+
     /// <summary>Reads a sample file by the format as it stands in the form, saved or not, and shows the first rows. Stores nothing.</summary>
     [HttpPost]
     public async Task<IActionResult> Preview(int? id, PayloadFormatFormViewModel model, IFormFile? sample, CancellationToken cancellationToken)

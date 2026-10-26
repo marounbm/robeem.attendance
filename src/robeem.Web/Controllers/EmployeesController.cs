@@ -19,13 +19,20 @@ public sealed class EmployeesController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? search, bool includeInactive, CancellationToken cancellationToken)
-        => View(new EmployeeIndexViewModel
+    public async Task<IActionResult> Index(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var size = EmployeeIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : EmployeeIndexViewModel.DefaultPageSize;
+        var result = await _employees.ListAsync(search, includeInactive, Math.Max(page, 1), size, cancellationToken);
+        return View(new EmployeeIndexViewModel
         {
-            Employees = await _employees.ListAsync(search, includeInactive, cancellationToken),
+            Employees = result.Items,
             Search = search,
             IncludeInactive = includeInactive,
+            Page = result.Page,
+            PageSize = size,
+            Total = result.Total,
         });
+    }
 
     [HttpGet]
     public async Task<IActionResult> Create(CancellationToken cancellationToken)

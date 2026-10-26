@@ -69,8 +69,13 @@
         <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
     </div>
     <div class="col-auto">
-        <label class="form-label small mb-0" for="take">Rows</label>
-        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" style="width: 6rem" />
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select form-select-sm">
+            @foreach (var size in NormalizedTransactionsIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
     </div>
     @if (Model.RawId is { } rawId)
     {
@@ -149,3 +154,5 @@
         </div>
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

@@ -70,7 +70,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
     {
         var controller = WithTempData(new UploadsController(new UploadsApiClient(_api.Client)));
 
-        var model = (UploadViewModel)((ViewResult)await controller.Index(_integrationId, CancellationToken.None)).Model!;
+        var model = (UploadViewModel)((ViewResult)await controller.Index(_integrationId, 1, 0, CancellationToken.None)).Model!;
 
         var target = Assert.IsType<robeem.Contracts.Attendance.UploadTarget>(model.Selected);
         Assert.Equal([".csv", ".txt", ".xls", ".xlsx"], target.FileExtensions);

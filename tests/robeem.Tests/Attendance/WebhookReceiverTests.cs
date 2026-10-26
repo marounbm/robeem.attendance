@@ -1,6 +1,7 @@
 using System.Text;
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
 
@@ -159,7 +160,7 @@ public sealed class WebhookReceiverTests : IDisposable
 
         public Task<AttendanceIngestionResult?> IngestUploadedFileAsync(int integrationId, string filePath, string fileName, int? uploadedById, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int take, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<UploadedFileItem>> ListUploadedFilesAsync(int? integrationId, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<AttendanceIngestionResult?> IngestWebhookPayloadAsync(int integrationId, int? connectionId, string filePath, CancellationToken cancellationToken)
         {

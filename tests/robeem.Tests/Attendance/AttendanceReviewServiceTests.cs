@@ -284,7 +284,7 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
     private async Task<IReadOnlyList<AuditLogEntry>> AuditAsync()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await CreateAudit(db).ListAsync(AttendanceAuditActions.ReviewDecided, null, null, 100, CancellationToken.None);
+        return (await CreateAudit(db).ListAsync(AttendanceAuditActions.ReviewDecided, null, null, 1, 100, CancellationToken.None)).Items;
     }
 
     private AttendanceReviewService CreateService(RobeemDbContext db) => new(db, CreateEngine(db), CreateAudit(db), Clock);

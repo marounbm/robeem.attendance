@@ -163,11 +163,11 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     [Fact]
     public async Task RawMapping_PassesTheFilterOn_AndRefusesAnUnknownStatus()
     {
-        var ok = await Send("GET", "api/attendance/integrations/1/raw-mapping?batchId=7&status=failed&take=20", Admin, null);
+        var ok = await Send("GET", "api/attendance/integrations/1/raw-mapping?batchId=7&status=failed&page=3&pageSize=20", Admin, null);
         var refused = await Send("GET", "api/attendance/integrations/1/raw-mapping?status=Bogus", Admin, null);
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        Assert.Equal(new RawNormalizedFilter(7, RawTransactionProcessingStatus.Failed, 20), _integrations.LastRawFilter);
+        Assert.Equal(new RawNormalizedFilter(7, RawTransactionProcessingStatus.Failed, 3, 20), _integrations.LastRawFilter);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Contains("Pending, Normalized, Failed, Skipped", await refused.Content.ReadAsStringAsync());
     }
@@ -234,10 +234,10 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
 
         public Task<SaveResult> DeleteMappingAsync(int integrationId, int deviceId, int mappingId, CancellationToken cancellationToken) => Record("deleteMapping", Result);
 
-        public Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
+        public Task<PagedResult<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
         {
             LastRawFilter = filter;
-            return Record<IReadOnlyList<RawNormalizedMappingItem>?>("rawMapping", Exists ? [] : null);
+            return Record<PagedResult<RawNormalizedMappingItem>?>("rawMapping", Exists ? new PagedResult<RawNormalizedMappingItem>() : null);
         }
 
         public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) =>

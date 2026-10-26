@@ -9,13 +9,14 @@ public sealed class EmployeesApiClientTests
     [Fact]
     public async Task List_SendsSearchAndInactiveFilter()
     {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"id":7,"employeeNumber":"E-7","fullName":"Ada Lovelace","isActive":true}]""");
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"id":7,"employeeNumber":"E-7","fullName":"Ada Lovelace","isActive":true}],"total":41,"page":2,"pageSize":20}""");
         var client = new EmployeesApiClient(handler.CreateClient());
 
-        var employees = await client.ListAsync("ada lo", includeInactive: true, CancellationToken.None);
+        var page = await client.ListAsync("ada lo", includeInactive: true, 2, 20, CancellationToken.None);
 
-        Assert.Equal("/api/employees?includeInactive=true&search=ada%20lo", handler.Requests.Single().RequestUri!.PathAndQuery);
-        var employee = Assert.Single(employees);
+        Assert.Equal("/api/employees?includeInactive=true&page=2&pageSize=20&search=ada%20lo", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((41, 2, 3), (page.Total, page.Page, page.PageCount));
+        var employee = Assert.Single(page.Items);
         Assert.Equal(7, employee.Id);
         Assert.Equal("Ada Lovelace", employee.FullName);
     }
@@ -95,7 +96,7 @@ public sealed class EmployeesApiClientTests
         var problem = $$"""{"title":"No tenant.","status":{{(int)status}},"code":"{{code}}"}""";
         var client = new EmployeesApiClient(new StubHttpHandler(status, problem, "application/problem+json").CreateClient());
 
-        var list = await Assert.ThrowsAsync<TenantSelectionRequiredException>(() => client.ListAsync(null, false, CancellationToken.None));
+        var list = await Assert.ThrowsAsync<TenantSelectionRequiredException>(() => client.ListAsync(null, false, 1, 20, CancellationToken.None));
         var create = await Assert.ThrowsAsync<TenantSelectionRequiredException>(() => client.CreateAsync(new EmployeeInput(), CancellationToken.None));
 
         Assert.Equal(code, list.Code);

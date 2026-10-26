@@ -55,6 +55,22 @@ public sealed class AttendancePayloadFormatsController : ControllerBase
     }
 
     /// <summary>
+    /// An example file made from the format in the body, which need not be saved or even complete: its own column names, patterns,
+    /// delimiter, record path and labels, in the shape of <c>csv</c>, <c>json</c> or <c>xml</c>. Stores nothing and reads no data.
+    /// </summary>
+    [HttpPost("sample")]
+    public ActionResult<PayloadFormatSample> Sample(PayloadFormatInput input, string kind)
+    {
+        if (!PayloadFormatSampleBuilder.IsKind(kind))
+        {
+            ModelState.AddModelError(nameof(kind), $"The kind must be one of: {string.Join(", ", PayloadFormatSampleBuilder.Kinds)}.");
+            return ValidationProblem(ModelState);
+        }
+
+        return PayloadFormatSampleBuilder.Build(input, kind);
+    }
+
+    /// <summary>
     /// Reads a sample file (multipart field <c>file</c>) by the format in the <c>format</c> JSON field, which need not be saved,
     /// and returns the first rows as they would be understood. Nothing is stored.
     /// </summary>

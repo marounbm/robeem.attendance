@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using robeem.Application.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 using robeem.Infrastructure.Attendance.Providers;
 using robeem.Infrastructure.Persistence;
@@ -85,7 +86,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     [Fact]
     public async Task EachRawRow_ShowsBesideTheNormalizedRowItProduced_NewestFirst()
     {
-        var rows = await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 0));
+        var rows = await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 0));
 
         Assert.NotNull(rows);
         Assert.Equal(["Failed", "Failed", "Normalized", "Normalized", "Normalized"], rows.Select(r => r.RawStatus));
@@ -112,7 +113,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
             db.SaveChanges();
         }
 
-        var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 0)))!;
+        var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 0)))!;
 
         Assert.Equal(5, rows.Count);
         Assert.Null(rows[4].NormalizedId);
@@ -122,7 +123,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     [Fact]
     public async Task ARowThatFailed_HasNoNormalizedSide_AndSaysWhy()
     {
-        var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 0)))!;
+        var rows = (await ListAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 1, 0)))!;
 
         Assert.Equal(2, rows.Count);
         Assert.All(rows, r => Assert.Null(r.NormalizedId));
@@ -134,7 +135,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     [Fact]
     public async Task ThePayload_IsTheAllowlistedOneAsStored_WithoutTheCardNumber()
     {
-        var first = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 0)))![4];
+        var first = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 0)))![4];
 
         Assert.Contains("\"Name\":\"Hiba Rahme\"", first.Payload);
         Assert.DoesNotContain("0099887", first.Payload);
@@ -144,24 +145,54 @@ public sealed class IntegrationRawMappingTests : IDisposable
     [Fact]
     public async Task TheListIsNarrowedByBatch_AndLimited()
     {
-        Assert.Equal(5, (await ListAsync(_integrationId, new RawNormalizedFilter(_batchId, null, 0)))!.Count);
-        Assert.Empty((await ListAsync(_integrationId, new RawNormalizedFilter(_batchId + 100, null, 0)))!);
+        Assert.Equal(5, (await ListAsync(_integrationId, new RawNormalizedFilter(_batchId, null, 1, 0)))!.Count);
+        Assert.Empty((await ListAsync(_integrationId, new RawNormalizedFilter(_batchId + 100, null, 1, 0)))!);
+    }
 
-        var limited = (await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 2)))!;
-        Assert.Equal(2, limited.Count);
-        Assert.True(limited[0].RawId > limited[1].RawId);
+    [Fact]
+    public async Task TheList_IsPaged_NewestFirst_WithTheTotalOfEveryPage()
+    {
+        var one = (await PageAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 2)))!;
+        var two = (await PageAsync(_integrationId, new RawNormalizedFilter(null, null, 2, 2)))!;
+        var three = (await PageAsync(_integrationId, new RawNormalizedFilter(null, null, 3, 2)))!;
+
+        Assert.Equal((5, 2, 2), (one.Total, one.PageSize, one.Items.Count));
+        Assert.Equal((2, 1), (two.Page, three.Items.Count));
+        Assert.Equal(5, one.Items.Concat(two.Items).Concat(three.Items).Select(r => r.RawId).Distinct().Count());
+        Assert.True(one.Items[0].RawId > one.Items[1].RawId);
+        Assert.True(one.Items[1].RawId > two.Items[0].RawId);
+    }
+
+    [Fact]
+    public async Task TheTotal_FollowsTheFilters_AndAPagePastTheEnd_AnswersTheLastPage()
+    {
+        var failed = (await PageAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 9, 1)))!;
+
+        Assert.Equal((2, 2, 1), (failed.Total, failed.Page, failed.Items.Count));
+        Assert.Equal(20, (await PageAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 0)))!.PageSize);
+        Assert.Equal(200, (await PageAsync(_integrationId, new RawNormalizedFilter(null, null, 1, 5000)))!.PageSize);
+    }
+
+    [Fact]
+    public async Task EveryPageRead_IsAuditedWithItsPageAndSize()
+    {
+        await ListAsync(_integrationId, new RawNormalizedFilter(null, null, 2, 2));
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var entry = Assert.Single(db.AttendanceAuditLogs.Where(a => a.Action == AttendanceAuditActions.AttendanceDataRead).ToList());
+        Assert.Contains("page 2, 2 per page", entry.Details);
     }
 
     [Fact]
     public async Task AnotherIntegrationsRows_NeverShow()
     {
-        Assert.Empty((await ListAsync(_otherIntegrationId, new RawNormalizedFilter(null, null, 0)))!);
+        Assert.Empty((await ListAsync(_otherIntegrationId, new RawNormalizedFilter(null, null, 1, 0)))!);
     }
 
     [Fact]
     public async Task EveryRead_IsOnTheAuditLog_BeforeTheDataIsReturned()
     {
-        await ListAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 10));
+        await ListAsync(_integrationId, new RawNormalizedFilter(null, RawTransactionProcessingStatus.Failed, 1, 10));
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var entry = Assert.Single(db.AttendanceAuditLogs.Where(a => a.Action == AttendanceAuditActions.AttendanceDataRead).ToList());
@@ -174,7 +205,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     [Fact]
     public async Task AnUnknownIntegration_IsNull_AndLeavesNothingOnTheAuditLog()
     {
-        Assert.Null(await ListAsync(_integrationId + 100, new RawNormalizedFilter(null, null, 0)));
+        Assert.Null(await ListAsync(_integrationId + 100, new RawNormalizedFilter(null, null, 1, 0)));
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         Assert.Empty(db.AttendanceAuditLogs.Where(a => a.Action == AttendanceAuditActions.AttendanceDataRead));
@@ -196,7 +227,10 @@ public sealed class IntegrationRawMappingTests : IDisposable
         Assert.Null(await service.GetRawMappingGuideAsync(_integrationId + 100, CancellationToken.None));
     }
 
-    private async Task<IReadOnlyList<robeem.Contracts.Attendance.RawNormalizedMappingItem>?> ListAsync(int integrationId, RawNormalizedFilter filter)
+    private async Task<IReadOnlyList<robeem.Contracts.Attendance.RawNormalizedMappingItem>?> ListAsync(int integrationId, RawNormalizedFilter filter) =>
+        (await PageAsync(integrationId, filter))?.Items;
+
+    private async Task<PagedResult<robeem.Contracts.Attendance.RawNormalizedMappingItem>?> PageAsync(int integrationId, RawNormalizedFilter filter)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
         return await CreateService(db).ListRawToNormalizedAsync(integrationId, filter, CancellationToken.None);

@@ -21,6 +21,15 @@
         <label class="form-check-label" for="includeInactive">Include inactive</label>
     </div>
     <div class="col-auto">
+        <label class="visually-hidden" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select" title="Per page">
+            @foreach (var size in EmployeeIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size per page</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
         <button type="submit" class="btn btn-outline-secondary">Search</button>
     </div>
 </form>
@@ -80,3 +89,5 @@
         </div>
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

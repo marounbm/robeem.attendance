@@ -55,6 +55,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendancePolicyService, AttendancePolicyService>();
         services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();
         services.AddScoped<IPayrollAttendanceExtract, PayrollAttendanceExtract>();
+        services.AddScoped<IPayrollApprovedPageService, PayrollApprovedPageService>();
 
         // The actor of work no user started; the Api replaces it with the authenticated user.
         services.TryAddScoped<ICurrentUser, SystemCurrentUser>();

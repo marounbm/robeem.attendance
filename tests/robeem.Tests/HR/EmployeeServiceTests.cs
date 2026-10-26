@@ -99,13 +99,41 @@ public sealed class EmployeeServiceTests : IDisposable
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = new EmployeeService(db);
-        Assert.Single(await service.ListAsync(null, includeInactive: false, CancellationToken.None));
-        Assert.Equal(2, (await service.ListAsync(null, includeInactive: true, CancellationToken.None)).Count);
-        Assert.Equal("E-2", Assert.Single(await service.ListAsync("Grace", includeInactive: true, CancellationToken.None)).EmployeeNumber);
-        Assert.Equal("E-2", Assert.Single(await service.ListAsync("gRACE", includeInactive: true, CancellationToken.None)).EmployeeNumber);
+        Assert.Single((await service.ListAsync(null, includeInactive: false, 1, 100, CancellationToken.None)).Items);
+        Assert.Equal(2, (await service.ListAsync(null, includeInactive: true, 1, 100, CancellationToken.None)).Items.Count);
+        Assert.Equal("E-2", Assert.Single((await service.ListAsync("Grace", includeInactive: true, 1, 100, CancellationToken.None)).Items).EmployeeNumber);
+        Assert.Equal("E-2", Assert.Single((await service.ListAsync("gRACE", includeInactive: true, 1, 100, CancellationToken.None)).Items).EmployeeNumber);
 
         using var otherTenant = _database.CreateContext(TestDatabase.TenantB);
-        Assert.Empty(await new EmployeeService(otherTenant).ListAsync(null, includeInactive: true, CancellationToken.None));
+        var elsewhere = await new EmployeeService(otherTenant).ListAsync(null, includeInactive: true, 1, 100, CancellationToken.None);
+        Assert.Equal((0, 0), (elsewhere.Items.Count, elsewhere.Total));
+    }
+
+    [Fact]
+    public async Task List_IsPaged_InTheOrderOfTheNames_WithTheTotalOfTheSearch()
+    {
+        foreach (var (number, first, last) in new[] { ("E-1", "Ada", "Lovelace"), ("E-2", "Grace", "Hopper"), ("E-3", "Alan", "Turing"), ("E-4", "Edsger", "Dijkstra"), ("E-5", "Barbara", "Liskov") })
+        {
+            await CreateAsync(Input(number, null, first, last));
+        }
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var service = new EmployeeService(db);
+        var pageOne = await service.ListAsync(null, includeInactive: true, 1, 2, CancellationToken.None);
+        var pageTwo = await service.ListAsync(null, includeInactive: true, 2, 2, CancellationToken.None);
+        var pageThree = await service.ListAsync(null, includeInactive: true, 3, 2, CancellationToken.None);
+        var beyond = await service.ListAsync(null, includeInactive: true, 99, 2, CancellationToken.None);
+        var searched = await service.ListAsync("a", includeInactive: true, 1, 1, CancellationToken.None);
+        var nobody = await service.ListAsync("zzz", includeInactive: true, 4, 10, CancellationToken.None);
+
+        // Together the pages are everyone once, by last name; every page knows the whole list.
+        Assert.All(new[] { pageOne, pageTwo, pageThree }, p => Assert.Equal((5, 2, 3), (p.Total, p.PageSize, p.PageCount)));
+        Assert.Equal(["Edsger Dijkstra", "Grace Hopper", "Barbara Liskov", "Ada Lovelace", "Alan Turing"], pageOne.Items.Concat(pageTwo.Items).Concat(pageThree.Items).Select(e => e.FullName));
+        Assert.Equal((3, 1), (beyond.Page, beyond.Items.Count));
+        Assert.Equal(5, searched.Total);
+        Assert.Equal((0, 1, 0), (nobody.Total, nobody.Page, nobody.Items.Count));
+        Assert.Equal(20, (await service.ListAsync(null, includeInactive: true, 1, 0, CancellationToken.None)).PageSize);
+        Assert.Equal(200, (await service.ListAsync(null, includeInactive: true, 1, 100000, CancellationToken.None)).PageSize);
     }
 
     [Fact]
@@ -119,7 +147,7 @@ public sealed class EmployeeServiceTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = new EmployeeService(db);
         Assert.Equal(boss, (await service.GetAsync(report.EmployeeId!.Value, CancellationToken.None))!.ManagerId);
-        var listed = (await service.ListAsync(null, includeInactive: true, CancellationToken.None)).Single(e => e.EmployeeNumber == "E-1");
+        var listed = (await service.ListAsync(null, includeInactive: true, 1, 100, CancellationToken.None)).Items.Single(e => e.EmployeeNumber == "E-1");
         Assert.Equal("Grace Hopper", listed.ManagerName);
     }
 

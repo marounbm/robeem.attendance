@@ -139,13 +139,14 @@ public sealed class AttendanceIntegrationsController : ControllerBase
 
     /// <summary>
     /// The integration's raw punches, newest first, each beside the normalized punch it produced.
-    /// Every call is written to the audit log. <paramref name="take"/> is at most 500 (default 100).
+    /// Every call (one page) is written to the audit log.
     /// </summary>
     /// <param name="batchId">Only the rows of this batch.</param>
     /// <param name="status">Only raw rows with this status: Pending, Normalized, Failed or Skipped.</param>
-    /// <param name="take">How many rows, newest first.</param>
+    /// <param name="page">The 1-based page; a page past the end answers the last page.</param>
+    /// <param name="pageSize">Rows per page: 1 to 200 (default 20).</param>
     [HttpGet("{id:int}/raw-mapping")]
-    public async Task<ActionResult<IReadOnlyList<RawNormalizedMappingItem>>> RawMapping(int id, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<RawNormalizedMappingItem>>> RawMapping(int id, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken)
     {
         RawTransactionProcessingStatus? parsed = null;
         if (!string.IsNullOrWhiteSpace(status))
@@ -159,7 +160,7 @@ public sealed class AttendanceIntegrationsController : ControllerBase
             parsed = value;
         }
 
-        return await _integrations.ListRawToNormalizedAsync(id, new RawNormalizedFilter(batchId, parsed, take), cancellationToken) is { } rows ? Ok(rows) : NotFound();
+        return await _integrations.ListRawToNormalizedAsync(id, new RawNormalizedFilter(batchId, parsed, page <= 0 ? 1 : page, pageSize), cancellationToken) is { } rows ? Ok(rows) : NotFound();
     }
 
     /// <summary>How this integration's vendor maps raw data: its fields, timestamp formats, event codes, and what is never stored.</summary>

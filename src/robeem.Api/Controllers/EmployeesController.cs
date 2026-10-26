@@ -19,9 +19,13 @@ public sealed class EmployeesController : ControllerBase
         _employees = employees;
     }
 
+    /// <param name="search">Part of the number, name, email or department.</param>
+    /// <param name="includeInactive">Also the employees who are no longer active.</param>
+    /// <param name="page">The 1-based page (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Employees per page (default 20, at most 200).</param>
     [HttpGet]
-    public async Task<IReadOnlyList<EmployeeListItem>> List(string? search, bool includeInactive, CancellationToken cancellationToken)
-        => await _employees.ListAsync(search, includeInactive, cancellationToken);
+    public async Task<PagedResult<EmployeeListItem>> List(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
+        => await _employees.ListAsync(search, includeInactive, page <= 0 ? 1 : page, pageSize, cancellationToken);
 
     /// <summary>Employees who can be chosen as a manager; <paramref name="excludeId"/> is left out (nobody manages themselves).</summary>
     [HttpGet("manager-options")]

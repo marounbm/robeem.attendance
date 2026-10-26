@@ -5,7 +5,7 @@ namespace robeem.Web.Models;
 
 public sealed class RecordsIndexViewModel
 {
-    public const int DefaultPageSize = 25;
+    public const int DefaultPageSize = 20;
 
     public static IReadOnlyList<string> Statuses { get; } = ["Any", "Calculated", "PendingReview", "Approved", "Rejected"];
 

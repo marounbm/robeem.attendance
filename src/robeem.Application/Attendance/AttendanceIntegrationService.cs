@@ -4,13 +4,15 @@ using Microsoft.Extensions.DependencyInjection;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
 
 public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
 {
-    private const int MaxRawMappingTake = 500;
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 200;
 
     /// <summary>The name of the connection an integration is created with.</summary>
     private const string DefaultConnectionName = "Default";
@@ -462,7 +464,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         };
     }
 
-    public async Task<IReadOnlyList<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
+    public async Task<PagedResult<RawNormalizedMappingItem>?> ListRawToNormalizedAsync(int integrationId, RawNormalizedFilter filter, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
@@ -473,7 +475,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             return null;
         }
 
-        var take = Math.Clamp(filter.Take <= 0 ? 100 : filter.Take, 1, MaxRawMappingTake);
+        var size = Math.Clamp(filter.PageSize <= 0 ? DefaultPageSize : filter.PageSize, 1, MaxPageSize);
 
         // A direct read of raw and normalized attendance outside the engine: audited, and saved
         // before the read, so the read is on record even if it then fails.
@@ -481,7 +483,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
             AttendanceAuditActions.AttendanceDataRead,
             $"{nameof(RawAttendanceTransaction)},{nameof(NormalizedAttendanceTransaction)}",
             integrationId,
-            $"Raw to normalized mapping of integration {integrationId} (batch {filter.BatchId?.ToString() ?? "any"}, status {filter.Status?.ToString() ?? "any"}, first {take}).");
+            $"Raw to normalized mapping of integration {integrationId} (batch {filter.BatchId?.ToString() ?? "any"}, status {filter.Status?.ToString() ?? "any"}, page {Math.Max(1, filter.Page)}, {size} per page).");
         await _db.SaveChangesAsync(cancellationToken);
 
         var raws = _db.RawAttendanceTransactions.AsNoTracking().Where(r => r.IntegrationId == integrationId);
@@ -496,13 +498,21 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         }
 
         // A left join, so a raw row that was not normalized (waiting, failed or skipped) still shows. Newest first.
-        var rows = await (
+        var joined =
             from r in raws
             join n in _db.NormalizedAttendanceTransactions.AsNoTracking().Where(x => x.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded) on r.Id equals n.RawTransactionId into normalized
             from n in normalized.DefaultIfEmpty()
-            orderby r.Id descending
-            select new { Raw = r, Normalized = n })
-            .Take(take)
+            select new { Raw = r, Normalized = n };
+
+        // The total is counted on the joined rows, so it matches what the pages list; a page past the end is answered with the last page.
+        var total = await joined.CountAsync(cancellationToken);
+        var current = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
+
+        var rows = await joined
+            .OrderByDescending(x => x.Raw.Id)
+            .ThenByDescending(x => x.Normalized!.Id)
+            .Skip((current - 1) * size)
+            .Take(size)
             .ToListAsync(cancellationToken);
 
         var employeeIds = rows.Where(x => x.Normalized?.EmployeeId != null).Select(x => x.Normalized!.EmployeeId!.Value).Distinct().ToList();
@@ -521,7 +531,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
                 .Select(d => new { d.Id, d.Title })
                 .ToDictionaryAsync(d => d.Id, d => d.Title, cancellationToken);
 
-        return rows.Select(x =>
+        var items = rows.Select(x =>
         {
             var n = x.Normalized;
             var employee = n?.EmployeeId is { } employeeId && employees.TryGetValue(employeeId, out var e) ? e : null;
@@ -553,6 +563,8 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
                 ExceptionStatus = n?.ExceptionStatus.ToString(),
             };
         }).ToList();
+
+        return new PagedResult<RawNormalizedMappingItem> { Items = items, Total = total, Page = current, PageSize = size };
     }
 
     public async Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken)

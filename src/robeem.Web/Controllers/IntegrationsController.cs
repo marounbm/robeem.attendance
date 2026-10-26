@@ -131,17 +131,27 @@ public sealed class IntegrationsController : Controller
     /// attendance that the Api writes to the audit log.
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> RawMapping(int id, int? batchId, string? status, int take, CancellationToken cancellationToken)
+    public async Task<IActionResult> RawMapping(int id, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken)
     {
-        take = take <= 0 ? 100 : Math.Min(take, 500);
+        var size = IntegrationRawMappingViewModel.PageSizes.Contains(pageSize) ? pageSize : IntegrationRawMappingViewModel.DefaultPageSize;
         if (await _integrations.GetAsync(id, cancellationToken) is not { } integration
             || await _integrations.GetRawMappingGuideAsync(id, cancellationToken) is not { } guide
-            || await _integrations.ListRawMappingAsync(id, batchId, status, take, cancellationToken) is not { } rows)
+            || await _integrations.ListRawMappingAsync(id, batchId, status, page <= 0 ? 1 : page, size, cancellationToken) is not { } rows)
         {
             return NotFound();
         }
 
-        return View(new IntegrationRawMappingViewModel { Integration = integration, Guide = guide, Rows = rows, BatchId = batchId, Status = status, Take = take });
+        return View(new IntegrationRawMappingViewModel
+        {
+            Integration = integration,
+            Guide = guide,
+            Rows = rows.Items,
+            BatchId = batchId,
+            Status = status,
+            Page = rows.Page,
+            PageSize = size,
+            Total = rows.Total,
+        });
     }
 
     [HttpPost]

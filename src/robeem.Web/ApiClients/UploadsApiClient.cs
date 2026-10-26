@@ -1,5 +1,6 @@
 using System.Globalization;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
@@ -20,10 +21,10 @@ public sealed class UploadsApiClient : IUploadsApiClient
         return await ApiResponses.ReadAsync<List<UploadTarget>>(response, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<UploadedFileItem>> ListUploadsAsync(int take, CancellationToken cancellationToken)
+    public async Task<PagedResult<UploadedFileItem>> ListUploadsAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync($"{Path}/uploads?take={take.ToString(CultureInfo.InvariantCulture)}", cancellationToken);
-        return await ApiResponses.ReadAsync<List<UploadedFileItem>>(response, cancellationToken);
+        using var response = await _http.GetAsync($"{Path}/uploads?page={page.ToString(CultureInfo.InvariantCulture)}&pageSize={pageSize.ToString(CultureInfo.InvariantCulture)}", cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<UploadedFileItem>>(response, cancellationToken);
     }
 
     public async Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)

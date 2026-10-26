@@ -19,16 +19,21 @@ public sealed class EmployeesApiClient : IEmployeesApiClient
         _http = http;
     }
 
-    public async Task<IReadOnlyList<EmployeeListItem>> ListAsync(string? search, bool includeInactive, CancellationToken cancellationToken)
+    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var query = new Dictionary<string, string?> { ["includeInactive"] = includeInactive ? "true" : "false" };
+        var query = new Dictionary<string, string?>
+        {
+            ["includeInactive"] = includeInactive ? "true" : "false",
+            ["page"] = page.ToString(CultureInfo.InvariantCulture),
+            ["pageSize"] = pageSize.ToString(CultureInfo.InvariantCulture),
+        };
         if (!string.IsNullOrWhiteSpace(search))
         {
             query["search"] = search;
         }
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(EmployeesPath, query), cancellationToken);
-        return await ApiResponses.ReadAsync<List<EmployeeListItem>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<EmployeeListItem>>(response, cancellationToken);
     }
 
     public async Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken)

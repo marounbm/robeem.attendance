@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Contracts.HR.Employees;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
@@ -55,15 +56,15 @@ public sealed class PoliciesWebTests
     [Fact]
     public async Task TheAuditClient_SendsOnlyTheFiltersThatWereGiven_Escaped()
     {
-        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"id":3,"actor":"employee:7","action":"PolicyChanged","entityType":"AttendancePolicy","entityId":2,"timestamp":"2026-10-05T14:03:00+00:00","details":"x"}]""");
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"id":3,"actor":"employee:7","action":"PolicyChanged","entityType":"AttendancePolicy","entityId":2,"timestamp":"2026-10-05T14:03:00+00:00","details":"x"}],"total":41,"page":1,"pageSize":20}""");
         var client = new AuditApiClient(handler.CreateClient());
 
-        var all = await client.ListAsync(null, " ", null, 100, CancellationToken.None);
-        await client.ListAsync("Policy Changed", "AttendancePolicy", 2, 50, CancellationToken.None);
+        var all = await client.ListAsync(null, " ", null, 1, 20, CancellationToken.None);
+        await client.ListAsync("Policy Changed", "AttendancePolicy", 2, 3, 50, CancellationToken.None);
 
-        Assert.Equal(3, all.Single().Id);
+        Assert.Equal((3, 41), (all.Items.Single().Id, all.Total));
         Assert.Equal(
-            ["/api/attendance/audit?take=100", "/api/attendance/audit?action=Policy%20Changed&entityType=AttendancePolicy&entityId=2&take=50"],
+            ["/api/attendance/audit?page=1&pageSize=20", "/api/attendance/audit?page=3&pageSize=50&action=Policy%20Changed&entityType=AttendancePolicy&entityId=2"],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
     }
 
@@ -131,29 +132,40 @@ public sealed class PoliciesWebTests
     }
 
     [Theory]
-    [InlineData(null, 100)]
-    [InlineData(0, 100)]
-    [InlineData(-4, 100)]
-    [InlineData(501, 100)]
-    [InlineData(250, 250)]
-    public async Task TheAuditPage_KeepsTheFilters_AndClampsHowManyToAsk(int? take, int expected)
+    [InlineData(0, 20)]
+    [InlineData(-4, 20)]
+    [InlineData(7, 20)]
+    [InlineData(501, 20)]
+    [InlineData(50, 50)]
+    public async Task TheAuditPage_KeepsTheFilters_AndOnlyAsksForAPageSizeItOffers(int pageSize, int expected)
     {
-        var audit = new FakeAudit();
+        var audit = new FakeAudit { Total = 95 };
         var controller = new AuditController(audit);
 
-        var model = (AuditIndexViewModel)((ViewResult)await controller.Index("ReviewDecided", "AttendanceRecord", 7, take, CancellationToken.None)).Model!;
+        var model = (AuditIndexViewModel)((ViewResult)await controller.Index("ReviewDecided", "AttendanceRecord", 7, 3, pageSize, CancellationToken.None)).Model!;
 
-        Assert.Equal(("ReviewDecided", "AttendanceRecord", 7, expected), (audit.Asked.Action, audit.Asked.EntityType, audit.Asked.EntityId, audit.Asked.Take));
-        Assert.Equal(("ReviewDecided", expected), (model.Action, model.Take));
+        Assert.Equal(("ReviewDecided", "AttendanceRecord", 7, 3, expected), (audit.Asked.Action, audit.Asked.EntityType, audit.Asked.EntityId, audit.Asked.Page, audit.Asked.PageSize));
+        Assert.Equal(("ReviewDecided", expected, 3, 95), (model.Action, model.PageSize, model.Page, model.Total));
+        Assert.Equal("ReviewDecided", model.Pager.For(2)["action"]);
+        Assert.Equal(("7", "AttendanceRecord"), (model.Pager.For(2)["entityId"], model.Pager.For(2)["entityType"]));
     }
 
     [Fact]
-    public void TheAuditPage_SaysWhenOlderEntriesMayExist()
+    public async Task TheAuditPage_AsksForAPageBeforeTheFirstAsTheFirst()
     {
-        var entry = new AuditLogEntry { Id = 1 };
+        var audit = new FakeAudit();
 
-        Assert.True(new AuditIndexViewModel { Entries = [entry, entry], Take = 2 }.MayHaveMore);
-        Assert.False(new AuditIndexViewModel { Entries = [entry], Take = 2 }.MayHaveMore);
+        await new AuditController(audit).Index(null, null, null, -2, 0, CancellationToken.None);
+
+        Assert.Equal((1, 20), (audit.Asked.Page, audit.Asked.PageSize));
+    }
+
+    [Fact]
+    public void TheAuditPager_ShowsWhereThePageIsInTheWholeLog()
+    {
+        var pager = new AuditIndexViewModel { Page = 3, PageSize = 20, Total = 95 }.Pager;
+
+        Assert.Equal((5, 41, 60), (pager.PageCount, pager.FirstItem, pager.LastItem));
     }
 
     [Fact]
@@ -209,12 +221,14 @@ public sealed class PoliciesWebTests
 
     private sealed class FakeAudit : IAuditApiClient
     {
-        public (string? Action, string? EntityType, int? EntityId, int Take) Asked { get; private set; }
+        public (string? Action, string? EntityType, int? EntityId, int Page, int PageSize) Asked { get; private set; }
 
-        public Task<IReadOnlyList<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int take, CancellationToken cancellationToken)
+        public int Total { get; set; }
+
+        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
         {
-            Asked = (action, entityType, entityId, take);
-            return Task.FromResult<IReadOnlyList<AuditLogEntry>>([]);
+            Asked = (action, entityType, entityId, page, pageSize);
+            return Task.FromResult(new PagedResult<AuditLogEntry> { Total = Total, Page = page, PageSize = pageSize });
         }
     }
 

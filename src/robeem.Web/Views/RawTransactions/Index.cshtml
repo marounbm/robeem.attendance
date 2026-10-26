@@ -49,15 +49,25 @@
         <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
     </div>
     <div class="col-auto">
-        <label class="form-label small mb-0" for="search">Employee, device or transaction id</label>
+        <label class="form-label small mb-0" for="employee">Employee (number or name)</label>
+        <input id="employee" name="employee" type="text" value="@Model.Employee" class="form-control form-control-sm" title="The employee the vendor's id is mapped to now, on the device that took the punch." />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="search">Vendor employee id, device or transaction id</label>
         <input id="search" name="search" type="text" value="@Model.Search" class="form-control form-control-sm" />
     </div>
     <div class="col-auto">
-        <label class="form-label small mb-0" for="take">Rows</label>
-        <input id="take" name="take" type="number" min="1" max="500" value="@Model.Take" class="form-control form-control-sm" style="width: 6rem" />
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select form-select-sm">
+            @foreach (var size in RawTransactionsIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
     </div>
     <div class="col-auto">
         <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+        <a asp-action="Index" class="btn btn-sm btn-link">Clear</a>
     </div>
 </form>
 
@@ -77,6 +87,7 @@
                         <th>Batch</th>
                         <th>Received</th>
                         <th>Employee id</th>
+                        <th>Employee</th>
                         <th>Device id</th>
                         <th>Transaction id</th>
                         <th>Timestamp</th>
@@ -99,6 +110,21 @@
                             <td>@row.BatchId</td>
                             <td>@DisplayFormats.DateTime(row.ReceivedAt)</td>
                             <td>@(row.ExternalEmployeeId ?? "—")</td>
+                            <td>
+                                @if (row.EmployeeName is not null)
+                                {
+                                    @row.EmployeeName
+                                    <span class="text-muted small">(@row.EmployeeNumber)</span>
+                                }
+                                else if (row.ExternalEmployeeId is not null)
+                                {
+                                    <span class="text-muted" title="The vendor's id is not mapped to an employee on the device that took this punch, or the device is not registered. Map it on the Devices screen.">Not mapped</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
                             <td>@(row.DeviceExternalId ?? "—")</td>
                             <td>@(row.ExternalTransactionId ?? "—")</td>
                             <td><code>@row.TimestampRaw</code></td>
@@ -127,3 +153,5 @@
         </div>
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />
