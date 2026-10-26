@@ -93,6 +93,32 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.BadRequest, (await Send(HttpMethod.Get, "api/attendance/payroll/approved/page?from=2026-10-11&to=2026-10-05", As(null, AttendanceRoles.PayrollAdministrator))).StatusCode);
     }
 
+    [Theory]
+    [InlineData("api/attendance/payroll/approved")]
+    [InlineData("api/attendance/payroll/approved?employee=%20")]
+    [InlineData("api/attendance/payroll/approved?from=2026-10-01&employee=E-1")]
+    [InlineData("api/attendance/payroll/approved/page")]
+    [InlineData("api/attendance/payroll/approved/page?to=2026-10-31")]
+    public async Task APayrollRequestNeedsAnEmployeeOrBothDates_ElseItIsRefusedAs400(string url)
+    {
+        var response = await Send(HttpMethod.Get, url, As(null, AttendanceRoles.PayrollAdministrator));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(_payroll.LastRange);
+    }
+
+    [Theory]
+    [InlineData("api/attendance/payroll/approved?employee=E-1")]
+    [InlineData("api/attendance/payroll/approved/page?employee=E-1&page=1&pageSize=20")]
+    public async Task AnEmployeeAlone_ReadsEveryDateOfThatEmployee(string url)
+    {
+        var response = await Send(HttpMethod.Get, url, As(null, AttendanceRoles.PayrollAdministrator));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal((PayrollApprovedPageService.AllDatesStart, PayrollApprovedPageService.AllDatesEnd), _payroll.LastRange);
+        Assert.Equal("E-1", _payroll.LastEmployee);
+    }
+
     [Fact]
     public async Task ThePayrollPage_IsForPayrollAdministratorsOnly_AndReadsTheSameGate()
     {
@@ -475,11 +501,17 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     {
         public (DateTime From, DateTime To)? LastRange { get; private set; }
 
+        public string? LastEmployee { get; private set; }
+
         public void Reset() => LastRange = null;
 
-        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, CancellationToken cancellationToken) =>
+            GetApprovedRecordsAsync(payPeriodStart, payPeriodEnd, null, cancellationToken);
+
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, string? employee, CancellationToken cancellationToken)
         {
             LastRange = (payPeriodStart, payPeriodEnd);
+            LastEmployee = employee;
             return Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);
         }
     }

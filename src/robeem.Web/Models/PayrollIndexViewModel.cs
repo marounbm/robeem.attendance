@@ -18,6 +18,9 @@ public sealed class PayrollIndexViewModel
 
     public DateTime? To { get; init; }
 
+    /// <summary>Gets the employee number or name the days are narrowed to; null for everyone.</summary>
+    public string? Employee { get; init; }
+
     /// <summary>Gets the selected pay period, when one was chosen rather than free dates.</summary>
     public PayPeriodItem? Period { get; init; }
 
@@ -40,6 +43,12 @@ public sealed class PayrollIndexViewModel
 
     public bool PeriodIsClosed => Period is { IsClosed: true };
 
+    /// <summary>
+    /// Gets a value indicating whether the query is complete: no error, and an employee, or both dates, or both. Payroll
+    /// never lists everything, so without either the page only asks for one.
+    /// </summary>
+    public bool CanQuery => Error is null && (!string.IsNullOrWhiteSpace(Employee) || (From is not null && To is not null));
+
     /// <summary>Gets what the pager needs: the page, and the pay period or dates that every page link keeps.</summary>
     public PagerModel Pager => new()
     {
@@ -52,6 +61,11 @@ public sealed class PayrollIndexViewModel
     private Dictionary<string, string?> FilterValues()
     {
         var values = new Dictionary<string, string?> { ["pageSize"] = PageSize.ToString(CultureInfo.InvariantCulture) };
+        if (!string.IsNullOrWhiteSpace(Employee))
+        {
+            values["employee"] = Employee;
+        }
+
         if (PeriodId is { } periodId)
         {
             values["periodId"] = periodId.ToString(CultureInfo.InvariantCulture);

@@ -21,6 +21,38 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
         Assert.Equal((Monday.At(8, 0), Monday.At(17, 0)), (shift.ActualCheckIn, shift.ActualCheckOut));
     }
 
+    [Theory]
+    [InlineData("E-1", true)]
+    [InlineData(" e-1 ", true)]
+    [InlineData("ada", true)]
+    [InlineData("LOVELACE", true)]
+    [InlineData("ada lovelace", true)]
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    [InlineData("E-2", false)]
+    [InlineData("grace", false)]
+    public async Task TheEmployeeFilter_KeepsTheDaysOfMatchingEmployeesOnly(string? employee, bool returned)
+    {
+        await WorkStandardDayAsync();
+
+        var days = await ExtractAsync(Monday, Monday, employee);
+
+        Assert.Equal(returned ? 1 : 0, days.Count);
+    }
+
+    [Fact]
+    public async Task AnEmployeeAloneCanReadEveryDate_AndTheGateStillHoldsForThem()
+    {
+        await WorkStandardDayAsync();
+        var exceptionId = AddException(Monday, AttendanceExceptionStatus.Open);
+
+        // The widest range the screen uses when only an employee is given: the open exception still keeps the day out.
+        Assert.Empty(await ExtractAsync(PayrollApprovedPageService.AllDatesStart, PayrollApprovedPageService.AllDatesEnd, "E-1"));
+
+        SetExceptionStatus(exceptionId, AttendanceExceptionStatus.Closed);
+        Assert.Single(await ExtractAsync(PayrollApprovedPageService.AllDatesStart, PayrollApprovedPageService.AllDatesEnd, "E-1"));
+    }
+
     [Fact]
     public async Task ApprovedDay_WithAnExceptionStillOpenOrPendingForThatDate_IsExcluded_UntilItIsClosed()
     {
@@ -182,10 +214,10 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
         await ProcessAsync(Monday);
     }
 
-    private async Task<IReadOnlyList<PayrollAttendanceDay>> ExtractAsync(DateTime from, DateTime to)
+    private async Task<IReadOnlyList<PayrollAttendanceDay>> ExtractAsync(DateTime from, DateTime to, string? employee = null)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await new PayrollAttendanceExtract(db, new AttendancePolicyResolver(db)).GetApprovedRecordsAsync(from, to, CancellationToken.None);
+        return await new PayrollAttendanceExtract(db, new AttendancePolicyResolver(db)).GetApprovedRecordsAsync(from, to, employee, CancellationToken.None);
     }
 
     private int AddException(DateTime date, AttendanceExceptionStatus status)

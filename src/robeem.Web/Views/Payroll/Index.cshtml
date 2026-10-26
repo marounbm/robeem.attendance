@@ -35,6 +35,10 @@
                 <label class="form-label" for="to">To (inclusive)</label>
                 <input id="to" name="to" type="date" class="form-control" value="@Model.To?.ToString("yyyy-MM-dd")" />
             </div>
+            <div class="col-md-4">
+                <label class="form-label" for="employee">Employee (number or name)</label>
+                <input id="employee" name="employee" type="search" class="form-control" value="@Model.Employee" />
+            </div>
             <div class="col-md-2">
                 <label class="form-label" for="pageSize">Per page</label>
                 <select id="pageSize" name="pageSize" class="form-select">
@@ -48,10 +52,10 @@
                 <button type="submit" class="btn btn-primary">Show</button>
                 @if (Model.Days is not null)
                 {
-                    <a class="btn btn-outline-secondary" asp-action="Export" asp-route-periodId="@Model.PeriodId" asp-route-from="@(Model.PeriodId is null ? Model.From?.ToString("yyyy-MM-dd") : null)" asp-route-to="@(Model.PeriodId is null ? Model.To?.ToString("yyyy-MM-dd") : null)">Download CSV</a>
+                    <a class="btn btn-outline-secondary" asp-action="Export" asp-route-periodId="@Model.PeriodId" asp-route-employee="@Model.Employee" asp-route-from="@(Model.PeriodId is null ? Model.From?.ToString("yyyy-MM-dd") : null)" asp-route-to="@(Model.PeriodId is null ? Model.To?.ToString("yyyy-MM-dd") : null)">Download CSV</a>
                 }
             </div>
-            <div class="col-12 form-text">A pay period, when chosen, sets the dates; otherwise give both dates.</div>
+            <div class="col-12 form-text">Give an employee, a time range, or both. A pay period, when chosen, sets the dates; otherwise give both dates. With only an employee, every date of that employee is shown.</div>
         </form>
     </div>
 </div>
@@ -62,7 +66,7 @@
 }
 else if (Model.Days is null)
 {
-    <div class="card"><div class="card-body text-muted">Choose a pay period or a range of dates to see what payroll may pay for.</div></div>
+    <div class="card"><div class="card-body text-muted">Give an employee, or choose a pay period or a range of dates, to see what payroll may pay for.</div></div>
 }
 else
 {
@@ -71,6 +75,12 @@ else
         <div class="alert alert-secondary" role="status">
             This pay period is closed, so payroll receives none of its days. To pay it, reopen it on
             <a asp-controller="PayPeriods" asp-action="Index">Pay periods</a> (a reason is required).
+        </div>
+    }
+    else if (Model.Total == 0 && !string.IsNullOrWhiteSpace(Model.Employee))
+    {
+        <div class="alert alert-info" role="status">
+            No approved day in this range belongs to an employee matching “@Model.Employee”.
         </div>
     }
     else if (Model.Total == 0)

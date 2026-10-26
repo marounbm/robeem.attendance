@@ -162,7 +162,10 @@ public sealed class PayPeriodsEndpointTests : IAsyncDisposable
     {
         public int Asked { get; private set; }
 
-        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime from, DateTime to, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime from, DateTime to, CancellationToken cancellationToken) =>
+            GetApprovedRecordsAsync(from, to, null, cancellationToken);
+
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime from, DateTime to, string? employee, CancellationToken cancellationToken)
         {
             Asked++;
             return Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);

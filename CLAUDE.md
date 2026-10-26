@@ -245,6 +245,8 @@ Lists that still break this rule, to be paged when they are next touched (new li
 
 **Payroll is a special case.** Which days payroll may pay for is decided by `IPayrollAttendanceExtract`, which needs each employee's policy and so works in memory over the range (a pay period, bounded). It stays that way: it is the single gate (§1.8) and the CSV export wants the whole range. The screen reads through `IPayrollApprovedPageService` (`GET api/attendance/payroll/approved/page`), which orders, totals and cuts one page of the extract's result, so the Web never receives or draws more than a page of days. If a range ever gets too big for the extract itself, moving the eligibility checks into the query is a change to the extract, not to the page.
 
+**A payroll query needs an employee, a period, or both** (`PayrollApprovedPageService.Validate`): an employee (a number or name, ignoring case), or both dates (a pay period sets them), or both. One date alone, or neither an employee nor dates, is a 400 from `api/attendance/payroll/approved` and `.../approved/page`, and the Web only asks for one. With an employee and no dates, every date of that employee is read (`AllDatesStart`..`AllDatesEnd`). The employee filter is part of every query of the extract (`GetApprovedRecordsAsync(start, end, employee, ct)`), so a wide range for one employee never loads the others' days; the CSV follows the same query.
+
 ---
 
 ## 3. Mapping the study's logical model onto existing entities

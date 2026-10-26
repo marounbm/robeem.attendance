@@ -25,4 +25,11 @@ public interface IPayrollAttendanceExtract
     /// </summary>
     /// <exception cref="ArgumentException">The end is before the start.</exception>
     Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same days, kept to the employees whose number or name contains <paramref name="employee"/> (ignoring case; blank keeps
+    /// everyone). The filter is part of every query, so a long range for one employee does not load the others' days.
+    /// </summary>
+    /// <exception cref="ArgumentException">The end is before the start.</exception>
+    Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, string? employee, CancellationToken cancellationToken);
 }
