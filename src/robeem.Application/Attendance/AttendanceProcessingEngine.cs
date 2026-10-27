@@ -316,8 +316,19 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .Select(c => new { c.Id, c.CorrectedEventType, c.ProposedValue, c.TimeZoneId })
             .ToListAsync(cancellationToken);
 
+        // An added punch that a later, applied correction took back is not read.
+        var cancelled = await _db.AttendanceCorrections
+            .AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId
+                && c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch
+                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.CancelsCorrectionId != null)
+            .Select(c => c.CancelsCorrectionId!.Value)
+            .ToListAsync(cancellationToken);
+
         // The instant comes from the zone fixed when the correction was proposed, so it can't drift.
         return rows
+            .Where(c => !cancelled.Contains(c.Id))
             .Select(c => new AttendancePunch(
                 null,
                 c.CorrectedEventType,

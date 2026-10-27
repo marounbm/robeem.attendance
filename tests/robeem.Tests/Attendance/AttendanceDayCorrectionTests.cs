@@ -195,9 +195,9 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     }
 
     [Theory]
-    [InlineData("", "justification")]
-    [InlineData("  ", "justification")]
-    public async Task AReasonIsRequired(string reason, string field)
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task AReasonIsOptional(string reason)
     {
         AddPunches("I@08:00,O@13:00,O@13:05");
         await ProcessAsync(Monday);
@@ -205,7 +205,194 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
 
         var result = await ProposeAsync(Request(reason, new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray }));
 
-        Assert.Contains(field, result.Errors.Keys.Select(k => k.ToLowerInvariant()));
+        Assert.True(result.Succeeded);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(string.Empty, db.AttendanceCorrections.Single().Justification);
+    }
+
+    [Fact]
+    public async Task TheDayMustHaveACheckInAndACheckOut_AfterTheEdits_OrItIsNotSent()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var punches = (await GetDayAsync())!.Punches;
+        var stray = punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var lunchOut = punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+        var checkIn = punches.Single(p => p.At == Monday.At(8, 0)).TransactionId!.Value;
+
+        // Ignoring both check-outs leaves the day without one.
+        var noCheckOut = await ProposeAsync(Request(
+            "Because",
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = lunchOut }));
+        Assert.Contains("a check-out", noCheckOut.Errors["Edits"]);
+        Assert.DoesNotContain("a check-in", noCheckOut.Errors["Edits"]);
+
+        // Ignoring the check-in too leaves neither.
+        var neither = await ProposeAsync(Request(
+            "Because",
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = checkIn }));
+        Assert.Contains("a check-in", neither.Errors["Edits"]);
+
+        // Adding the missing one makes it complete.
+        Assert.True((await ProposeAsync(Request(
+            "Because",
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = lunchOut },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "CheckOut", At = Monday.At(17, 0) }))).Succeeded);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(3, db.AttendanceCorrections.Count());
+    }
+
+    [Fact]
+    public async Task APunchNeverStandsWithoutItsPartner_EvenOnAShiftWithoutABreak()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var punches = (await GetDayAsync())!.Punches;
+        var lunchOut = punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+        var stray = punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+
+        // A break-in with no break-out, on a shift that has no break.
+        var breakInOnly = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakIn" }));
+        Assert.Contains("a break-out", breakInOnly.Errors["Edits"]);
+
+        // A break-out with no break-in.
+        var breakOutOnly = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" }));
+        Assert.Contains("a break-in", breakOutOnly.Errors["Edits"]);
+
+        // A check-in added with the check-out gone, and a check-out with the check-in gone.
+        var checkInOnly = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "CheckIn" }));
+        Assert.Contains("a check-out", checkInOnly.Errors["Edits"]);
+        var extraCheckOut = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "CheckOut", At = Monday.At(17, 0) }));
+        Assert.Contains("a check-in", extraCheckOut.Errors["Edits"]);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(db.AttendanceCorrections);
+    }
+
+    [Fact]
+    public async Task APunchAnEarlierCorrectionAdded_CanBeDeleted_ByANewCorrection_AndTheEngineStopsReadingIt()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var addedId = AddAppliedSuppliedCheckIn(Monday.At(14, 0));
+        var day = (await GetDayAsync())!;
+        var stray = day.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+
+        // The added punch is shown, and says which correction added it.
+        var added = day.Punches.Single(p => p.State == "Added");
+        Assert.Equal((addedId, (int?)null), (added.CorrectionId, added.TransactionId));
+
+        var sent = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, CorrectionId = addedId },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray }));
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            // Additive: the earlier correction is not edited, a new row points at it.
+            var cancel = db.AttendanceCorrections.Single(c => c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch);
+            Assert.Equal(addedId, cancel.CancelsCorrectionId);
+            Assert.Equal(AttendanceCorrectionStatus.Applied, db.AttendanceCorrections.Single(c => c.Id == addedId).Status);
+        }
+
+        await DecideFirstAsync(approved: true);
+
+        // 08:00 in, 13:00 out: with the added check-in read, the day would still lack a check-out.
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(check.AttendanceExceptions.Where(e => e.Status != AttendanceExceptionStatus.Closed));
+        Assert.Equal(TimeSpan.FromHours(5), check.AttendanceRecords.Single(r => r.IsCurrent).WorkingHours);
+
+        var after = (await GetDayAsync())!;
+        var deleted = after.Punches.Single(p => p.At == Monday.At(14, 0));
+        Assert.Equal(("Ignored", (int?)null), (deleted.State, deleted.CorrectionId));
+    }
+
+    [Fact]
+    public async Task DeletingAnAddedPunch_IsRefusedForAnUnknownCorrection_ForTheSameOneTwice_AndWhenItLeavesAPunchAlone()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var addedId = AddAppliedSuppliedCheckIn(Monday.At(14, 0));
+
+        var unknown = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, CorrectionId = 99999 }));
+        Assert.Contains("not a punch added", unknown.Errors["Edits"]);
+
+        var twice = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, CorrectionId = addedId },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, CorrectionId = addedId }));
+        Assert.Contains("already deleted", twice.Errors["Edits"]);
+
+        // Without the added check-in, the stray check-out is still there with only one check-in: the pair rule applies here too.
+        var alone = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, CorrectionId = addedId }));
+        Assert.Contains("a check-in", alone.Errors["Edits"]);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.DoesNotContain(db.AttendanceCorrections, c => c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch);
+    }
+
+    [Fact]
+    public async Task ThePunchesMustFollowTheOrder_CheckIn_BreakIn_BreakOut_CheckOut()
+    {
+        GiveTheShiftABreak();
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var punches = (await GetDayAsync())!.Punches;
+        var lunchOut = punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+
+        // All four types are there, but the break-in comes after the check-out.
+        var late = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(14, 0) }));
+        Assert.Contains("out of order", late.Errors["Edits"]);
+        Assert.Contains("break-out at 13:00 can't come after a check-in", late.Errors["Edits"]);
+
+        // The same two edits with the break-in before the break-out are in order.
+        var inOrder = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(12, 0) }));
+        Assert.True(inOrder.Succeeded, string.Join("; ", inOrder.Errors.Values));
+    }
+
+    [Fact]
+    public async Task TheDayViewNamesTheRequiredPunches_BreakPunchesOnlyForAShiftWithABreak()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+
+        Assert.Equal(["CheckIn", "CheckOut"], (await GetDayAsync())!.RequiredPunches);
+    }
+
+    [Fact]
+    public async Task AShiftWithABreak_NeedsTheBreakPunchesToo_UnlessThePolicyAllowsWorkingThroughIt()
+    {
+        GiveTheShiftABreak();
+        AddPunches("I@08:00,O@13:00,O@13:05");
+        await ProcessAsync(Monday);
+        var day = (await GetDayAsync())!;
+        var stray = day.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+
+        Assert.Equal(["CheckIn", "BreakIn", "BreakOut", "CheckOut"], day.RequiredPunches);
+        var refused = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray }));
+        Assert.Contains("a break-in, a break-out", refused.Errors["Edits"]);
+
+        // Adding the break-in at 12:00 and turning the 13:00 tap into the break-out settles it.
+        var lunchOut = day.Punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+        var sent = await ProposeAsync(Request(
+            string.Empty,
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(12, 0) }));
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
     }
 
     [Fact]
@@ -317,6 +504,37 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
 
     private static DayCorrectionRequest Request(string justification, params DayCorrectionEdit[] edits) =>
         new() { Date = Monday, Justification = justification, Edits = edits };
+
+    /// <summary>Stores a check-in that an earlier request added and an approver applied; the exceptions of the day stay as they were. Returns the correction's id.</summary>
+    private int AddAppliedSuppliedCheckIn(DateTime at)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var correction = new AttendanceCorrection
+        {
+            EmployeeId = EmployeeId,
+            AttendanceDate = at.Date,
+            Kind = AttendanceCorrectionKind.SupplyPunch,
+            CorrectedEventType = NormalizedEventType.CheckIn,
+            ProposedValue = at,
+            TimeZoneId = db.NormalizedAttendanceTransactions.First().TimeZoneId,
+            Justification = "Forgot",
+            RequestedByEmployeeId = EmployeeId,
+            Status = AttendanceCorrectionStatus.Applied,
+            AppliedAt = at,
+        };
+        db.AttendanceCorrections.Add(correction);
+        db.SaveChanges();
+        return correction.Id;
+    }
+
+    /// <summary>The shift of the constructor gets a break, 12:00-13:00.</summary>
+    private void GiveTheShiftABreak()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var shift = db.TimeScheduleShifts.Single();
+        (shift.BreakTime, shift.BreakStartTime, shift.BreakEndTime) = (true, "12:00", "13:00");
+        db.SaveChanges();
+    }
 
     private async Task<DayCorrectionView?> GetDayAsync()
     {

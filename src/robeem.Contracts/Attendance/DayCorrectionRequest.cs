@@ -13,7 +13,7 @@ public sealed class DayCorrectionRequest
     /// <summary>Gets the attendance date being corrected.</summary>
     public DateTime Date { get; init; }
 
-    /// <summary>Gets why the day is corrected. Required.</summary>
+    /// <summary>Gets why the day is corrected. Optional.</summary>
     public string Justification { get; init; } = string.Empty;
 
     public IReadOnlyList<DayCorrectionEdit> Edits { get; init; } = Array.Empty<DayCorrectionEdit>();

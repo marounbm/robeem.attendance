@@ -22,18 +22,23 @@ public sealed class DayCorrectionForm
     public static DayCorrectionForm For(DayCorrectionView day) => new()
     {
         Date = day.Date,
-        Punches = day.Punches.Where(p => p is { Editable: true, TransactionId: not null }).Select(p => new PunchChoice { TransactionId = p.TransactionId!.Value }).ToList(),
+        Punches = day.Punches
+            .Where(p => p is { Editable: true, TransactionId: not null } || p.CorrectionId is not null)
+            .Select(p => new PunchChoice { TransactionId = p.TransactionId, CorrectionId = p.CorrectionId })
+            .ToList(),
     };
 
     /// <summary>Gets what was typed, on the punches of the day as they are now, so the page can be shown again with the same choices.</summary>
     public DayCorrectionForm WithPunchesOf(DayCorrectionView day)
     {
-        var chosen = Punches.ToDictionary(p => p.TransactionId, p => p.Action);
+        var chosen = Punches.GroupBy(p => (p.TransactionId, p.CorrectionId)).ToDictionary(g => g.Key, g => g.First().Action);
         return new DayCorrectionForm
         {
             Date = day.Date,
             Justification = Justification,
-            Punches = For(day).Punches.Select(p => new PunchChoice { TransactionId = p.TransactionId, Action = chosen.GetValueOrDefault(p.TransactionId) }).ToList(),
+            Punches = For(day).Punches
+                .Select(p => new PunchChoice { TransactionId = p.TransactionId, CorrectionId = p.CorrectionId, Action = chosen.GetValueOrDefault((p.TransactionId, p.CorrectionId)) })
+                .ToList(),
             Added = Added,
         };
     }
@@ -48,7 +53,7 @@ public sealed class DayCorrectionForm
         foreach (var punch in Punches.Where(p => !string.IsNullOrEmpty(p.Action)))
         {
             edits.Add(punch.Action == DayCorrectionRequest.Ignore
-                ? new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = punch.TransactionId }
+                ? new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = punch.TransactionId, CorrectionId = punch.CorrectionId }
                 : new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = punch.TransactionId, EventType = punch.Action });
         }
 

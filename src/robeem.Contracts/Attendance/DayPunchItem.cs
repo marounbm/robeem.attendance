@@ -6,6 +6,12 @@ public sealed class DayPunchItem
     /// <summary>Gets the normalized punch it is; null for a punch an applied correction added.</summary>
     public int? TransactionId { get; init; }
 
+    /// <summary>
+    /// Gets the earlier correction that added the punch, when it can be deleted now (<see cref="DayCorrectionRequest.Ignore"/> with
+    /// <see cref="DayCorrectionEdit.CorrectionId"/>); null for a device punch and for one that can't be deleted.
+    /// </summary>
+    public int? CorrectionId { get; init; }
+
     /// <summary>Gets what the punch counts as: CheckIn, CheckOut, BreakOut, BreakIn, or Other for a tap that is not attendance. After a change of type, the new type.</summary>
     public string Type { get; init; } = string.Empty;
 

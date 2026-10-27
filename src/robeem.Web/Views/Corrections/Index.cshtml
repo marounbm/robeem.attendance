@@ -68,7 +68,10 @@
                                                 <span>Change the <strong>@DisplayFormats.Words(edit.OriginalEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At) to a <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong></span>
                                                 break;
                                             case "IgnorePunch":
-                                                <span>Ignore the <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>
+                                                <span>Delete the <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>
+                                                break;
+                                            case "CancelSuppliedPunch":
+                                                <span>Delete the added <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>
                                                 break;
                                             default:
                                                 <span>Add a <strong>@DisplayFormats.Words(edit.CorrectedEventType).ToLowerInvariant()</strong> at @DisplayFormats.Time(edit.At)</span>

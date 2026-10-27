@@ -16,8 +16,8 @@
 
 <p class="text-muted">
     These are all the punches of the day, as the time clock sent them. Put the day right: <strong>change</strong> a punch that has the wrong type,
-    <strong>ignore</strong> one that should not count (a duplicate, a tap by mistake), or <strong>add</strong> one that is missing. Nothing is
-    edited or deleted: your approver decides on all of it together, and the day is then calculated again.
+    <strong>delete</strong> one that should not count (a duplicate, a tap by mistake), or <strong>add</strong> one that is missing. A deleted punch
+    stays on record, as the time clock sent it, but no longer counts: your approver decides on all of it together, and the day is then calculated again.
 </p>
 
 @if (day.Shifts.Count > 0)
@@ -50,8 +50,9 @@
     <div class="alert alert-info">@day.CannotCorrectReason</div>
 }
 
-<form method="post" asp-action="Correct">
+<form method="post" asp-action="Correct" id="correction-form" data-required="@string.Join(",", day.RequiredPunches)">
     <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+    <div id="completeness-alert" class="alert alert-danger" role="alert" hidden></div>
     <input type="hidden" name="Date" value="@day.Date.ToString("yyyy-MM-dd")" />
 
     <div class="card mb-3">
@@ -76,7 +77,7 @@
                         @{ var index = 0; }
                         @foreach (var punch in day.Punches)
                         {
-                            <tr class="@(punch.Problem is not null ? "table-warning" : null)">
+                            <tr class="@(punch.Problem is not null ? "table-warning" : null)" data-counts-as="@(punch.State is "Counted" or "Changed" or "Added" ? punch.Type : null)" data-at="@punch.At.ToString("yyyy-MM-ddTHH:mm:ss")">
                                 <td class="text-nowrap">@punch.At.ToString("HH:mm:ss")@(punch.At.Date > day.Date.Date ? " (next day)" : string.Empty)</td>
                                 <td>
                                     @DisplayFormats.Words(punch.Type)
@@ -98,7 +99,7 @@
                                             <span class="small">Added by a correction</span>
                                             break;
                                         case "Ignored":
-                                            <span class="small text-muted">Left out by a correction</span>
+                                            <span class="small text-muted">Deleted by a correction</span>
                                             break;
                                         case "Duplicate":
                                             <span class="small text-muted">A repeat of another punch, already left out</span>
@@ -124,7 +125,18 @@
                                             {
                                                 <option value="@type" selected="@(chosen == type)">Change to @DisplayFormats.Words(type).ToLowerInvariant()@(punch.SuggestedTypes.Contains(type) ? " (suggested)" : string.Empty)</option>
                                             }
-                                            <option value="Ignore" selected="@(chosen == "Ignore")">Ignore this punch</option>
+                                            <option value="Ignore" selected="@(chosen == "Ignore")">Delete this punch</option>
+                                        </select>
+                                        index++;
+                                    }
+                                    else if (punch.CorrectionId is { } correctionId && day.CanCorrect)
+                                    {
+                                        // A punch an earlier correction added: it can only be kept or deleted.
+                                        var chosen = Model.Form.Punches.ElementAtOrDefault(index)?.Action ?? string.Empty;
+                                        <input type="hidden" name="Punches[@index].CorrectionId" value="@correctionId" />
+                                        <select name="Punches[@index].Action" class="form-select form-select-sm" aria-label="What to do with the added punch at @punch.At.ToString("HH:mm")">
+                                            <option value="">Keep as it is</option>
+                                            <option value="Ignore" selected="@(chosen == "Ignore")">Delete this punch</option>
                                         </select>
                                         index++;
                                     }
@@ -171,6 +183,9 @@
                                 </div>
                             </div>
                         }
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-added" aria-label="Remove this punch (it has not been sent yet)">Remove</button>
+                        </div>
                     </div>
                 }
 
@@ -178,11 +193,21 @@
             </div>
         </div>
 
+        <p class="small text-muted">
+            Once corrected, the punches of the day must follow the order <strong>check-in, break-in, break-out, check-out</strong>, and none can be
+            left without its partner (a check-in needs a check-out, a break-in needs a break-out).
+            @if (day.RequiredPunches.Count > 0)
+            {
+                <text>The day must have: @string.Join(", ", day.RequiredPunches.Select(t => DisplayFormats.Words(t).ToLowerInvariant())).</text>
+            }
+            It can't be sent for approval otherwise.
+        </p>
+
         <div class="card mb-3">
             <div class="card-header">Why</div>
             <div class="card-body">
-                <label class="form-label small mb-0" for="justification">Tell your approver why these corrections are needed.</label>
-                <textarea id="justification" name="Justification" rows="2" maxlength="1000" class="form-control" required>@Model.Form.Justification</textarea>
+                <label class="form-label small mb-0" for="justification">Tell your approver why these corrections are needed (optional).</label>
+                <textarea id="justification" name="Justification" rows="2" maxlength="1000" class="form-control">@Model.Form.Justification</textarea>
             </div>
         </div>
 
@@ -214,6 +239,127 @@
             if (!document.querySelector('.added-row[hidden]')) {
                 button.disabled = true;
             }
+
+            // "Remove" drops a punch that was typed but not sent: its fields are cleared, and the row is hidden unless it is the only one left.
+            document.querySelectorAll('.remove-added').forEach(function (remove) {
+                remove.addEventListener('click', function () {
+                    var row = remove.closest('.added-row');
+                    row.querySelectorAll('select').forEach(function (select) { select.value = ''; });
+                    row.querySelectorAll('input[type="time"]').forEach(function (time) { time.value = ''; });
+                    row.querySelectorAll('input[type="checkbox"]').forEach(function (box) { box.checked = false; });
+                    if (document.querySelectorAll('.added-row:not([hidden])').length > 1) {
+                        row.hidden = true;
+                    }
+
+                    button.disabled = false;
+                });
+            });
+        })();
+
+        // A punch chosen for deletion is struck through, so it is clear it will not count.
+        document.querySelectorAll('tr[data-counts-as] select').forEach(function (select) {
+            var mark = function () {
+                var row = select.closest('tr');
+                var deleted = select.value === 'Ignore';
+                row.classList.toggle('table-danger', deleted);
+                Array.prototype.slice.call(row.cells, 0, 2).forEach(function (cell) { cell.classList.toggle('text-decoration-line-through', deleted); });
+            };
+
+            select.addEventListener('change', mark);
+            mark();
+        });
+
+        // Before sending: the day, as the choices leave it, must have every required punch. The Api checks again.
+        (function () {
+            var form = document.getElementById('correction-form');
+            var alertBox = document.getElementById('completeness-alert');
+            if (!form || !alertBox) {
+                return;
+            }
+
+            var required = (form.dataset.required || '').split(',').filter(Boolean);
+            var words = { CheckIn: 'a check-in', BreakOut: 'a break-out', BreakIn: 'a break-in', CheckOut: 'a check-out' };
+
+            var order = ['CheckIn', 'BreakIn', 'BreakOut', 'CheckOut'];
+            var dayStart = new Date(form.querySelector('input[name="Date"]').value + 'T00:00:00');
+
+            // What may follow each punch; the start of the day and a check-out are followed by a check-in only.
+            var next = { Start: ['CheckIn'], CheckIn: ['BreakIn', 'CheckOut'], BreakIn: ['BreakOut'], BreakOut: ['BreakIn', 'CheckOut'], CheckOut: ['CheckIn'] };
+
+            var clock = function (minutes) {
+                var m = minutes % 1440;
+                return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
+            };
+
+            var fail = function (message) {
+                alertBox.textContent = message;
+                alertBox.hidden = false;
+                alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            };
+
+            form.addEventListener('submit', function (event) {
+                // The punches the day would have: [type, minutes since the start of the day].
+                var punches = [];
+                document.querySelectorAll('tr[data-counts-as]').forEach(function (row) {
+                    var type = row.dataset.countsAs;
+                    var select = row.querySelector('select');
+                    if (select && select.value === 'Ignore') {
+                        return;
+                    }
+
+                    if (select && select.value) {
+                        type = select.value;
+                    }
+
+                    if (type) {
+                        punches.push([type, (new Date(row.dataset.at) - dayStart) / 60000]);
+                    }
+                });
+
+                document.querySelectorAll('select[name^="Added["][name$=".EventType"]').forEach(function (select) {
+                    var time = document.getElementById(select.id.replace('-type-', '-time-'));
+                    var nextDay = document.getElementById(select.id.replace('-type-', '-next-'));
+                    if (select.value && time && time.value) {
+                        var parts = time.value.split(':');
+                        punches.push([select.value, (+parts[0]) * 60 + (+parts[1]) + (nextDay && nextDay.checked ? 1440 : 0)]);
+                    }
+                });
+
+                var count = function (type) { return punches.filter(function (p) { return p[0] === type; }).length; };
+
+                // Each required type must be there, and no punch stands without its partner (check-in/check-out, break-out/break-in).
+                var partner = { CheckIn: 'CheckOut', CheckOut: 'CheckIn', BreakOut: 'BreakIn', BreakIn: 'BreakOut' };
+                var missing = Object.keys(partner)
+                    .filter(function (type) { return count(type) < Math.max(required.indexOf(type) >= 0 ? 1 : 0, count(partner[type])); })
+                    .map(function (type) { return words[type] || type; });
+                if (missing.length > 0) {
+                    event.preventDefault();
+                    fail('The day would still be incomplete: it needs ' + missing.join(', ') + '. Change, add or keep punches so that every one is there.');
+                    return;
+                }
+
+                // And they must follow the order check-in, break-in, break-out, check-out, by time.
+                punches.sort(function (a, b) { return a[1] - b[1] || order.indexOf(a[0]) - order.indexOf(b[0]); });
+                var previous = 'Start';
+                for (var i = 0; i < punches.length; i++) {
+                    if (next[previous].indexOf(punches[i][0]) < 0) {
+                        event.preventDefault();
+                        fail('The punches are out of order: ' + words[punches[i][0]] + ' at ' + clock(punches[i][1]) + " can't come "
+                            + (previous === 'Start' ? 'first' : 'after ' + words[previous]) + '. The order is check-in, break-in, break-out, check-out.');
+                        return;
+                    }
+
+                    previous = punches[i][0];
+                }
+
+                if (previous !== 'Start' && previous !== 'CheckOut') {
+                    event.preventDefault();
+                    fail('The punches are out of order: the day must end with a check-out.');
+                    return;
+                }
+
+                alertBox.hidden = true;
+            });
         })();
     </script>
 }

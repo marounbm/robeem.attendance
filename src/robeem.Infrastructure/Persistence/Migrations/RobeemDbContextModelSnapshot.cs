@@ -293,6 +293,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<int?>("AttendanceExceptionId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("CancelsCorrectionId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CorrectedEventType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -383,6 +386,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AttendanceExceptionId");
+
+                    b.HasIndex("CancelsCorrectionId");
 
                     b.HasIndex("EmployeeId");
 
@@ -2281,6 +2286,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasForeignKey("AttendanceExceptionId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("robeem.DataModel.AttendanceCorrection", "CancelsCorrection")
+                        .WithMany()
+                        .HasForeignKey("CancelsCorrectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("robeem.DataModel.Profile", "Employee")
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -2309,6 +2319,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("AttendanceException");
+
+                    b.Navigation("CancelsCorrection");
 
                     b.Navigation("Employee");
 

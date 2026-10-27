@@ -17,8 +17,8 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     private static readonly NormalizedEventType[] AttendanceTypes =
     [
         NormalizedEventType.CheckIn,
-        NormalizedEventType.BreakOut,
         NormalizedEventType.BreakIn,
+        NormalizedEventType.BreakOut,
         NormalizedEventType.CheckOut,
     ];
 
@@ -63,11 +63,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
 
         var errors = new Dictionary<string, string>();
         var justification = (request.Justification ?? string.Empty).Trim();
-        if (justification.Length == 0)
-        {
-            errors[nameof(DayCorrectionRequest.Justification)] = "A justification is required.";
-        }
-        else if (justification.Length > JustificationMaxLength)
+        if (justification.Length > JustificationMaxLength)
         {
             errors[nameof(DayCorrectionRequest.Justification)] = $"The justification can be at most {JustificationMaxLength} characters.";
         }
@@ -85,6 +81,18 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         else if (errors.Count == 0)
         {
             await BuildRowsAsync(request, data, day, employeeId, rows, errors, cancellationToken);
+            if (errors.Count == 0)
+            {
+                var after = PunchesAfter(data, rows);
+                if (MissingAfter(after, data) is { Count: > 0 } missing)
+                {
+                    errors[EditsKey] = $"The day would still be incomplete: it needs {string.Join(", ", missing)}. Change, add or keep punches so that every one is there.";
+                }
+                else if (OutOfOrder(after) is { } order)
+                {
+                    errors[EditsKey] = order;
+                }
+            }
         }
 
         if (errors.Count > 0)
@@ -132,6 +140,101 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             : $"'{name}' is not a type of punch. Use one of: {string.Join(", ", AttendanceTypes)}.";
     }
 
+    /// <summary>
+    /// Gets what the day still lacks once the edits are applied: a required punch type that no counted punch has, once for each shift that
+    /// needs one, and the partner of a check-in, check-out, break-out or break-in that has none. Counted punches are the day's punches that count, as the edits leave them, and the ones earlier corrections added.
+    /// </summary>
+    private static List<string> MissingAfter(List<(NormalizedEventType Type, DateTime At)> punches, DayData data)
+    {
+        var types = punches.Select(p => p.Type).ToList();
+
+        // A punch never stands alone: a check-in needs a check-out and the other way round, and the same for the break pair, whatever the
+        // shift or policy asks. So a type is needed as many times as its partner is there.
+        int Count(NormalizedEventType type) => types.Count(t => t == type);
+        var partners = new Dictionary<NormalizedEventType, NormalizedEventType>
+        {
+            [NormalizedEventType.CheckIn] = NormalizedEventType.CheckOut,
+            [NormalizedEventType.CheckOut] = NormalizedEventType.CheckIn,
+            [NormalizedEventType.BreakOut] = NormalizedEventType.BreakIn,
+            [NormalizedEventType.BreakIn] = NormalizedEventType.BreakOut,
+        };
+
+        return AttendanceTypes
+            .Where(type => Count(type) < Math.Max(data.Needed.GetValueOrDefault(type), Count(partners[type])))
+            .Select(DescribeType)
+            .ToList();
+    }
+
+    /// <summary>The punches that count on the day once the edits are applied: the ones that count now, as the edits leave them, and the added ones.</summary>
+    private static List<(NormalizedEventType Type, DateTime At)> PunchesAfter(DayData data, List<AttendanceCorrection> rows)
+    {
+        var ignored = rows.Where(r => r.Kind == AttendanceCorrectionKind.IgnorePunch).Select(r => r.NormalizedTransactionId!.Value).ToHashSet();
+        var retyped = rows.Where(r => r.Kind == AttendanceCorrectionKind.ChangePunchType).ToDictionary(r => r.NormalizedTransactionId!.Value, r => r.CorrectedEventType);
+
+        var deleted = rows.Where(r => r.Kind == AttendanceCorrectionKind.CancelSuppliedPunch).Select(r => r.CancelsCorrectionId!.Value).ToHashSet();
+
+        var punches = new List<(NormalizedEventType Type, DateTime At)>();
+        foreach (var item in data.View.Punches.Where(p => p.State is "Counted" or "Changed" or "Added"))
+        {
+            if (item.CorrectionId is { } correctionId && deleted.Contains(correctionId))
+            {
+                continue;
+            }
+
+            if (item.TransactionId is { } id && data.Punches.TryGetValue(id, out var punch))
+            {
+                if (!ignored.Contains(id))
+                {
+                    punches.Add((retyped.TryGetValue(id, out var newType) ? newType : punch.Type, item.At));
+                }
+            }
+            else if (Enum.TryParse<NormalizedEventType>(item.Type, out var addedType))
+            {
+                punches.Add((addedType, item.At));
+            }
+        }
+
+        punches.AddRange(rows.Where(r => r.Kind == AttendanceCorrectionKind.SupplyPunch).Select(r => (r.CorrectedEventType, r.ProposedValue)));
+        return punches;
+    }
+
+    /// <summary>
+    /// Gets what is out of order in the punches, in time: after a check-in comes a break-in or a check-out, after a break-in a break-out,
+    /// after a break-out a break-in or a check-out, and a new check-in only after a check-out. Null when they follow that order and the day ends checked out.
+    /// </summary>
+    private static string? OutOfOrder(List<(NormalizedEventType Type, DateTime At)> punches)
+    {
+        // Punches at the same minute are taken in the natural order, so a tap pair 08:00 / 08:00 is not judged by the order they were stored in.
+        var ordered = punches.OrderBy(p => p.At).ThenBy(p => Array.IndexOf(AttendanceTypes, p.Type)).ToList();
+        var previous = default(NormalizedEventType?);
+        foreach (var (type, at) in ordered)
+        {
+            var allowed = previous switch
+            {
+                null or NormalizedEventType.CheckOut => type == NormalizedEventType.CheckIn,
+                NormalizedEventType.CheckIn or NormalizedEventType.BreakOut => type is NormalizedEventType.BreakIn or NormalizedEventType.CheckOut,
+                _ => type == NormalizedEventType.BreakOut,
+            };
+            if (!allowed)
+            {
+                return $"The punches are out of order: {DescribeType(type)} at {at:HH:mm} can't come {(previous is null ? "first" : $"after {DescribeType(previous.Value)}")}. "
+                    + "The order is check-in, break-in, break-out, check-out.";
+            }
+
+            previous = type;
+        }
+
+        return previous is null or NormalizedEventType.CheckOut ? null : "The punches are out of order: the day must end with a check-out.";
+    }
+
+    private static string DescribeType(NormalizedEventType type) => type switch
+    {
+        NormalizedEventType.CheckIn => "a check-in",
+        NormalizedEventType.CheckOut => "a check-out",
+        NormalizedEventType.BreakOut => "a break-out",
+        _ => "a break-in",
+    };
+
     private static string Describe(ResolvedShift shift) =>
         $"{shift.StartsAt:HH:mm}–{shift.EndsAt:HH:mm}" + (shift.BreakTime ? $", break {shift.BreakStartTime}–{shift.BreakEndTime}" : string.Empty);
 
@@ -146,12 +249,38 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     {
         var problems = new List<string>();
         var touched = new HashSet<int>();
+        var taken = new HashSet<int>();
         var added = new List<(NormalizedEventType Type, DateTime At)>();
         foreach (var (edit, index) in request.Edits.Select((e, i) => (e, i + 1)))
         {
             var label = $"Edit {index}";
             switch (edit.Action)
             {
+                case DayCorrectionRequest.Ignore when edit.CorrectionId is { } correctionId:
+                    // Deleting a punch that an earlier correction added: a new correction takes it back, the earlier one is not edited.
+                    if (!data.Supplied.TryGetValue(correctionId, out var supplied))
+                    {
+                        problems.Add($"{label}: that is not a punch added to this day by a correction, so it can't be deleted.");
+                    }
+                    else if (!taken.Add(correctionId))
+                    {
+                        problems.Add($"{label}: the added punch at {supplied.At:HH:mm} is already deleted by another edit.");
+                    }
+                    else
+                    {
+                        rows.Add(new AttendanceCorrection
+                        {
+                            Kind = AttendanceCorrectionKind.CancelSuppliedPunch,
+                            CancelsCorrectionId = correctionId,
+                            OriginalEventType = supplied.Type,
+                            CorrectedEventType = supplied.Type,
+                            ProposedValue = supplied.At,
+                            TimeZoneId = supplied.TimeZoneId,
+                        });
+                    }
+
+                    break;
+
                 case DayCorrectionRequest.Change:
                 case DayCorrectionRequest.Ignore:
                     if (edit.TransactionId is not { } id || !data.Punches.TryGetValue(id, out var punch) || !punch.Item.Editable)
@@ -345,9 +474,36 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             punches[row.Id] = new PunchData(item, type, row.TimeZoneId);
         }
 
-        items.AddRange(applied
-            .Where(c => c.Kind == AttendanceCorrectionKind.SupplyPunch)
-            .Select(c => new DayPunchItem { Type = c.CorrectedEventType.ToString(), At = c.ProposedValue, Source = "Corrected", State = "Added" }));
+        // A punch an earlier correction added can be deleted by a new one, unless one already took it back.
+        var suppliedIds = applied.Where(c => c.Kind == AttendanceCorrectionKind.SupplyPunch).Select(c => c.Id).ToList();
+        var cancelledIds = await _db.AttendanceCorrections
+            .AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId
+                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch
+                && c.CancelsCorrectionId != null
+                && suppliedIds.Contains(c.CancelsCorrectionId.Value))
+            .Select(c => c.CancelsCorrectionId!.Value)
+            .ToListAsync(cancellationToken);
+
+        var supplied = new Dictionary<int, SuppliedData>();
+        foreach (var c in applied.Where(c => c.Kind == AttendanceCorrectionKind.SupplyPunch))
+        {
+            var taken = cancelledIds.Contains(c.Id);
+            items.Add(new DayPunchItem
+            {
+                CorrectionId = taken ? null : c.Id,
+                Type = c.CorrectedEventType.ToString(),
+                At = c.ProposedValue,
+                Source = "Corrected",
+                State = taken ? "Ignored" : "Added",
+            });
+            if (!taken)
+            {
+                supplied[c.Id] = new SuppliedData(c.CorrectedEventType, c.ProposedValue, c.TimeZoneId);
+            }
+        }
+
         items = items.OrderBy(i => i.At).ThenBy(i => i.TransactionId ?? int.MaxValue).ToList();
 
         var viewer = new ExceptionViewer(employeeId, true, false, false);
@@ -364,6 +520,19 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             : !anyOpen ? "This day has no exception to correct."
             : null;
 
+        // Every shift needs a check-in and a check-out (a day with no schedule, one); a shift with a break needs the pair of break punches
+        // when the policy asks for them, the same rule that makes a shift incomplete when it is calculated.
+        var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
+        var shiftCount = Math.Max(1, shifts.Count);
+        var breakCount = policy.RaiseExceptionOnNoBreak ? shifts.Count(s => s.BreakTime) : 0;
+        var needed = new Dictionary<NormalizedEventType, int>
+        {
+            [NormalizedEventType.CheckIn] = shiftCount,
+            [NormalizedEventType.BreakOut] = breakCount,
+            [NormalizedEventType.BreakIn] = breakCount,
+            [NormalizedEventType.CheckOut] = shiftCount,
+        };
+
         var view = new DayCorrectionView
         {
             Date = day,
@@ -371,15 +540,18 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             EmployeeName = $"{employee.FirstName} {employee.LastName}",
             Shifts = shifts.Select(Describe).ToList(),
             HasOvernightShift = overnight.Count > 0,
+            RequiredPunches = AttendanceTypes.Where(t => needed[t] > 0).Select(t => t.ToString()).ToList(),
             Punches = items,
             Exceptions = listed,
             CanCorrect = reason is null,
             CannotCorrectReason = reason,
         };
-        return new DayData(view, punches);
+        return new DayData(view, punches, supplied, needed);
     }
 
     private sealed record PunchData(DayPunchItem Item, NormalizedEventType Type, string TimeZoneId);
 
-    private sealed record DayData(DayCorrectionView View, Dictionary<int, PunchData> Punches);
+    private sealed record SuppliedData(NormalizedEventType Type, DateTime At, string TimeZoneId);
+
+    private sealed record DayData(DayCorrectionView View, Dictionary<int, PunchData> Punches, Dictionary<int, SuppliedData> Supplied, Dictionary<NormalizedEventType, int> Needed);
 }

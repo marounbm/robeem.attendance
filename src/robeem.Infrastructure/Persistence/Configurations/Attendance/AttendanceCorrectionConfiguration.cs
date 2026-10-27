@@ -27,6 +27,9 @@ public sealed class AttendanceCorrectionConfiguration : IEntityTypeConfiguration
         builder.HasIndex(c => new { c.TenantId, c.EmployeeId, c.ProposedValue });
         builder.HasIndex(c => new { c.TenantId, c.Status });
 
+        // A correction that takes back an added punch names it; the engine finds the cancelled ones through this key.
+        builder.HasOne(c => c.CancelsCorrection).WithMany().HasForeignKey(c => c.CancelsCorrectionId);
+
         // A request is decided as a whole: its rows are found by what ties them.
         builder.HasIndex(c => new { c.TenantId, c.RequestId });
     }

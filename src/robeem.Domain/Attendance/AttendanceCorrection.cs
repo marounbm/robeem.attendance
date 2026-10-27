@@ -53,6 +53,14 @@ namespace robeem.DataModel
 
         public NormalizedAttendanceTransaction? NormalizedTransaction { get; set; }
 
+        /// <summary>
+        /// Gets or sets the earlier correction whose added punch this one takes back, for <see cref="AttendanceCorrectionKind.CancelSuppliedPunch"/>;
+        /// null otherwise. Once this correction is applied the engine no longer reads the added punch; the added correction row stays as it was.
+        /// </summary>
+        public int? CancelsCorrectionId { get; set; }
+
+        public AttendanceCorrection? CancelsCorrection { get; set; }
+
         /// <summary>Gets or sets the type the punch had when the change was proposed; null for a supplied punch. For an ignored punch, the type it had.</summary>
         public NormalizedEventType? OriginalEventType { get; set; }
 
@@ -111,6 +119,7 @@ namespace robeem.DataModel
         {
             AttendanceCorrectionKind.ChangePunchType => $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:d}",
             AttendanceCorrectionKind.IgnorePunch => $"Correction ignore {OriginalEventType} — {AttendanceDate:d}",
+            AttendanceCorrectionKind.CancelSuppliedPunch => $"Correction delete added {CorrectedEventType} — {AttendanceDate:d}",
             _ => $"Correction {CorrectedEventType} — {AttendanceDate:d}",
         };
         #endregion

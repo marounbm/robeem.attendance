@@ -180,7 +180,11 @@ else
                     }
                     else if (c.Kind == "IgnorePunch")
                     {
-                        <span>Ignore the @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue)</span>
+                        <span>Delete the @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue)</span>
+                    }
+                    else if (c.Kind == "CancelSuppliedPunch")
+                    {
+                        <span>Delete the added @DisplayFormats.Words(c.CorrectedEventType).ToLowerInvariant() at @DisplayFormats.Time(c.ProposedValue)</span>
                     }
                     else
                     {
