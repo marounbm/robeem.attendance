@@ -39,10 +39,12 @@ namespace robeem.DataModel
 
         public AttendanceConnection? Connection { get; set; }
 
-        /// <summary>Gets or sets the device's type. Null only for a device that was saved with no type before types were a table.</summary>
-        public int? DeviceTypeId { get; set; }
-
-        public AttendanceDeviceType? DeviceType { get; set; }
+        /// <summary>
+        /// Gets or sets the name of the device's type (<see cref="AttendanceDeviceType.Name"/>, in the prime tenant's catalog). Null only
+        /// for a device that was saved with no type before types were a table.
+        /// </summary>
+        [MaxLength(100)]
+        public string? DeviceTypeName { get; set; }
 
         /// <summary>Gets or sets the machine model, e.g. <c>U350</c>. Empty when not recorded.</summary>
         [MaxLength(100)]

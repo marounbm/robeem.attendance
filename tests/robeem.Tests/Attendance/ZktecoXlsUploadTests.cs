@@ -32,7 +32,7 @@ public sealed class ZktecoXlsUploadTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Connector = AttendanceTestData.Seeded(db, "zkteco"),
+            ConnectorKey = "zkteco",
             DisplayName = "Head office clock",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
@@ -97,6 +97,7 @@ public sealed class ZktecoXlsUploadTests : IDisposable
         {
             var normalization = new NormalizationService(
                 db,
+                _database.CreateCatalogReader(),
                 new NormalizedTransactionRecorder(db),
                 new AttendancePolicyResolver(db),
                 _services,
@@ -117,7 +118,7 @@ public sealed class ZktecoXlsUploadTests : IDisposable
     private async Task<robeem.Contracts.Attendance.AttendanceIngestionResult> Ingest()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var ingestion = new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
+        var ingestion = new IngestionService(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
 
         // The Api hands the adapter an extension-less temporary copy of the upload; do the same.
         var path = Path.GetTempFileName();

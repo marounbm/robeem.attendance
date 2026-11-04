@@ -1,9 +1,11 @@
 @using robeem.Web.Actors
 @using robeem.Web.Navigation
 @inject ICurrentActor Actor
+@inject robeem.Web.Tenancy.ICurrentTenantInfo TenantInfo
 @{
     ViewData["Title"] = "Start";
-    var sections = NavigationMenu.For(Actor);
+    await TenantInfo.ResolveAsync(Context.RequestAborted);
+    var sections = NavigationMenu.For(Actor, TenantInfo.IsPrime);
 }
 
 <h1 class="h3 mb-3">Attendance management</h1>

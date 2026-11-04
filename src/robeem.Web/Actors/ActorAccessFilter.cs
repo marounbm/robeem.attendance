@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using robeem.Web.Navigation;
+using robeem.Web.Tenancy;
 
 namespace robeem.Web.Actors;
 
@@ -15,15 +16,22 @@ namespace robeem.Web.Actors;
 public sealed class ActorAccessFilter : IAsyncActionFilter
 {
     private readonly ICurrentActor _actor;
+    private readonly ICurrentTenantInfo? _tenant;
 
-    public ActorAccessFilter(ICurrentActor actor)
+    public ActorAccessFilter(ICurrentActor actor, ICurrentTenantInfo? tenant = null)
     {
         _actor = actor;
+        _tenant = tenant;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         await _actor.ResolveAsync(context.HttpContext.RequestAborted);
+        if (_tenant is not null)
+        {
+            await _tenant.ResolveAsync(context.HttpContext.RequestAborted);
+        }
+
         if (Refuse(context) is { } refusal)
         {
             context.Result = refusal;
@@ -35,14 +43,29 @@ public sealed class ActorAccessFilter : IAsyncActionFilter
 
     private ViewResult? Refuse(ActionExecutingContext context)
     {
+        // The platform catalog belongs to the prime tenant. In any other tenant its management screens are not there, and what changes it
+        // is refused (the Api refuses it too). A tenant that is not known to be another one is not refused: the Api decides.
+        var isPrime = _tenant?.IsPrime;
+        var controller = context.RouteData.Values["controller"] as string;
+        var menuItem = NavigationMenu.Find(controller);
+        var changesCatalog = context.ActionDescriptor.EndpointMetadata.OfType<ChangesPlatformCatalogAttribute>().Any();
+        if (isPrime == false && (menuItem is { PrimeTenantOnly: true } || changesCatalog))
+        {
+            return AccessDeniedPage.Create(context.ModelState, "The attendance catalog belongs to the prime tenant, and can only be changed there. Here it is read-only.");
+        }
+
+        if (changesCatalog && !_actor.IsInRole(NavigationMenu.Platform))
+        {
+            return AccessDeniedPage.Create(context.ModelState, "Only a platform administrator can change the attendance catalog.");
+        }
+
         if (_actor.Effective is not { } actor)
         {
             return null;
         }
 
         // The screen as the menu lists it: the same rule that hides it from the menu and the start page.
-        var controller = context.RouteData.Values["controller"] as string;
-        var access = NavigationMenu.Find(controller) is { } item ? NavigationMenu.AccessTo(_actor, item) : NavAccess.Allowed;
+        var access = menuItem is not null ? NavigationMenu.AccessTo(_actor, menuItem, isPrime) : NavAccess.Allowed;
         if (access == NavAccess.MissingRole)
         {
             return AccessDeniedPage.Create(context.ModelState);

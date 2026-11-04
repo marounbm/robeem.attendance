@@ -47,7 +47,7 @@ public sealed class ZktecoFormatTests : IDisposable
         var hiba = new Profile { EmployeeNumber = "21001", FirstName = "Hiba", LastName = "Rahme", Title = "Hiba Rahme" };
         var integration = new AttendanceIntegration
         {
-            Connector = AttendanceTestData.Seeded(db, "zkteco"),
+            ConnectorKey = "zkteco",
             DisplayName = "Head office clock",
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
@@ -131,6 +131,7 @@ public sealed class ZktecoFormatTests : IDisposable
         {
             var normalization = new NormalizationService(
                 db,
+                _database.CreateCatalogReader(),
                 new NormalizedTransactionRecorder(db),
                 new AttendancePolicyResolver(db),
                 _services,
@@ -231,12 +232,12 @@ public sealed class ZktecoFormatTests : IDisposable
 
     private AttendancePayloadFormat Format()
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendancePayloadFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "ZKTeco attendance export");
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendancePayloadFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "ZKTeco attendance export");
     }
 
     private CustomFormatInterpreter Interpreter() => new(Format());
 
     private IngestionService CreateIngestion(RobeemDbContext db) =>
-        new(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
+        new(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
 }

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
@@ -14,15 +15,17 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
     private static readonly TimeSpan DefaultTestTimeout = TimeSpan.FromSeconds(15);
 
     private readonly IRobeemDbContext _db;
+    private readonly ICatalogReader _catalog;
     private readonly IAttendanceAuditTrail _audit;
     private readonly ISecretStore _secrets;
     private readonly IServiceProvider _services;
     private readonly TimeProvider _clock;
     private readonly TimeSpan _testTimeout;
 
-    public AttendanceConnectionService(IRobeemDbContext db, IAttendanceAuditTrail audit, ISecretStore secrets, IServiceProvider services, TimeProvider clock, TimeSpan? testTimeout = null)
+    public AttendanceConnectionService(IRobeemDbContext db, ICatalogReader catalog, IAttendanceAuditTrail audit, ISecretStore secrets, IServiceProvider services, TimeProvider clock, TimeSpan? testTimeout = null)
     {
         _db = db;
+        _catalog = catalog;
         _audit = audit;
         _secrets = secrets;
         _services = services;
@@ -49,7 +52,7 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
             .GroupBy(d => d.ConnectionId!.Value)
             .Select(g => new { ConnectionId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.ConnectionId, g => g.Count, cancellationToken);
-        var names = await _db.AttendanceTransportDefinitions.AsNoTracking().ToDictionaryAsync(t => t.TransportKey, t => t.DisplayName, StringComparer.Ordinal, cancellationToken);
+        var names = (await _catalog.ListTransportsAsync(cancellationToken)).ToDictionary(t => t.TransportKey, t => t.DisplayName, StringComparer.Ordinal);
 
         return connections.Select(c => new ConnectionListItem
         {
@@ -90,7 +93,7 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
 
     public async Task<SaveResult> CreateAsync(int integrationId, ConnectionInput input, CancellationToken cancellationToken)
     {
-        var integration = await _db.AttendanceIntegrations.AsNoTracking().Include(i => i.Connector).SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
+        var integration = await _db.AttendanceIntegrations.AsNoTracking().SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
         {
             return SaveResult.Missing();
@@ -123,7 +126,7 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
             return SaveResult.Missing();
         }
 
-        var integration = await _db.AttendanceIntegrations.AsNoTracking().Include(i => i.Connector).SingleAsync(i => i.Id == integrationId, cancellationToken);
+        var integration = await _db.AttendanceIntegrations.AsNoTracking().SingleAsync(i => i.Id == integrationId, cancellationToken);
         var errors = ConnectionSettingsValidator.Validate(input);
         await ValidateNameAndTransportAsync(integration, input, connection.Id, connection.Transport, errors, cancellationToken);
         if (errors.Count > 0)
@@ -183,7 +186,7 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
     public async Task<ConnectionTestResult?> TestAsync(int integrationId, int connectionId, CancellationToken cancellationToken)
     {
         var connection = await _db.AttendanceConnections
-            .Include(c => c.Integration).ThenInclude(i => i!.Connector).ThenInclude(c => c!.Vendor)
+            .Include(c => c.Integration)
             .SingleOrDefaultAsync(c => c.Id == connectionId && c.IntegrationId == integrationId, cancellationToken);
         if (connection is null)
         {
@@ -238,12 +241,12 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
         if (Enum.TryParse<AttendanceTransport>(input.Transport, ignoreCase: true, out var transport) && Enum.IsDefined(transport) && transport != currentTransport)
         {
             var key = transport.ToString();
-            var definition = await _db.AttendanceTransportDefinitions.AsNoTracking().SingleOrDefaultAsync(t => t.TransportKey == key, cancellationToken);
-            var offered = transport == AttendanceTransport.FileUpload
-                || (definition is not null && await _db.AttendanceConnectorTransports.AnyAsync(t => t.ConnectorId == integration.ConnectorId && t.TransportId == definition.Id, cancellationToken));
+            var definition = (await _catalog.ListTransportsAsync(cancellationToken)).SingleOrDefault(t => t.TransportKey == key);
+            var connector = await _catalog.GetConnectorAsync(integration.ConnectorKey, cancellationToken);
+            var offered = transport == AttendanceTransport.FileUpload || (definition is not null && connector is not null && connector.Transports.Contains(key));
             if (!offered)
             {
-                errors[nameof(ConnectionInput.Transport)] = $"{integration.Connector!.DisplayName} can't receive attendance by {transport}.";
+                errors[nameof(ConnectionInput.Transport)] = $"{connector?.DisplayName ?? integration.ConnectorKey} can't receive attendance by {transport}.";
             }
             else if (definition is { IsActive: false })
             {
@@ -289,14 +292,14 @@ public sealed class AttendanceConnectionService : IAttendanceConnectionService
             return Fail($"No adapter reads {connection.Transport} connections yet, so this one can't be tested.");
         }
 
-        var connector = connection.Integration!.Connector!;
-        var adapter = connector.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) : null;
-        if (adapter is null)
+        var connector = await _catalog.GetConnectorAsync(connection.Integration!.ConnectorKey, cancellationToken);
+        var adapter = connector?.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) : null;
+        if (connector is null || adapter is null)
         {
-            return Fail($"No adapter is registered for connector '{connector.ConnectorKey}', so this connection can't be tested.");
+            return Fail($"No adapter is registered for connector '{connection.Integration.ConnectorKey}', so this connection can't be tested.");
         }
 
-        var config = new AttendanceIntegrationConfig(connection.IntegrationId, connector.Vendor!.VendorKey, connection.SecretRef)
+        var config = new AttendanceIntegrationConfig(connection.IntegrationId, connector.VendorKey, connection.SecretRef)
         {
             ConnectionId = connection.Id,
             Settings = ConnectionSettingsValidator.Parse(connection.Settings),

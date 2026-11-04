@@ -1,33 +1,73 @@
 using Microsoft.AspNetCore.Mvc;
 using robeem.Contracts.Attendance;
+using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
+using robeem.Web.Navigation;
+using robeem.Web.Tenancy;
 
 namespace robeem.Web.Controllers;
 
 /// <summary>
-/// The custom file formats: a layout an administrator defines (columns, delimiter, timestamp patterns,
-/// type labels) that an integration can read its manual uploads by. A sample file can be tried before saving.
+/// The payload formats: a layout (columns, delimiter, timestamp patterns, type labels) that an integration reads its files by. They
+/// belong to the prime tenant and are the same for every tenant. Any tenant's integration administrator lists and views them and
+/// downloads an example file; a platform administrator in the prime tenant defines and changes them, and can try a sample file on a
+/// format before saving (the actions marked <see cref="ChangesPlatformCatalogAttribute"/>).
 /// </summary>
 public sealed class PayloadFormatsController : Controller
 {
     private const int BlankCodeRows = 4;
 
     private readonly IPayloadFormatsApiClient _formats;
+    private readonly ICurrentActor? _actor;
+    private readonly ICurrentTenantInfo? _tenant;
 
-    public PayloadFormatsController(IPayloadFormatsApiClient formats)
+    public PayloadFormatsController(IPayloadFormatsApiClient formats, ICurrentActor? actor = null, ICurrentTenantInfo? tenant = null)
     {
         _formats = formats;
+        _actor = actor;
+        _tenant = tenant;
     }
+
+    // Only to decide what to show: the Api refuses a change from anyone else. Unknown (no actor or tenant info) shows it.
+    private bool CanManage => _tenant?.IsPrime != false && (_actor?.IsInRole(NavigationMenu.Platform) ?? true);
 
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
-        => View(new PayloadFormatsIndexViewModel { Formats = await _formats.ListAsync(cancellationToken) });
+        => View(new PayloadFormatsIndexViewModel { Formats = await _formats.ListAsync(cancellationToken), CanManage = CanManage });
+
+    /// <summary>A format as the tenant sees it: read-only, with example files to download.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Details(int id, CancellationToken cancellationToken)
+    {
+        if (await _formats.GetInputAsync(id, cancellationToken) is not { } input)
+        {
+            return NotFound();
+        }
+
+        return View(new PayloadFormatDetailsViewModel { Id = id, Format = input, CanManage = CanManage });
+    }
+
+    /// <summary>Sends an example file (CSV, JSON or XML) made from a saved format. Open to every tenant: it stores and reads nothing.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Download(int id, string kind, CancellationToken cancellationToken)
+    {
+        if (!new[] { "csv", "json", "xml" }.Contains((kind ?? string.Empty).Trim().ToLowerInvariant()))
+        {
+            return BadRequest("The kind of example must be csv, json or xml.");
+        }
+
+        return await _formats.SampleOfSavedAsync(id, kind!, cancellationToken) is { } sample
+            ? File(System.Text.Encoding.UTF8.GetBytes(sample.Content), sample.ContentType, sample.FileName)
+            : NotFound();
+    }
 
     [HttpGet]
+    [ChangesPlatformCatalog]
     public IActionResult Create() => View(WithBlankCodeRows(new PayloadFormatFormViewModel()));
 
     [HttpPost]
+    [ChangesPlatformCatalog]
     public async Task<IActionResult> Create(PayloadFormatFormViewModel model, CancellationToken cancellationToken)
     {
         if (ModelState.IsValid)
@@ -46,6 +86,7 @@ public sealed class PayloadFormatsController : Controller
     }
 
     [HttpGet]
+    [ChangesPlatformCatalog]
     public async Task<IActionResult> Edit(int id, CancellationToken cancellationToken)
     {
         if (await _formats.GetInputAsync(id, cancellationToken) is not { } input)
@@ -57,6 +98,7 @@ public sealed class PayloadFormatsController : Controller
     }
 
     [HttpPost]
+    [ChangesPlatformCatalog]
     public async Task<IActionResult> Edit(int id, PayloadFormatFormViewModel model, CancellationToken cancellationToken)
     {
         if (ModelState.IsValid)
@@ -86,6 +128,7 @@ public sealed class PayloadFormatsController : Controller
     /// an example, with default names for what is not filled in. Stores nothing.
     /// </summary>
     [HttpPost]
+    [ChangesPlatformCatalog]
     public async Task<IActionResult> Sample(PayloadFormatFormViewModel model, string kind, bool download, CancellationToken cancellationToken)
     {
         if (!new[] { "csv", "json", "xml" }.Contains((kind ?? string.Empty).Trim().ToLowerInvariant()))
@@ -101,6 +144,7 @@ public sealed class PayloadFormatsController : Controller
 
     /// <summary>Reads a sample file by the format as it stands in the form, saved or not, and shows the first rows. Stores nothing.</summary>
     [HttpPost]
+    [ChangesPlatformCatalog]
     public async Task<IActionResult> Preview(int? id, PayloadFormatFormViewModel model, IFormFile? sample, CancellationToken cancellationToken)
     {
         model.Id = id;

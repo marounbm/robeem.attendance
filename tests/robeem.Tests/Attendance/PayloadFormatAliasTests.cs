@@ -85,7 +85,7 @@ public sealed class PayloadFormatAliasTests : IDisposable
     public async Task TheColumnsToKeep_NeedAHeaderRow_AndNeverABiometricColumn()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendancePayloadFormatService(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory());
+        var service = _database.PayloadFormatService(db);
 
         var noHeader = Input();
         noHeader.HasHeaderRow = false;
@@ -103,7 +103,7 @@ public sealed class PayloadFormatAliasTests : IDisposable
     public async Task AFormatWithAlternativeHeadersAndColumnsToKeep_IsSavedAndReadBack_AndAnyEventTypeCanBeMapped()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendancePayloadFormatService(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory());
+        var service = _database.PayloadFormatService(db);
         var input = Input();
         input.EmployeeColumn = " No. | ID Number ";
         input.PayloadColumns = " Name | No. ";

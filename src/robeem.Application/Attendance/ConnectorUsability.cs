@@ -15,4 +15,11 @@ public static class ConnectorUsability
         && vendorIsActive
         && (connector.EncryptionKind == PayloadEncryptionKind.None || (decryptors?.CanRead(connector.EncryptionKind) ?? false))
         && (connector.DefaultPayloadFormatId is not null || (connector.AdapterKey is { Length: > 0 } adapterKey && adapters.IsRegistered(adapterKey)));
+
+    /// <summary>The same rule for a connector seen as a <see cref="Catalog.ConnectorInfo"/>-shaped set of facts.</summary>
+    public static bool IsUsable(bool connectorIsActive, bool vendorIsActive, PayloadEncryptionKind encryptionKind, bool hasDefaultFormat, string? adapterKey, IAttendanceAdapterCatalog adapters, IPayloadDecryptorCatalog? decryptors = null) =>
+        connectorIsActive
+        && vendorIsActive
+        && (encryptionKind == PayloadEncryptionKind.None || (decryptors?.CanRead(encryptionKind) ?? false))
+        && (hasDefaultFormat || (adapterKey is { Length: > 0 } key && adapters.IsRegistered(key)));
 }

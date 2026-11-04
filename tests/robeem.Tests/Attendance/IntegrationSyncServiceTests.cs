@@ -439,12 +439,12 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
     {
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            var provider = db.AttendanceConnectorDefinitions.Single();
+            var provider = db.AttendanceIntegrations.Single(i => i.Id == _integrationId).ConnectorKey;
             db.AttendanceIntegrations.AddRange(
-                new AttendanceIntegration { Connector = provider, DisplayName = "No cron" }.WithConnection(AttendanceTransport.RestApi),
-                new AttendanceIntegration { Connector = provider, DisplayName = "Off", Status = AttendanceIntegrationStatus.Paused }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
+                new AttendanceIntegration { ConnectorKey = provider, DisplayName = "No cron" }.WithConnection(AttendanceTransport.RestApi),
+                new AttendanceIntegration { ConnectorKey = provider, DisplayName = "Off", Status = AttendanceIntegrationStatus.Paused }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
             db.AttendanceIntegrations.Single(i => i.Id == _integrationId).LastSuccessfulSyncAt = Monday;
-            db.AttendanceIntegrations.Add(new AttendanceIntegration { Connector = provider, DisplayName = "Fresh" }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
+            db.AttendanceIntegrations.Add(new AttendanceIntegration { ConnectorKey = provider, DisplayName = "Fresh" }.WithConnection(AttendanceTransport.RestApi, schedule: "* * * * *"));
             db.SaveChanges();
         }
 
@@ -499,6 +499,7 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
         {
             var normalization = new NormalizationService(
                 db,
+                Database.CreateCatalogReader(),
                 new NormalizedTransactionRecorder(db),
                 new AttendancePolicyResolver(db),
                 _interpreters,
@@ -544,10 +545,11 @@ public sealed class IntegrationSyncServiceTests : AttendanceEngineTestBase
     }
 
     private IntegrationHealthService CreateHealthService(RobeemDbContext db) =>
-        new(db, _resilience, Options.Create(_options), CreateAudit(db), Clock);
+        new(db, Database.CreateCatalogReader(), _resilience, Options.Create(_options), CreateAudit(db), Clock);
 
     private IntegrationSyncService CreateService(RobeemDbContext db) => new(
         db,
+        Database.CreateCatalogReader(new StubAdapterCatalog("generic-csv")),
         new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())),
         _adapters,
         _resilience,

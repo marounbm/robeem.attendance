@@ -31,7 +31,7 @@ public sealed class TransactionsApiClient : ITransactionsApiClient
         return await ApiResponses.ReadAsync<PagedResult<RawTransactionListItem>>(response, cancellationToken);
     }
 
-    public async Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = new Dictionary<string, string?> { ["page"] = Number(page), ["pageSize"] = Number(pageSize) };
         Add(query, "integrationId", integrationId);
@@ -40,6 +40,7 @@ public sealed class TransactionsApiClient : ITransactionsApiClient
         Add(query, "eventType", eventType);
         Add(query, "duplicate", duplicate);
         Add(query, "flag", flag);
+        Add(query, "status", status);
         Add(query, "from", from);
         Add(query, "to", to);
 

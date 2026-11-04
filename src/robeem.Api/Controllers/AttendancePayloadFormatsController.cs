@@ -10,11 +10,13 @@ using robeem.Contracts.Common;
 namespace robeem.Api.Controllers;
 
 /// <summary>
-/// The custom file formats an integration can read its manual uploads by: columns, timestamp patterns and
-/// type labels an administrator defines. A format is made inactive, never deleted (integrations point at it).
+/// The payload formats an integration reads its files by: columns, timestamp patterns and type labels, defined in the prime tenant
+/// for every tenant. Any tenant's integration administrator reads them and downloads example files; only a platform administrator
+/// acting in the prime tenant creates or changes one. A format is made inactive, never deleted (integrations refer to it by name).
 /// </summary>
 [ApiController]
-[Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
+[Authorize(Roles = AttendanceRoles.CatalogReaders)]
+[CatalogReadOnlyFilter]
 [Route("api/attendance/payload-formats")]
 public sealed class AttendancePayloadFormatsController : ControllerBase
 {
@@ -40,7 +42,24 @@ public sealed class AttendancePayloadFormatsController : ControllerBase
     public async Task<ActionResult<PayloadFormatInput>> GetInput(int id, CancellationToken cancellationToken) =>
         await _formats.GetInputAsync(id, cancellationToken) is { } input ? input : NotFound();
 
+    /// <summary>
+    /// An example file made from a saved format, in the shape of <c>csv</c>, <c>json</c> or <c>xml</c>: its own column names, patterns,
+    /// delimiter, record path and labels, with made-up data. For any tenant to download; stores nothing and reads no data.
+    /// </summary>
+    [HttpGet("{id:int}/sample")]
+    public async Task<ActionResult<PayloadFormatSample>> SampleOfSaved(int id, string kind, CancellationToken cancellationToken)
+    {
+        if (!PayloadFormatSampleBuilder.IsKind(kind))
+        {
+            ModelState.AddModelError(nameof(kind), $"The kind must be one of: {string.Join(", ", PayloadFormatSampleBuilder.Kinds)}.");
+            return ValidationProblem(ModelState);
+        }
+
+        return await _formats.GetInputAsync(id, cancellationToken) is { } input ? PayloadFormatSampleBuilder.Build(input, kind) : NotFound();
+    }
+
     [HttpPost]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<ActionResult<CreatedResponse>> Create(PayloadFormatInput input, CancellationToken cancellationToken)
     {
         var result = await _formats.CreateAsync(input, cancellationToken);
@@ -48,6 +67,7 @@ public sealed class AttendancePayloadFormatsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<IActionResult> Update(int id, PayloadFormatInput input, CancellationToken cancellationToken)
     {
         var result = await _formats.UpdateAsync(id, input, cancellationToken);
@@ -59,6 +79,7 @@ public sealed class AttendancePayloadFormatsController : ControllerBase
     /// delimiter, record path and labels, in the shape of <c>csv</c>, <c>json</c> or <c>xml</c>. Stores nothing and reads no data.
     /// </summary>
     [HttpPost("sample")]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public ActionResult<PayloadFormatSample> Sample(PayloadFormatInput input, string kind)
     {
         if (!PayloadFormatSampleBuilder.IsKind(kind))
@@ -75,6 +96,7 @@ public sealed class AttendancePayloadFormatsController : ControllerBase
     /// and returns the first rows as they would be understood. Nothing is stored.
     /// </summary>
     [HttpPost("preview")]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     [RequestSizeLimit(MaxSampleBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxSampleBytes)]
     public async Task<ActionResult<PayloadFormatPreview>> Preview(IFormFile file, [FromForm] string format, CancellationToken cancellationToken)

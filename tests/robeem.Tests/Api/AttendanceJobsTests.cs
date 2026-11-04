@@ -272,6 +272,8 @@ public sealed class AttendanceJobsTests
 
         public TenantDefinition? DefaultTenant => null;
 
+        public TenantDefinition PrimeTenant => _tenants.First();
+
         public FakeTenants Add(
             string id,
             int[]? pendingBatches = null,

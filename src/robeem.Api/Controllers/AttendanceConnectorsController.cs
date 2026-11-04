@@ -14,7 +14,8 @@ namespace robeem.Api.Controllers;
 /// integration, see <c>api/attendance/integrations/connectors</c>.
 /// </summary>
 [ApiController]
-[Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
+[Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
+[CatalogReadOnlyFilter]
 [Route("api/attendance/connectors")]
 public sealed class AttendanceConnectorsController : ControllerBase
 {

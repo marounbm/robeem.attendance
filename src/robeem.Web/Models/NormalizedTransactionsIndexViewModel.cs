@@ -14,6 +14,9 @@ public sealed class NormalizedTransactionsIndexViewModel
 
     public static IReadOnlyList<string> Flags { get; } = ["None", "FlaggedInvalidSequence", "FlaggedUnrecognizedEmployee", "FlaggedUnrecognizedDevice"];
 
+    /// <summary>Gets the processing statuses a punch can have; Excluded is shown as "Replaced" (a re-normalization wrote a new punch in its place).</summary>
+    public static IReadOnlyList<string> Statuses { get; } = ["Pending", "Processed", "Excluded"];
+
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];
 
@@ -33,6 +36,8 @@ public sealed class NormalizedTransactionsIndexViewModel
     public string? Duplicate { get; init; }
 
     public string? Flag { get; init; }
+
+    public string? Status { get; init; }
 
     public DateTime? From { get; init; }
 
@@ -86,6 +91,11 @@ public sealed class NormalizedTransactionsIndexViewModel
         if (!string.IsNullOrEmpty(Flag))
         {
             values["flag"] = Flag;
+        }
+
+        if (!string.IsNullOrEmpty(Status))
+        {
+            values["status"] = Status;
         }
 
         if (From is { } from)

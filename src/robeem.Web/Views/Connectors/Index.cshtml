@@ -34,7 +34,6 @@
                         <th scope="col">Default payload format</th>
                         <th scope="col">Payload kinds</th>
                         <th scope="col">Code adapter</th>
-                        <th scope="col" class="text-end">Integrations</th>
                         <th scope="col">Status</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
@@ -52,7 +51,6 @@
                             <td>@(item.DefaultPayloadFormatName ?? "—")</td>
                             <td>@(item.PayloadKinds.Count > 0 ? string.Join(", ", item.PayloadKinds) : "—")</td>
                             <td>@(item.HasAdapter ? item.AdapterKey : "No")</td>
-                            <td class="text-end">@item.IntegrationCount</td>
                             <td>
                                 @if (item.IsUsable)
                                 {

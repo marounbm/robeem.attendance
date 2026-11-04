@@ -29,7 +29,7 @@ public sealed class IntegrationHealthKpiTests : AttendanceEngineTestBase
         var device = SeedDeliveries();
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var report = await new IntegrationHealthService(db, _resilience, Options.Create(new AttendanceSyncOptions()), CreateAudit(db), Clock)
+        var report = await new IntegrationHealthService(db, Database.CreateCatalogReader(), _resilience, Options.Create(new AttendanceSyncOptions()), CreateAudit(db), Clock)
             .GetIntegrationHealthAsync(_integrationId, CancellationToken.None);
 
         Assert.NotNull(report);
@@ -60,7 +60,7 @@ public sealed class IntegrationHealthKpiTests : AttendanceEngineTestBase
     public async Task WithNothingInTheWindow_TheRatesAreNull_NotZero()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var report = await new IntegrationHealthService(db, _resilience, Options.Create(new AttendanceSyncOptions()), CreateAudit(db), Clock)
+        var report = await new IntegrationHealthService(db, Database.CreateCatalogReader(), _resilience, Options.Create(new AttendanceSyncOptions()), CreateAudit(db), Clock)
             .GetIntegrationHealthAsync(_integrationId, CancellationToken.None);
 
         Assert.NotNull(report);

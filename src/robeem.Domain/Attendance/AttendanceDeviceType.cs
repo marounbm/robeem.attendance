@@ -11,14 +11,13 @@ namespace robeem.DataModel
     /// particular type. Never deleted, only deactivated.
     /// </summary>
     [Serializable]
-    [Table(nameof(AttendanceDeviceType), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceDeviceType : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendanceDeviceType), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendanceDeviceType : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
-        /// <summary>Gets or sets the type's name, e.g. <c>Biometric</c>. Unique per tenant, ignoring case.</summary>
+        /// <summary>
+        /// Gets or sets the type's name, e.g. <c>Biometric</c>. Unique, ignoring case. It is the key a device refers to the type
+        /// by (<see cref="AttendanceDevice.DeviceTypeName"/>), so it is never changed once saved; deactivate a type instead.
+        /// </summary>
         [Required]
         [MaxLength(100)]
         public string Name { get; set; } = string.Empty;

@@ -5,9 +5,11 @@ namespace robeem.Contracts.Attendance;
 /// <summary>What an integration administrator sets when creating or editing an integration.</summary>
 public sealed class IntegrationInput
 {
+    /// <summary>Gets or sets the key of the catalog connector the integration is made with (<c>ConnectorOption.Key</c>).</summary>
     [Required]
+    [StringLength(100)]
     [Display(Name = "Connector")]
-    public int ConnectorId { get; set; }
+    public string ConnectorKey { get; set; } = string.Empty;
 
     [Required]
     [StringLength(255)]
@@ -46,10 +48,6 @@ public sealed class IntegrationInput
 
     /// <summary>Gets or sets the default connection's non-secret settings, by the keys <see cref="TransportDescriptorItem.Fields"/> declares for the transport.</summary>
     public Dictionary<string, string> Settings { get; set; } = [];
-
-    /// <summary>Gets or sets the custom file format uploads are read by; null for the connector's default layout. Only for FileUpload.</summary>
-    [Display(Name = "File format")]
-    public int? PayloadFormatId { get; set; }
 
     /// <summary>Gets or sets the device (one of this integration's) every punch of an uploaded file is attributed to; null to look up the file's own device ids. Only for FileUpload, and only once the device exists.</summary>
     [Display(Name = "Device for uploaded files")]

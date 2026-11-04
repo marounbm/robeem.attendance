@@ -38,6 +38,4 @@ public sealed class ConnectorListItem
 
     /// <summary>Gets a value indicating whether an integration can use the connector: it and its vendor are active, and it has a default payload format or an adapter.</summary>
     public bool IsUsable { get; init; }
-
-    public int IntegrationCount { get; init; }
 }

@@ -45,6 +45,7 @@ public sealed class TenantsController : ControllerBase
             Id = tenant.Id,
             Name = tenant.Name,
             CanSelectTenant = _options.AllowUnauthenticatedTenantSelection,
+            IsPrime = string.Equals(tenant.Id, _registry.PrimeTenant.Id, StringComparison.OrdinalIgnoreCase),
         };
     }
 }

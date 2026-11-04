@@ -231,6 +231,80 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task RegisteringTheUnknownDevice_QueuesItsFailedPunchesByItself_AndTheyNormalize()
+    {
+        Prepare();
+        AddDeviceType();
+        var waiting = AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        var broken = AddFailedRaw("Unparseable timestamp 'x'.");
+        await NormalizeAsync();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.StartsWith(NormalizationFailures.NoTimeZonePrefix, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingError);
+        }
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var added = await CreateIntegrationService(db).AddDeviceAsync(
+                db.AttendanceIntegrations.Single().Id,
+                new DeviceInput { ExternalDeviceId = "99", Name = "Late device", DeviceTypeName = "Biometric", TimeZoneId = "Asia/Beirut" },
+                CancellationToken.None);
+            Assert.True(added.Succeeded, string.Join(" ", added.Errors.Values));
+        }
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(RawTransactionProcessingStatus.Pending, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingStatus);
+            Assert.Equal(RawTransactionProcessingStatus.Failed, db.RawAttendanceTransactions.Single(r => r.Id == broken).ProcessingStatus);
+            Assert.Contains(db.AttendanceAuditLogs, a => a.Details!.Contains("1 punch(es) that failed for want of a time zone") && a.Details.Contains("device '99' was registered"));
+        }
+
+        await NormalizeAsync();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(RawTransactionProcessingStatus.Normalized, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingStatus);
+            Assert.Equal("Asia/Beirut", db.NormalizedAttendanceTransactions.Single().TimeZoneId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangingADevicesId_QueuesItsFailedPunches_ButAddingAnUnrelatedDeviceWithNoFailuresAuditsNothing()
+    {
+        Prepare();
+        AddDeviceType();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            await CreateIntegrationService(db).AddDeviceAsync(
+                db.AttendanceIntegrations.Single().Id,
+                new DeviceInput { ExternalDeviceId = "dev-02", Name = "Jbeil office", DeviceTypeName = "Biometric", TimeZoneId = "Asia/Beirut" },
+                CancellationToken.None);
+        }
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.DoesNotContain(db.AttendanceAuditLogs, a => a.Details!.Contains("failed for want of a time zone"));
+        }
+
+        var waiting = AddUnknownDeviceRaw("2026-10-05 08:00:00");
+        await NormalizeAsync();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var device = db.AttendanceDevices.Single(d => d.ExternalDeviceId == "dev-02");
+            var changed = await CreateIntegrationService(db).UpdateDeviceAsync(
+                device.IntegrationId,
+                device.Id,
+                new DeviceInput { ExternalDeviceId = "99", Name = device.Name, DeviceTypeName = "Biometric", TimeZoneId = device.TimeZoneId },
+                CancellationToken.None);
+            Assert.True(changed.Succeeded, string.Join(" ", changed.Errors.Values));
+        }
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(RawTransactionProcessingStatus.Pending, db.RawAttendanceTransactions.Single(r => r.Id == waiting).ProcessingStatus);
+        }
+    }
+
+    [Fact]
     public async Task TheDeviceForUploads_TakesEveryPunch_UnknownOrRegisteredDeviceAlike_WithoutAFlag()
     {
         UseDeviceZone(NewYork);
@@ -353,7 +427,14 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
         new(new DateTime(year, month, day, hour, minute, 0), null);
 
     private AttendanceIntegrationService CreateIntegrationService(RobeemDbContext db) =>
-        new(db, new NoSync(), CreateAudit(db), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
+        new(db, Database.CreateCatalogReader(), new NoSync(), CreateAudit(db), new ServiceCollection().BuildServiceProvider());
+
+    private void AddDeviceType()
+    {
+        using var catalog = Database.CreateCatalog();
+        catalog.AttendanceDeviceTypes.Add(new AttendanceDeviceType { Name = "Biometric" });
+        catalog.SaveChanges();
+    }
 
     private int AddDeviceForUploads(string timeZoneId)
     {
@@ -482,7 +563,7 @@ public sealed class TimeZoneEdgeTests : AttendanceEngineTestBase
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var batchId = db.AttendanceProcessingBatches.Single().Id;
-        var service = new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _interpreters, NullLogger<NormalizationService>.Instance);
+        var service = new NormalizationService(db, Database.CreateCatalogReader(), new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _interpreters, NullLogger<NormalizationService>.Instance);
         return await service.NormalizeBatchAsync(batchId, CancellationToken.None);
     }
 

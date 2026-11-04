@@ -405,6 +405,11 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         controllers.Remove(typeof(AttendanceWebhookController));
         Assert.NotNull(typeof(AttendanceWebhookController).GetCustomAttribute<AllowAnonymousAttribute>());
 
+        // The catalog is read by other tenants' Apis, services with no user: it is guarded by the catalog service key instead (CatalogRemoteReadTests).
+        Assert.Contains(typeof(CatalogController), controllers);
+        controllers.Remove(typeof(CatalogController));
+        Assert.NotNull(typeof(CatalogController).GetCustomAttribute<CatalogServiceKeyAttribute>());
+
         // An action is covered when its class or the action itself carries [Authorize(Roles = ...)].
         var unprotected = controllers
             .SelectMany(c => c.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)

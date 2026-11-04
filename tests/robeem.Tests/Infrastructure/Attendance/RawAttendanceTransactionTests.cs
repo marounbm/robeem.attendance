@@ -93,7 +93,7 @@ public sealed class RawAttendanceTransactionTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Connector = AttendanceTestData.Connector("generic-csv", "Generic CSV"),
+            ConnectorKey = "generic-csv",
             DisplayName = "HQ",
         };
         var raw = new RawAttendanceTransaction

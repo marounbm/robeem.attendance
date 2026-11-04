@@ -27,10 +27,15 @@ namespace robeem.DataModel
 
         public AttendanceConnection? Connection { get; set; }
 
-        /// <summary>Gets or sets the payload format the run read its file by; null when it used none (an adapter) or the run predates the record.</summary>
-        public int? PayloadFormatId { get; set; }
+        /// <summary>
+        /// Gets or sets the name of the payload format the run read its file by; null when it used none (an adapter) or the run
+        /// predates the record. With <see cref="PayloadFormatVersion"/> it names the exact version, in the prime tenant's catalog.
+        /// </summary>
+        [MaxLength(255)]
+        public string? PayloadFormatName { get; set; }
 
-        public AttendancePayloadFormat? PayloadFormat { get; set; }
+        /// <summary>Gets or sets the version of <see cref="PayloadFormatName"/> the run read its file by.</summary>
+        public int? PayloadFormatVersion { get; set; }
 
         public AttendanceBatchType BatchType { get; set; }
 

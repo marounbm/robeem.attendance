@@ -9,4 +9,10 @@ public sealed record NavItem(string Title, string Controller, string Action, str
     /// <see cref="Actors.RequiresEmployeeAttribute"/> with <c>HrExempt</c>; a test keeps the two in step.
     /// </summary>
     public bool NeedsEmployee { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the screen manages platform data, which only the prime tenant owns (the attendance catalog):
+    /// it is not offered in any other tenant, and the Api refuses what it does there.
+    /// </summary>
+    public bool PrimeTenantOnly { get; init; }
 }

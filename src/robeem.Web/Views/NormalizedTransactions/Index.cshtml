@@ -61,6 +61,16 @@
         </select>
     </div>
     <div class="col-auto">
+        <label class="form-label small mb-0" for="status">Status</label>
+        <select id="status" name="status" class="form-select form-select-sm">
+            <option value="">Any</option>
+            @foreach (var status in NormalizedTransactionsIndexViewModel.Statuses)
+            {
+                <option value="@status" selected="@(status == Model.Status)">@(status == "Excluded" ? "Replaced" : DisplayFormats.Words(status))</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
         <label class="form-label small mb-0" for="from">From</label>
         <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
     </div>

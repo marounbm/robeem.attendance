@@ -5,16 +5,20 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
 
 namespace robeem.Tests.Api;
 
-/// <summary>The vendor, device type and transport endpoints: integration administrators only, and how a refusal is answered.</summary>
+/// <summary>
+/// The vendor, device type and transport endpoints of the catalog: platform administrators only (the catalog belongs to the prime tenant),
+/// the pick-lists excepted, and how a refusal is answered.
+/// </summary>
 public sealed class CatalogEndpointTests : IAsyncDisposable
 {
-    private static readonly string Admin = TestApi.As(1, AttendanceRoles.IntegrationAdministrator);
+    private static readonly string Admin = TestApi.As(1, AttendanceRoles.PlatformAdministrator);
 
     private readonly FakeVendors _vendors = new();
     private readonly FakeDeviceTypes _types = new();
@@ -38,7 +42,6 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
         ["POST", "api/attendance/vendors", """{"vendorKey":"acme","displayName":"Acme"}"""],
         ["PUT", "api/attendance/vendors/1", """{"vendorKey":"acme","displayName":"Acme"}"""],
         ["GET", "api/attendance/device-types", null!],
-        ["GET", "api/attendance/device-types/options", null!],
         ["GET", "api/attendance/device-types/1/input", null!],
         ["POST", "api/attendance/device-types", """{"name":"Palm reader"}"""],
         ["PUT", "api/attendance/device-types/1", """{"name":"Palm reader"}"""],
@@ -51,9 +54,10 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
 
     [Theory]
     [MemberData(nameof(Endpoints))]
-    public async Task EveryEndpoint_IsForIntegrationAdministratorsOnly(string method, string url, string? body)
+    public async Task EveryEndpoint_IsForPlatformAdministratorsOnly(string method, string url, string? body)
     {
-        foreach (var role in new[] { AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator, AttendanceRoles.PayrollAdministrator })
+        // Not even an integration administrator of the tenant: the catalog is maintained in the prime tenant.
+        foreach (var role in new[] { AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator, AttendanceRoles.PayrollAdministrator, AttendanceRoles.IntegrationAdministrator })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await Send(method, url, TestApi.As(7, role), body)).StatusCode);
         }
@@ -63,6 +67,30 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
 
         Assert.NotEqual(HttpStatusCode.Forbidden, (await Send(method, url, Admin, body)).StatusCode);
         Assert.NotEmpty(CallsOfAll());
+    }
+
+    [Fact]
+    public async Task TheDeviceTypePickList_IsReadByEveryTenantsIntegrationAdministrators_AndByNoOneElse()
+    {
+        foreach (var role in new[] { AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator, AttendanceRoles.PayrollAdministrator })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await Send("GET", "api/attendance/device-types/options", TestApi.As(7, role), null)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await Send("GET", "api/attendance/device-types/options", TestApi.As(7, AttendanceRoles.IntegrationAdministrator), null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Send("GET", "api/attendance/device-types/options", Admin, null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task ASaveFromATenantThatIsNotThePrimeOne_IsAnswered403WithTheCatalogReadOnlyCode()
+    {
+        _vendors.Throw = new CatalogReadOnlyException();
+
+        var response = await Send("POST", "api/attendance/vendors", Admin, """{"vendorKey":"acme","displayName":"Acme"}""");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.Equal("catalog_read_only", problem!.Extensions["code"]!.ToString());
     }
 
     [Fact]
@@ -135,6 +163,8 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
 
         public bool Exists { get; set; } = true;
 
+        public Exception? Throw { get; set; }
+
         public Task<IReadOnlyList<VendorListItem>> ListAsync(CancellationToken cancellationToken)
         {
             Calls.Add("list");
@@ -150,7 +180,7 @@ public sealed class CatalogEndpointTests : IAsyncDisposable
         public Task<SaveResult> CreateAsync(VendorInput input, CancellationToken cancellationToken)
         {
             Calls.Add("create");
-            return Task.FromResult(Result);
+            return Throw is null ? Task.FromResult(Result) : Task.FromException<SaveResult>(Throw);
         }
 
         public Task<SaveResult> UpdateAsync(int id, VendorInput input, CancellationToken cancellationToken)

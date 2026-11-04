@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -19,14 +20,20 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
     // A column that can only hold a biometric template is never read, whatever the file calls it (CLAUDE.md §1.10).
     private static readonly string[] BiometricWords = ["template", "biometric", "fingerprint", "faceprint"];
 
-    private readonly IRobeemDbContext _db;
+    private readonly ICatalogDbContext _db;
+    private readonly ICatalogReader _catalog;
+    private readonly IRobeemDbContext _tenantDb;
+    private readonly ICatalogWriteAccess _access;
     private readonly IAttendanceAuditTrail _audit;
     private readonly ICustomFormatFileReader _reader;
     private readonly ICustomFormatInterpreterFactory _interpreters;
 
-    public AttendancePayloadFormatService(IRobeemDbContext db, IAttendanceAuditTrail audit, ICustomFormatFileReader reader, ICustomFormatInterpreterFactory interpreters)
+    public AttendancePayloadFormatService(ICatalogDbContext db, ICatalogReader catalog, IRobeemDbContext tenantDb, ICatalogWriteAccess access, IAttendanceAuditTrail audit, ICustomFormatFileReader reader, ICustomFormatInterpreterFactory interpreters)
     {
         _db = db;
+        _catalog = catalog;
+        _tenantDb = tenantDb;
+        _access = access;
         _audit = audit;
         _reader = reader;
         _interpreters = interpreters;
@@ -60,23 +67,9 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
 
     public async Task<IReadOnlyList<PayloadFormatListItem>> ListAsync(CancellationToken cancellationToken)
     {
-        // Only the latest version of each format is listed; the older ones stay for the punches they read.
-        var rows = await _db.AttendancePayloadFormats.AsNoTracking()
-            .Where(f => !_db.AttendancePayloadFormats.Any(newer => newer.SupersedesId == f.Id))
-            .OrderBy(f => f.Name)
-            .Select(f => new
-            {
-                f.Id,
-                f.Version,
-                f.Name,
-                f.Description,
-                f.PayloadKind,
-                f.Delimiter,
-                f.IsActive,
-                EventCodeCount = f.EventCodes.Count,
-                IntegrationCount = _db.AttendanceIntegrations.Count(i => i.PayloadFormatId == f.Id),
-            })
-            .ToListAsync(cancellationToken);
+        // Read through the catalog reader, which asks the prime Api in any tenant but the prime one. Only the latest version of
+        // each format is listed; the older ones stay for the punches they read.
+        var rows = await _catalog.ListLatestFormatsAsync(cancellationToken);
         return rows.Select(f => new PayloadFormatListItem
         {
             Id = f.Id,
@@ -86,21 +79,19 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
             PayloadKind = f.PayloadKind.ToString(),
             Delimiter = PayloadFormatLayout.DelimiterName(f.Delimiter),
             IsActive = f.IsActive,
-            EventCodeCount = f.EventCodeCount,
-            IntegrationCount = f.IntegrationCount,
+            EventCodeCount = f.EventCodes.Count,
         }).ToList();
     }
 
     public async Task<IReadOnlyList<PayloadFormatOption>> ListOptionsAsync(CancellationToken cancellationToken) =>
-        await _db.AttendancePayloadFormats.AsNoTracking()
-            .Where(f => f.IsActive && !_db.AttendancePayloadFormats.Any(newer => newer.SupersedesId == f.Id))
-            .OrderBy(f => f.Name)
+        (await _catalog.ListLatestFormatsAsync(cancellationToken))
+            .Where(f => f.IsActive)
             .Select(f => new PayloadFormatOption { Id = f.Id, Name = f.Name })
-            .ToListAsync(cancellationToken);
+            .ToList();
 
     public async Task<PayloadFormatInput?> GetInputAsync(int id, CancellationToken cancellationToken)
     {
-        var format = await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).SingleOrDefaultAsync(f => f.Id == id, cancellationToken);
+        var format = await _catalog.GetFormatByIdAsync(id, cancellationToken);
         return format is null
             ? null
             : new PayloadFormatInput
@@ -132,6 +123,7 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
 
     public async Task<SaveResult> CreateAsync(PayloadFormatInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var errors = Validate(input);
         await CheckNameAsync(input, null, errors, cancellationToken);
         if (errors.Count > 0)
@@ -150,12 +142,13 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
         await _db.SaveChangesAsync(cancellationToken);
 
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendancePayloadFormat), format.Id, $"File format '{format.Name}' created: {Summary(format)}.");
-        await _db.SaveChangesAsync(cancellationToken);
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(format.Id);
     }
 
     public async Task<SaveResult> UpdateAsync(int id, PayloadFormatInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var format = await _db.AttendancePayloadFormats.Include(f => f.EventCodes).SingleOrDefaultAsync(f => f.Id == id, cancellationToken);
         if (format is null)
         {
@@ -176,9 +169,9 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
 
         var before = Summary(format);
 
-        // A change to how a file is read, made after punches were read by this format, is a new version: a punch that is
-        // normalized again later is read the way it was first read, not the way the format reads now. Anything else (a name,
-        // a description, switching it off) and every change before the first use is made in place.
+        // A change to how a file is read is a new version: a punch that is normalized again later is read the way it was first
+        // read, not the way the format reads now. Which tenants' batches were read by this format is not visible from the
+        // catalog, so every such change is a new version. Anything else (a description, switching it off) is made in place.
         var candidate = new AttendancePayloadFormat();
         Apply(input, candidate);
         foreach (var code in CleanCodes(input))
@@ -186,8 +179,7 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
             candidate.EventCodes.Add(code);
         }
 
-        if (ReadingSignature(format) != ReadingSignature(candidate)
-            && await _db.AttendanceProcessingBatches.AnyAsync(b => b.PayloadFormatId == id, cancellationToken))
+        if (ReadingSignature(format) != ReadingSignature(candidate))
         {
             return await CreateVersionAsync(format, input, before, cancellationToken);
         }
@@ -214,8 +206,9 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
             format.EventCodes.Add(added);
         }
 
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendancePayloadFormat), format.Id, $"File format '{format.Name}' changed. Before: {before}. After: {Summary(format)}.");
         await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendancePayloadFormat), format.Id, $"File format '{format.Name}' changed. Before: {before}. After: {Summary(format)}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(format.Id);
     }
 
@@ -582,8 +575,9 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
     }
 
     /// <summary>
-    /// Writes the changed format as the next version, leaving the old row exactly as the punches were read by it, and moves what
-    /// pointed at the old one (integrations, connectors) to the new one.
+    /// Writes the changed format as the next version, leaving the old row exactly as the punches were read by it, and moves the
+    /// connectors that pointed at the old one to the new one. Integrations refer to a format by name, so they read by the new
+    /// version without being touched.
     /// </summary>
     private async Task<SaveResult> CreateVersionAsync(AttendancePayloadFormat old, PayloadFormatInput input, string before, CancellationToken cancellationToken)
     {
@@ -595,11 +589,6 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
         }
 
         _db.AttendancePayloadFormats.Add(next);
-        foreach (var integration in await _db.AttendanceIntegrations.Where(i => i.PayloadFormatId == old.Id).ToListAsync(cancellationToken))
-        {
-            integration.PayloadFormat = next;
-        }
-
         foreach (var connector in await _db.AttendanceConnectorDefinitions.Where(c => c.DefaultPayloadFormatId == old.Id).ToListAsync(cancellationToken))
         {
             connector.DefaultPayloadFormat = next;
@@ -607,25 +596,32 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendancePayloadFormat), next.Id, $"File format '{next.Name}' version {next.Version} replaces version {old.Version} (id {old.Id}), which punches were read by. Before: {before}. After: {Summary(next)}.");
-        await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendancePayloadFormat), next.Id, $"File format '{next.Name}' version {next.Version} replaces version {old.Version} (id {old.Id}). Before: {before}. After: {Summary(next)}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(next.Id);
     }
 
     private async Task CheckNameAsync(PayloadFormatInput input, int? existingId, Dictionary<string, string> errors, CancellationToken cancellationToken)
     {
         var name = Clean(input.Name);
-
-        // The format's own earlier versions carry its name too: they are the same format, not another one.
-        var lineage = new List<int>();
-        for (var at = existingId; at is not null;)
+        if (name.Length == 0 || errors.ContainsKey(nameof(PayloadFormatInput.Name)))
         {
-            lineage.Add(at.Value);
-            at = await _db.AttendancePayloadFormats.AsNoTracking().Where(f => f.Id == at).Select(f => f.SupersedesId).SingleOrDefaultAsync(cancellationToken);
+            return;
         }
 
-        if (name.Length > 0 && !errors.ContainsKey(nameof(PayloadFormatInput.Name))
-            && await _db.AttendancePayloadFormats.AnyAsync(f => f.Name.ToLower() == name.ToLower() && !lineage.Contains(f.Id), cancellationToken))
+        if (existingId is { } id)
+        {
+            // Integrations in every tenant refer to the format by this name, so it is the format's key and stays.
+            var current = await _db.AttendancePayloadFormats.AsNoTracking().Where(f => f.Id == id).Select(f => f.Name).SingleOrDefaultAsync(cancellationToken);
+            if (current is not null && name != current)
+            {
+                errors[nameof(PayloadFormatInput.Name)] = "The name can't be changed: integrations refer to the format by it. Make a new format with the new name instead.";
+            }
+
+            return;
+        }
+
+        if (await _db.AttendancePayloadFormats.AnyAsync(f => f.Name.ToLower() == name.ToLower(), cancellationToken))
         {
             errors[nameof(PayloadFormatInput.Name)] = "Another file format already has this name.";
         }

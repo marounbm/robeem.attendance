@@ -10,6 +10,9 @@ namespace robeem.System.Contract
         {
             HR,
             Attendance,
+
+            /// <summary>Platform data owned by the prime tenant and read by every tenant (the attendance catalog). Not tenant-scoped.</summary>
+            Catalog,
         }
     }
 }

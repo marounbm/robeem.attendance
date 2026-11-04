@@ -11,14 +11,10 @@ namespace robeem.DataModel
     /// through an <see cref="AttendanceIntegration"/> made with one of them.
     /// </summary>
     [Serializable]
-    [Table(nameof(AttendanceVendor), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceVendor : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendanceVendor), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendanceVendor : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
-        /// <summary>Gets or sets the stable key of the vendor, e.g. <c>suprema-biostar</c>. Unique per tenant and never changed: raw punches store it as their source system.</summary>
+        /// <summary>Gets or sets the stable key of the vendor, e.g. <c>suprema-biostar</c>. Unique and never changed: raw punches store it as their source system.</summary>
         [Required]
         [MaxLength(100)]
         public string VendorKey { get; set; } = string.Empty;

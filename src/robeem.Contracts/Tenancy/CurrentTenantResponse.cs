@@ -9,4 +9,10 @@ public sealed class CurrentTenantResponse
 
     /// <summary>Gets a value indicating whether the caller may pick another tenant (development only).</summary>
     public bool CanSelectTenant { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether this is the prime tenant: the one that owns and manages the platform catalog every tenant reads.
+    /// Every other tenant sees the catalog read-only.
+    /// </summary>
+    public bool IsPrime { get; init; }
 }

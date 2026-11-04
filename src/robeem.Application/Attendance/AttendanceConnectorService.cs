@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -11,14 +12,18 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
 {
     private static readonly Regex KeyPattern = new("^[a-z0-9][a-z0-9._-]*$", RegexOptions.CultureInvariant);
 
-    private readonly IRobeemDbContext _db;
+    private readonly ICatalogDbContext _db;
+    private readonly IRobeemDbContext _tenantDb;
+    private readonly ICatalogWriteAccess _access;
     private readonly IAttendanceAuditTrail _audit;
     private readonly IAttendanceAdapterCatalog _adapters;
     private readonly IPayloadDecryptorCatalog? _decryptors;
 
-    public AttendanceConnectorService(IRobeemDbContext db, IAttendanceAuditTrail audit, IAttendanceAdapterCatalog adapters, IPayloadDecryptorCatalog? decryptors = null)
+    public AttendanceConnectorService(ICatalogDbContext db, IRobeemDbContext tenantDb, ICatalogWriteAccess access, IAttendanceAuditTrail audit, IAttendanceAdapterCatalog adapters, IPayloadDecryptorCatalog? decryptors = null)
     {
         _db = db;
+        _tenantDb = tenantDb;
+        _access = access;
         _audit = audit;
         _adapters = adapters;
         _decryptors = decryptors;
@@ -32,10 +37,6 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
             .Include(c => c.DefaultPayloadFormat)
             .OrderBy(c => c.Vendor!.DisplayName).ThenBy(c => c.DisplayName)
             .ToListAsync(cancellationToken);
-        var counts = await _db.AttendanceIntegrations.AsNoTracking()
-            .GroupBy(i => i.ConnectorId)
-            .Select(g => new { ConnectorId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.ConnectorId, g => g.Count, cancellationToken);
         var madeFor = (await _db.AttendancePayloadFormats.AsNoTracking()
                 .Where(f => f.ConnectorId != null)
                 .Select(f => new { ConnectorId = f.ConnectorId!.Value, f.PayloadKind })
@@ -60,7 +61,6 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
             IsActive = c.IsActive,
             HasAdapter = c.AdapterKey is { Length: > 0 } key && _adapters.IsRegistered(key),
             IsUsable = ConnectorUsability.IsUsable(c, c.Vendor.IsActive, _adapters, _decryptors),
-            IntegrationCount = counts.GetValueOrDefault(c.Id),
         }).ToList();
     }
 
@@ -88,6 +88,7 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
 
     public async Task<SaveResult> CreateAsync(ConnectorInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var errors = await ValidateAsync(input, null, null, new HashSet<int>(), cancellationToken);
         var key = Clean(input.ConnectorKey);
         if (key.Length > 0 && !errors.ContainsKey(nameof(ConnectorInput.ConnectorKey))
@@ -107,12 +108,13 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
         await _db.SaveChangesAsync(cancellationToken);
 
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceConnectorDefinition), connector.Id, $"Connector '{connector.DisplayName}' ({connector.ConnectorKey}) created: {Summary(input)}.");
-        await _db.SaveChangesAsync(cancellationToken);
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(connector.Id);
     }
 
     public async Task<SaveResult> UpdateAsync(int id, ConnectorInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var connector = await _db.AttendanceConnectorDefinitions.Include(c => c.Transports).SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
         if (connector is null)
         {
@@ -127,8 +129,9 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
 
         var before = $"{connector.DisplayName}; {(connector.IsActive ? "active" : "inactive")}; format {connector.DefaultPayloadFormatId?.ToString() ?? "none"}; adapter '{connector.AdapterKey}'";
         await ApplyAsync(input, connector, cancellationToken);
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceConnectorDefinition), connector.Id, $"Connector '{connector.ConnectorKey}' changed. Before: {before}. After: {Summary(input)}.");
         await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceConnectorDefinition), connector.Id, $"Connector '{connector.ConnectorKey}' changed. Before: {before}. After: {Summary(input)}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(connector.Id);
     }
 
@@ -247,7 +250,7 @@ public sealed class AttendanceConnectorService : IAttendanceConnectorService
             var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().Where(t => wanted.Contains(t.TransportKey)).ToListAsync(cancellationToken);
             if (definitions.Count != wanted.Count)
             {
-                errors[nameof(ConnectorInput.Transports)] = "A transport you chose has no definition in this tenant.";
+                errors[nameof(ConnectorInput.Transports)] = "A transport you chose has no definition in the catalog.";
             }
             else if (definitions.FirstOrDefault(t => !t.IsActive && !currentTransportIds.Contains(t.Id)) is { } retired)
             {

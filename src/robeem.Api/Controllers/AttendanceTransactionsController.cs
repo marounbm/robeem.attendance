@@ -50,22 +50,24 @@ public sealed class AttendanceTransactionsController : ControllerBase
     /// <param name="eventType">Only this type: CheckIn, CheckOut, BreakOut, BreakIn, Unknown or Other.</param>
     /// <param name="duplicate">Only this duplicate status: Unique, DuplicateConfirmed or DuplicateCandidate.</param>
     /// <param name="flag">Only this flag: None, FlaggedInvalidSequence, FlaggedUnrecognizedEmployee or FlaggedUnrecognizedDevice.</param>
+    /// <param name="status">Only punches with this processing status: Pending, Processed or Excluded (replaced by a re-normalization).</param>
     /// <param name="from">First attendance date, inclusive.</param>
     /// <param name="to">Last attendance date, inclusive.</param>
     /// <param name="page">The 1-based page, newest punches first (default 1). A page past the end answers the last page.</param>
     /// <param name="pageSize">Punches per page (default 20, at most 200).</param>
     [HttpGet("normalized")]
-    public async Task<ActionResult<PagedResult<NormalizedTransactionListItem>>> ListNormalized(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<NormalizedTransactionListItem>>> ListNormalized(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var valid = TryParse<NormalizedEventType>(eventType, nameof(eventType), out var parsedType);
         valid &= TryParse<DuplicateStatus>(duplicate, nameof(duplicate), out var parsedDuplicate);
         valid &= TryParse<TransactionExceptionStatus>(flag, nameof(flag), out var parsedFlag);
+        valid &= TryParse<NormalizedTransactionProcessingStatus>(status, nameof(status), out var parsedStatus);
         if (!valid)
         {
             return ValidationProblem(ModelState);
         }
 
-        return Ok(await _transactions.ListNormalizedAsync(new NormalizedTransactionFilter(integrationId, rawId, employee, parsedType, parsedDuplicate, parsedFlag, from, to, page <= 0 ? 1 : page, pageSize), cancellationToken));
+        return Ok(await _transactions.ListNormalizedAsync(new NormalizedTransactionFilter(integrationId, rawId, employee, parsedType, parsedDuplicate, parsedFlag, from, to, page <= 0 ? 1 : page, pageSize) { Status = parsedStatus }, cancellationToken));
     }
 
     /// <summary>The integrations to filter by.</summary>

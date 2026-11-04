@@ -24,9 +24,6 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 {
     public const string TenantIdProperty = "TenantId";
 
-    private static readonly ValueConverter<DateTimeOffset, DateTimeOffset> UtcDateTimeOffsetConverter =
-        new(v => v.ToUniversalTime(), v => v);
-
     private readonly ITenantContext _tenantContext;
 
     public RobeemDbContext(DbContextOptions<RobeemDbContext> options, ITenantContext tenantContext)
@@ -47,25 +44,11 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<TimeScheduleEmployee> TimeScheduleEmployees => Set<TimeScheduleEmployee>();
 
-    public DbSet<AttendanceVendor> AttendanceVendors => Set<AttendanceVendor>();
-
     public DbSet<AttendanceIntegration> AttendanceIntegrations => Set<AttendanceIntegration>();
 
     public DbSet<AttendanceConnection> AttendanceConnections => Set<AttendanceConnection>();
 
     public DbSet<AttendanceDevice> AttendanceDevices => Set<AttendanceDevice>();
-
-    public DbSet<AttendanceDeviceType> AttendanceDeviceTypes => Set<AttendanceDeviceType>();
-
-    public DbSet<AttendanceTransportDefinition> AttendanceTransportDefinitions => Set<AttendanceTransportDefinition>();
-
-    public DbSet<AttendanceConnectorDefinition> AttendanceConnectorDefinitions => Set<AttendanceConnectorDefinition>();
-
-    public DbSet<AttendanceConnectorTransport> AttendanceConnectorTransports => Set<AttendanceConnectorTransport>();
-
-    public DbSet<AttendancePayloadFormat> AttendancePayloadFormats => Set<AttendancePayloadFormat>();
-
-    public DbSet<AttendancePayloadEventCode> AttendancePayloadEventCodes => Set<AttendancePayloadEventCode>();
 
     public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
 
@@ -120,42 +103,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
             entity.HasQueryFilter(BuildTenantFilter(entityType.ClrType));
         }
 
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(RobeemDbContext).Assembly);
+        // The catalog's own configurations belong to CatalogDbContext; loading them here would drag the catalog tables in.
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(RobeemDbContext).Assembly, type => !PersistenceConventions.IsCatalogType(type));
 
-        // Nothing in robeem is removed by cascade: HR and attendance history must be deleted
-        // deliberately, row by row.
-        foreach (var foreignKey in modelBuilder.Model.GetEntityTypes().SelectMany(t => t.GetForeignKeys()))
-        {
-            foreignKey.DeleteBehavior = DeleteBehavior.Restrict;
-        }
-
-        // robeem stores local wall-clock times (the shared entities default to DateTime.Now).
-        // Npgsql maps DateTime to `timestamp with time zone` by default, which only accepts UTC
-        // values, so map every DateTime to `timestamp without time zone` instead. (Provider check
-        // because the tests run on SQLite.)
-        if (Database.IsNpgsql())
-        {
-            var dateTimeProperties = modelBuilder.Model.GetEntityTypes()
-                .SelectMany(t => t.GetProperties())
-                .Where(p => p.ClrType == typeof(DateTime) || p.ClrType == typeof(DateTime?));
-
-            foreach (var property in dateTimeProperties)
-            {
-                property.SetColumnType("timestamp without time zone");
-            }
-        }
-
-        // DateTimeOffset is for instants (punch times, receipt times) and is stored in UTC.
-        // Npgsql maps it to `timestamp with time zone` and refuses a non-zero offset, so convert on
-        // write. Applied on every provider so the SQLite tests store the same values.
-        var dateTimeOffsetProperties = modelBuilder.Model.GetEntityTypes()
-            .SelectMany(t => t.GetProperties())
-            .Where(p => p.ClrType == typeof(DateTimeOffset) || p.ClrType == typeof(DateTimeOffset?));
-
-        foreach (var property in dateTimeOffsetProperties)
-        {
-            property.SetValueConverter(UtcDateTimeOffsetConverter);
-        }
+        PersistenceConventions.Apply(modelBuilder, Database.IsNpgsql());
     }
 
     private static void EnsureRawTransactionImmutable(EntityEntry entry)

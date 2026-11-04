@@ -36,12 +36,12 @@ public sealed class IntegrationRawMappingTests : IDisposable
     {
         File.WriteAllText(_csvPath, Csv);
         _database.SeedAttendanceCatalog();
+        _database.Store(AttendanceTestData.Connector("undescribed", "Undescribed", adapterKey: "undescribed"));
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var zkteco = AttendanceTestData.Seeded(db, "zkteco");
-            var integration = new AttendanceIntegration { Connector = zkteco, DisplayName = "Head office clock" };
-            var other = new AttendanceIntegration { Connector = AttendanceTestData.Connector("undescribed", "Undescribed", adapterKey: "undescribed"), DisplayName = "Other" };
+            var integration = new AttendanceIntegration { ConnectorKey = "zkteco", DisplayName = "Head office clock" };
+            var other = new AttendanceIntegration { ConnectorKey = "undescribed", DisplayName = "Other" };
             var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
             db.AddRange(
                 other,
@@ -65,13 +65,13 @@ public sealed class IntegrationRawMappingTests : IDisposable
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            _batchId = new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services)
+            _batchId = new IngestionService(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services)
                 .IngestManualUploadAsync(_integrationId, _csvPath, CancellationToken.None).GetAwaiter().GetResult()!.BatchId;
         }
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _services, NullLogger<NormalizationService>.Instance)
+            new NormalizationService(db, _database.CreateCatalogReader(), new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _services, NullLogger<NormalizationService>.Instance)
                 .NormalizeBatchAsync(_batchId, CancellationToken.None).GetAwaiter().GetResult();
         }
     }
@@ -237,7 +237,7 @@ public sealed class IntegrationRawMappingTests : IDisposable
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>
-        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services, new StubAdapterCatalog());
+        new(db, _database.CreateCatalogReader(new StubAdapterCatalog("undescribed")), new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services);
 
     private sealed class NoSync : IIntegrationSyncService
     {

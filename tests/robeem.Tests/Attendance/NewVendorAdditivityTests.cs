@@ -32,10 +32,15 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
         _resilience = new IntegrationResilience(Options.Create(new AttendanceSyncOptions()), Clock);
 
         // Configuration, not code: the vendor and connector rows and the integration of the new vendor.
+        using (var catalog = Database.CreateCatalog())
+        {
+            catalog.AttendanceVendors.Single().VendorKey = VendorKey;
+            catalog.AttendanceConnectorDefinitions.Single().AdapterKey = VendorKey;
+            catalog.SaveChanges();
+        }
+
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var integration = db.AttendanceIntegrations.Single();
-        db.AttendanceVendors.Single().VendorKey = VendorKey;
-        db.AttendanceConnectorDefinitions.Single().AdapterKey = VendorKey;
         db.RawAttendanceTransactions.Single().ProcessingStatus = RawTransactionProcessingStatus.Normalized;
         db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = db.AttendanceDevices.Single(d => d.IntegrationId == integration.Id).Id, ExternalEmployeeId = "A-77", EmployeeId = EmployeeId });
         db.SaveChanges();
@@ -110,6 +115,7 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var service = new IntegrationSyncService(
             db,
+            Database.CreateCatalogReader(new StubAdapterCatalog(VendorKey)),
             new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())),
             _vendors,
             _resilience,
@@ -123,7 +129,7 @@ public sealed class NewVendorAdditivityTests : AttendanceEngineTestBase
     private async Task<NormalizationResult> NormalizeAsync()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var service = new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _vendors, NullLogger<NormalizationService>.Instance);
+        var service = new NormalizationService(db, Database.CreateCatalogReader(new StubAdapterCatalog(VendorKey)), new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _vendors, NullLogger<NormalizationService>.Instance);
         var total = new NormalizationResult(0, 0, 0, 0);
         foreach (var batchId in await service.ListBatchesWithPendingTransactionsAsync(CancellationToken.None))
         {

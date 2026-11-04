@@ -19,13 +19,18 @@ public sealed class AttendanceConnectionServiceTests : IDisposable
     public AttendanceConnectionServiceTests()
     {
         _database.SeedAttendanceCatalog();
-        using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        // BioStar offers its REST API; for these tests it takes pushed events too.
-        var biostarConnector = AttendanceTestData.Seeded(db, "suprema-biostar");
-        biostarConnector.Transports.Add(new AttendanceConnectorTransport { Transport = db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Webhook") });
-        var biostar = new AttendanceIntegration { Connector = biostarConnector, DisplayName = "BioStar" }.WithConnection(AttendanceTransport.RestApi, "biostar-secret");
-        var other = new AttendanceIntegration { Connector = AttendanceTestData.Seeded(db, "generic-csv"), DisplayName = "Uploads" }.WithConnection();
+        // BioStar offers its REST API; for these tests it takes pushed events too (a change to the catalog, the prime tenant's).
+        using (var catalog = _database.CreateCatalog())
+        {
+            var biostarConnector = catalog.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == "suprema-biostar");
+            biostarConnector.Transports.Add(new AttendanceConnectorTransport { Transport = catalog.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Webhook") });
+            catalog.SaveChanges();
+        }
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var biostar = new AttendanceIntegration { ConnectorKey = "suprema-biostar", DisplayName = "BioStar" }.WithConnection(AttendanceTransport.RestApi, "biostar-secret");
+        var other = new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "Uploads" }.WithConnection();
         db.AddRange(biostar, other);
         db.SaveChanges();
         (_integrationId, _otherIntegrationId) = (biostar.Id, other.Id);
@@ -114,15 +119,15 @@ public sealed class AttendanceConnectionServiceTests : IDisposable
     {
         var push = (await Run(s => s.CreateAsync(_integrationId, Webhook("Push"), CancellationToken.None))).Id!.Value;
         var foreign = (await Run(s => s.CreateAsync(_otherIntegrationId, new ConnectionInput { Name = "Elsewhere", Transport = "FileUpload", AuthMethod = "None" }, CancellationToken.None))).Id!.Value;
-        int typeId;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        string typeName;
+        using (var catalog = _database.CreateCatalog())
         {
-            typeId = db.AttendanceDeviceTypes.First().Id;
+            typeName = catalog.AttendanceDeviceTypes.OrderBy(t => t.Id).First().Name;
         }
 
         using var context = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceIntegrationService(context, null!, new AttendanceAuditTrail(context, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
-        DeviceInput Device(string id, int? connection) => new() { ExternalDeviceId = id, Name = id, DeviceTypeId = typeId, TimeZoneId = "UTC", ConnectionId = connection };
+        var service = new AttendanceIntegrationService(context, _database.CreateCatalogReader(), null!, new AttendanceAuditTrail(context, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
+        DeviceInput Device(string id, int? connection) => new() { ExternalDeviceId = id, Name = id, DeviceTypeName = typeName, TimeZoneId = "UTC", ConnectionId = connection };
 
         var ok = await service.AddDeviceAsync(_integrationId, Device("D1", push), CancellationToken.None);
         var refused = await service.AddDeviceAsync(_integrationId, Device("D2", foreign), CancellationToken.None);
@@ -234,7 +239,7 @@ public sealed class AttendanceConnectionServiceTests : IDisposable
         }
 
         using var context = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceIntegrationService(context, null!, new AttendanceAuditTrail(context, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
+        var service = new AttendanceIntegrationService(context, _database.CreateCatalogReader(), null!, new AttendanceAuditTrail(context, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
         var input = (await service.GetInputAsync(_otherIntegrationId, CancellationToken.None))!;
         Assert.Equal(("FileUpload", "None"), (input.Transport, input.AuthMethod));
 
@@ -255,6 +260,7 @@ public sealed class AttendanceConnectionServiceTests : IDisposable
 
     private AttendanceConnectionService Create(RobeemDbContext db) => new(
         db,
+        _database.CreateCatalogReader(),
         new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System),
         _secrets,
         new ServiceCollection().AddKeyedSingleton<IAttendanceAdapter>("suprema-biostar", _adapter).BuildServiceProvider(),

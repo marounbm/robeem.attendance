@@ -52,19 +52,19 @@
             <span asp-validation-for="Input.Name" class="text-danger small"></span>
         </div>
         <div class="col-md-3">
-            <label asp-for="Input.DeviceTypeId" class="form-label"></label>
-            <select asp-for="Input.DeviceTypeId" class="form-select">
-                @if (Model.Device?.DeviceTypeId is { } currentTypeId && Model.DeviceTypes.All(t => t.Id != currentTypeId))
+            <label asp-for="Input.DeviceTypeName" class="form-label"></label>
+            <select asp-for="Input.DeviceTypeName" class="form-select">
+                @if (Model.Device?.DeviceType is { Length: > 0 } currentTypeName && Model.DeviceTypes.All(t => t.Name != currentTypeName))
                 {
                     @* The device's type has been retired: it keeps it until someone picks another. *@
-                    <option value="@currentTypeId" selected>@Model.Device.DeviceType (retired)</option>
+                    <option value="@currentTypeName" selected>@currentTypeName (retired)</option>
                 }
                 @foreach (var type in Model.DeviceTypes)
                 {
-                    <option value="@type.Id" selected="@(type.Id == Model.Input.DeviceTypeId)">@type.Name</option>
+                    <option value="@type.Name" selected="@(type.Name == Model.Input.DeviceTypeName)">@type.Name</option>
                 }
             </select>
-            <span asp-validation-for="Input.DeviceTypeId" class="text-danger small"></span>
+            <span asp-validation-for="Input.DeviceTypeName" class="text-danger small"></span>
         </div>
         <div class="col-md-3">
             <label asp-for="Input.TimeZoneId" class="form-label"></label>

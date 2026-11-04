@@ -7,7 +7,7 @@ public sealed class IntegrationListItem
 
     public string DisplayName { get; init; } = string.Empty;
 
-    public int ConnectorId { get; init; }
+    public string ConnectorKey { get; init; } = string.Empty;
 
     public string ConnectorName { get; init; } = string.Empty;
 
@@ -30,9 +30,7 @@ public sealed class IntegrationListItem
     /// <summary>Gets the transport's display name, as the administrators named it; set after the query, from the transport definitions.</summary>
     public string TransportName { get; set; } = string.Empty;
 
-    /// <summary>Gets the file format uploads are read by; null for the connector's default.</summary>
-    public int? PayloadFormatId { get; init; }
-
+    /// <summary>Gets the name of the payload format uploads are read by: the connector's default. Null when the integration is not a manual upload or its connector has none.</summary>
     public string? PayloadFormatName { get; init; }
 
     /// <summary>Gets the configured status: Active, Paused or Failed.</summary>

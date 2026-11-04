@@ -126,35 +126,6 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
-    public async Task Creating_RedirectsToTheNewIntegration_OrShowsTheFormWithItsErrors()
-    {
-        var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(7) };
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        var created = await controller.Create(new IntegrationFormViewModel { Input = new IntegrationInput { DisplayName = "HQ" } }, CancellationToken.None);
-
-        var redirect = Assert.IsType<RedirectToActionResult>(created);
-        Assert.Equal(("Details", 7), (redirect.ActionName, redirect.RouteValues!["id"]));
-        Assert.Contains("'HQ' was created", (string)controller.TempData["StatusMessage"]!);
-
-        integrations.Save = ApiSaveResult.Invalid(new Dictionary<string, string> { [nameof(IntegrationInput.PollingScheduleCron)] = "Not a valid cron expression." });
-        var again = await controller.Create(new IntegrationFormViewModel { Input = new IntegrationInput { DisplayName = "HQ" } }, CancellationToken.None);
-
-        Assert.IsType<ViewResult>(again);
-        Assert.Equal("Not a valid cron expression.", controller.ModelState["Input.PollingScheduleCron"]!.Errors.Single().ErrorMessage);
-    }
-
-    [Fact]
-    public async Task EditingAnUnknownIntegration_IsNotFound()
-    {
-        var controller = WithTempData(new IntegrationsController(new FakeIntegrations { Save = ApiSaveResult.Missing() }, new FakeConnections()));
-
-        Assert.IsType<NotFoundResult>(await controller.Edit(9, CancellationToken.None));
-        Assert.IsType<NotFoundResult>(await controller.Details(9, CancellationToken.None));
-        Assert.IsType<NotFoundResult>(await controller.Edit(9, new IntegrationFormViewModel(), CancellationToken.None));
-    }
-
-    [Fact]
     public async Task TheDevicesGrid_ListsEveryDevice_OrOnlyThoseOfTheChosenIntegration()
     {
         var integrations = new FakeIntegrations();
@@ -167,6 +138,67 @@ public sealed class IntegrationsWebTests
         Assert.Equal([1, 2], all.Devices.Select(d => d.Id));
         Assert.Equal([2], one.Devices.Select(d => d.Id));
         Assert.Equal(6, one.IntegrationId);
+    }
+
+    [Fact]
+    public async Task SettingADeviceUp_SendsItToTheApi_AndOpensTheDeviceToMapItsEmployees()
+    {
+        var integrations = new FakeIntegrations { Save = ApiSaveResult.Success(5) };
+        var controller = WithTempData(new DevicesController(integrations, new FakeConnections()));
+        var input = new DeviceSetupInput { ConnectorKey = "zkteco", Device = new DeviceInput { Name = "Front door" } };
+
+        var done = Assert.IsType<RedirectToActionResult>(await controller.Setup(new DeviceSetupViewModel { Input = input }, CancellationToken.None));
+
+        Assert.Equal(("Edit", 3, 5), (done.ActionName, done.RouteValues!["integrationId"], done.RouteValues["id"]));
+        Assert.Same(input, Assert.Single(integrations.SetUps));
+        var message = (string)controller.TempData["StatusMessage"]!;
+        Assert.Contains("integration for this connector was created", message);
+        Assert.Contains("'Front door' was added", message);
+    }
+
+    [Fact]
+    public async Task ARefusedSetUp_ShowsTheFormAgain_WithTheErrorsOnTheirFields()
+    {
+        var integrations = new FakeIntegrations
+        {
+            Save = ApiSaveResult.Invalid(new Dictionary<string, string> { ["ConnectorKey"] = "No connector.", ["Device.ExternalDeviceId"] = "Taken.", ["Settings[host]"] = "Required." }),
+        };
+        var controller = WithTempData(new DevicesController(integrations, new FakeConnections()));
+
+        var result = Assert.IsType<ViewResult>(await controller.Setup(new DeviceSetupViewModel(), CancellationToken.None));
+
+        Assert.IsType<DeviceSetupViewModel>(result.Model);
+        Assert.Equal("Taken.", controller.ModelState["Input.Device.ExternalDeviceId"]!.Errors.Single().ErrorMessage);
+        Assert.Equal("No connector.", controller.ModelState["Input.ConnectorKey"]!.Errors.Single().ErrorMessage);
+        Assert.Equal("Required.", controller.ModelState["Input.Settings[host]"]!.Errors.Single().ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TheSetUpPage_StartsFromTheFirstUsableConnector_AndItsVendor()
+    {
+        var controller = WithTempData(new DevicesController(new FakeIntegrations(), new FakeConnections()));
+
+        var model = Assert.IsType<DeviceSetupViewModel>(Assert.IsType<ViewResult>(await controller.Setup(CancellationToken.None)).Model);
+
+        Assert.Equal("UTC", model.Input.Device.TimeZoneId);
+        Assert.Empty(model.ConnectionsByConnector);
+    }
+
+    [Fact]
+    public async Task TheClient_ReadsWhereTheDeviceWasPut_AndKeepsTheNestedFieldOfARefusal()
+    {
+        var created = new StubHttpHandler(HttpStatusCode.Created, """{"deviceId":9,"integrationId":4,"integrationCreated":true,"connectionCreated":false}""");
+        var refused = new StubHttpHandler(HttpStatusCode.BadRequest, """{"title":"x","status":400,"errors":{"Device.ExternalDeviceId":["Taken."],"Settings[host]":["Required."],"ConnectorKey":["No."]}}""");
+
+        var done = await new IntegrationsApiClient(created.CreateClient()).SetUpDeviceAsync(new DeviceSetupInput(), CancellationToken.None);
+        var failed = await new IntegrationsApiClient(refused.CreateClient()).SetUpDeviceAsync(new DeviceSetupInput(), CancellationToken.None);
+
+        Assert.Equal(("/api/attendance/integrations/device-setup", 9, 4, true), (created.Requests.Single().RequestUri!.PathAndQuery, done.Response!.DeviceId, done.Response.IntegrationId, done.Response.IntegrationCreated));
+        Assert.True(done.Result.Succeeded);
+        Assert.False(failed.Result.Succeeded);
+        Assert.Equal("Taken.", failed.Result.Errors["Device.ExternalDeviceId"]);
+        Assert.Equal("Required.", failed.Result.Errors["Settings[host]"]);
+        Assert.Equal("No.", failed.Result.Errors["ConnectorKey"]);
     }
 
     [Fact]
@@ -211,21 +243,6 @@ public sealed class IntegrationsWebTests
         Assert.IsType<NotFoundResult>(await controller.AddMapping(5, 9, new MappingInput { ExternalEmployeeId = "1", EmployeeId = 1 }, CancellationToken.None));
     }
 
-    [Theory]
-    [InlineData("Succeeded", "StatusMessage")]
-    [InlineData("Skipped", "StatusMessage")]
-    [InlineData("Failed", "ErrorMessage")]
-    [InlineData("CircuitOpen", "ErrorMessage")]
-    public async Task RunNow_ShowsAFailureAsAnError_AndTheRestAsInformation(string status, string key)
-    {
-        var integrations = new FakeIntegrations { Outcome = new SyncOutcomeResponse { Status = status, RecordsIngested = 3, Message = "note" } };
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        await controller.Run(5, reconcile: true, CancellationToken.None);
-
-        Assert.Contains($"Reconciliation: {status}, 3 record(s). note", (string)controller.TempData[key]!);
-    }
-
     [Fact]
     public async Task TheClient_AsksForTheRawMappingWithItsFilter_AndMapsA404ToNull()
     {
@@ -244,37 +261,6 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
-    public async Task TheRawMappingPage_OnlyAsksForAListedPageSize_AndAnUnknownIntegrationIsNotFound()
-    {
-        var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        var page = await controller.RawMapping(5, null, null, 0, 100000, CancellationToken.None);
-        await controller.RawMapping(5, null, null, 2, 50, CancellationToken.None);
-
-        Assert.IsType<ViewResult>(page);
-        Assert.Equal([(1, 20), (2, 50)], integrations.RawMappingAsks);
-
-        integrations.Save = ApiSaveResult.Missing();
-        Assert.IsType<NotFoundResult>(await controller.RawMapping(9, null, null, 1, 20, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task TheRawMappingPager_KeepsTheIntegrationTheFiltersAndThePageSize()
-    {
-        var controller = WithTempData(new IntegrationsController(new FakeIntegrations(), new FakeConnections()));
-
-        var view = Assert.IsType<ViewResult>(await controller.RawMapping(5, 7, "Failed", 2, 50, CancellationToken.None));
-
-        var model = Assert.IsType<IntegrationRawMappingViewModel>(view.Model);
-        Assert.Equal((2, 50, 45), (model.Page, model.PageSize, model.Total));
-        Assert.Equal("5", model.Pager.RouteValues["id"]);
-        Assert.Equal("7", model.Pager.RouteValues["batchId"]);
-        Assert.Equal("Failed", model.Pager.RouteValues["status"]);
-        Assert.Equal("50", model.Pager.RouteValues["pageSize"]);
-    }
-
-    [Fact]
     public async Task TheClient_PostsRetryFailed_AndMapsA404ToNull()
     {
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"requeued":4}""");
@@ -288,21 +274,6 @@ public sealed class IntegrationsWebTests
     }
 
     [Fact]
-    public async Task RetryFailed_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
-    {
-        var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        var redirect = Assert.IsType<RedirectToActionResult>(await controller.RetryFailed(5, CancellationToken.None));
-
-        Assert.Equal((nameof(IntegrationsController.Details), 5), (redirect.ActionName, redirect.RouteValues!["id"]));
-        Assert.Contains("3 punch(es)", (string)controller.TempData["StatusMessage"]!);
-
-        integrations.Save = ApiSaveResult.Missing();
-        Assert.IsType<NotFoundResult>(await controller.RetryFailed(9, CancellationToken.None));
-    }
-
-    [Fact]
     public async Task TheClient_PostsRenormalizeFlagged_AndMapsA404ToNull()
     {
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"requeued":6}""");
@@ -313,55 +284,6 @@ public sealed class IntegrationsWebTests
         Assert.Equal(("POST", "/api/attendance/integrations/5/renormalize-flagged"), (handler.Requests.Single().Method.Method, handler.Requests.Single().RequestUri!.PathAndQuery));
         Assert.Equal(6, result!.Requeued);
         Assert.Null(await missing.RenormalizeFlaggedAsync(9, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task RenormalizeFlagged_RedirectsToTheIntegrationWithHowManyWereQueued_OrIsNotFound()
-    {
-        var integrations = new FakeIntegrations();
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        var redirect = Assert.IsType<RedirectToActionResult>(await controller.RenormalizeFlagged(5, CancellationToken.None));
-
-        Assert.Equal((nameof(IntegrationsController.Details), 5), (redirect.ActionName, redirect.RouteValues!["id"]));
-        Assert.Contains("2 punch(es)", (string)controller.TempData["StatusMessage"]!);
-
-        integrations.Save = ApiSaveResult.Missing();
-        Assert.IsType<NotFoundResult>(await controller.RenormalizeFlagged(9, CancellationToken.None));
-    }
-
-    [Theory]
-    [InlineData(0, 0, "FileUpload", "StatusMessage", "No punch of this integration is flagged")]
-    [InlineData(0, 4, "FileUpload", "ErrorMessage", "choose one under Device for uploaded files")]
-    [InlineData(0, 4, "RestApi", "ErrorMessage", "not manual file upload")]
-    [InlineData(2, 3, "FileUpload", "StatusMessage", "3 other flagged punch(es)")]
-    public async Task RenormalizeFlagged_SaysWhyNothingWasQueued(int requeued, int unresolved, string transport, string key, string fragment)
-    {
-        var integrations = new FakeIntegrations { Renormalized = new RenormalizeFlaggedResponse { Requeued = requeued, Unresolved = unresolved, Transport = transport } };
-        var controller = WithTempData(new IntegrationsController(integrations, new FakeConnections()));
-
-        await controller.RenormalizeFlagged(5, CancellationToken.None);
-
-        Assert.Contains(fragment, (string)controller.TempData[key]!);
-    }
-
-    [Theory]
-    [InlineData(0.9512, "95.1%")]
-    [InlineData(0.0, "0%")]
-    [InlineData(null, "—")]
-    public void SharesAreWrittenAsPercentages(double? share, string expected)
-    {
-        Assert.Equal(expected, DisplayFormats.Percent(share));
-    }
-
-    [Theory]
-    [InlineData(45.0, "45 s")]
-    [InlineData(300.0, "5 min")]
-    [InlineData(7200.0, "2 h")]
-    [InlineData(null, "—")]
-    public void DelaysAreWrittenInTheRightUnit(double? seconds, string expected)
-    {
-        Assert.Equal(expected, DisplayFormats.Delay(seconds));
     }
 
     private static T WithTempData<T>(T controller)
@@ -418,6 +340,8 @@ public sealed class IntegrationsWebTests
 
         public List<DeviceItem> Devices { get; } = [];
 
+        public List<DeviceSetupInput> SetUps { get; } = [];
+
         public Task<IReadOnlyList<IntegrationListItem>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IntegrationListItem>>([]);
 
         public Task<IntegrationListItem?> GetAsync(int id, CancellationToken cancellationToken) => Task.FromResult<IntegrationListItem?>(Save.NotFound ? null : new IntegrationListItem { Id = id });
@@ -446,6 +370,13 @@ public sealed class IntegrationsWebTests
             Task.FromResult<DeviceItem?>(Save.NotFound ? null : new DeviceItem { Id = deviceId, IntegrationId = integrationId, IntegrationName = "HQ", Name = "Front door", ExternalDeviceId = "1", TimeZoneId = "Asia/Beirut" });
 
         public Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => Record("addDevice");
+
+        public async Task<DeviceSetupApiResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken)
+        {
+            SetUps.Add(input);
+            var result = await Record("setUpDevice");
+            return new DeviceSetupApiResult(result, result.Succeeded ? new DeviceSetupResponse { DeviceId = 5, IntegrationId = 3, IntegrationCreated = true } : null);
+        }
 
         public Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => Record("updateDevice");
 

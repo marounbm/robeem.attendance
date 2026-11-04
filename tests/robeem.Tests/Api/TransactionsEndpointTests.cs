@@ -72,18 +72,19 @@ public sealed class TransactionsEndpointTests : IAsyncDisposable
     {
         var admin = TestApi.As(8, AttendanceRoles.IntegrationAdministrator);
 
-        var ok = await Get("api/attendance/transactions/normalized?integrationId=3&rawId=9&employee=hiba&eventType=checkin&duplicate=DuplicateCandidate&flag=FlaggedInvalidSequence&from=2026-04-01&page=2&pageSize=5", admin);
-        var refused = await Get("api/attendance/transactions/normalized?eventType=Nope&duplicate=Nope&flag=Nope", admin);
+        var ok = await Get("api/attendance/transactions/normalized?integrationId=3&rawId=9&employee=hiba&eventType=checkin&duplicate=DuplicateCandidate&flag=FlaggedInvalidSequence&status=processed&from=2026-04-01&page=2&pageSize=5", admin);
+        var refused = await Get("api/attendance/transactions/normalized?eventType=Nope&duplicate=Nope&flag=Nope&status=Nope", admin);
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Equal(
-            new NormalizedTransactionFilter(3, 9, "hiba", NormalizedEventType.CheckIn, DuplicateStatus.DuplicateCandidate, TransactionExceptionStatus.FlaggedInvalidSequence, new DateTime(2026, 4, 1), null, 2, 5),
+            new NormalizedTransactionFilter(3, 9, "hiba", NormalizedEventType.CheckIn, DuplicateStatus.DuplicateCandidate, TransactionExceptionStatus.FlaggedInvalidSequence, new DateTime(2026, 4, 1), null, 2, 5) { Status = NormalizedTransactionProcessingStatus.Processed },
             _transactions.NormalizedFilters.Single());
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         var body = await refused.Content.ReadAsStringAsync();
         Assert.Contains("eventType", body);
         Assert.Contains("duplicate", body);
         Assert.Contains("flag", body);
+        Assert.Contains("status", body);
     }
 
     private Task<HttpResponseMessage> Get(string url, string? user)

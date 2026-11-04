@@ -23,9 +23,7 @@ public sealed class DeviceItem
     /// <summary>Gets the name of the connection the device is reached through: the one it names, else the integration's default.</summary>
     public string ConnectionName { get; init; } = string.Empty;
 
-    public int? DeviceTypeId { get; init; }
-
-    /// <summary>Gets the name of the device's type; empty when it has none.</summary>
+    /// <summary>Gets the name of the device's type, which is how the device refers to it; empty when it has none.</summary>
     public string DeviceType { get; init; } = string.Empty;
 
     /// <summary>Gets the machine model, e.g. U350; empty when not recorded.</summary>

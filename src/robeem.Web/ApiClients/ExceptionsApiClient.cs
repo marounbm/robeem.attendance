@@ -43,6 +43,13 @@ public sealed class ExceptionsApiClient : IExceptionsApiClient
         return await ApiResponses.ReadAsync<List<ExceptionListItem>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
+    {
+        // The same people, by the same roles and scope, as the attendance records the exceptions belong to.
+        using var response = await _http.GetAsync("api/attendance/records/employee-options", cancellationToken);
+        return await ApiResponses.ReadAsync<List<EmployeeOption>>(response, cancellationToken);
+    }
+
     public async Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsJsonAsync($"{Path}/{exceptionId.ToString(CultureInfo.InvariantCulture)}/accept", request, cancellationToken);

@@ -6,7 +6,7 @@ namespace robeem.Web.Models;
 public sealed class DeviceFormViewModel
 {
     /// <summary>Gets IANA zones offered as suggestions; any IANA zone id is accepted.</summary>
-    public static IReadOnlyList<string> CommonTimeZones => IntegrationDetailsViewModel.CommonTimeZones;
+    public static IReadOnlyList<string> CommonTimeZones => TimeZoneOptions.Common;
 
     /// <summary>Gets or sets the device id; null while creating.</summary>
     [BindNever]

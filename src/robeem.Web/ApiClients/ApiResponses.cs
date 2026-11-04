@@ -78,12 +78,12 @@ internal static class ApiResponses
     /// Reads the answer to a create, update or delete: 201 with the new id, 204, a 400 mapped onto
     /// <typeparamref name="TInput"/> property names, or a 404. Anything else is thrown as usual.
     /// </summary>
-    public static async Task<ApiSaveResult> SaveAsync<TInput>(HttpResponseMessage response, int? knownId, CancellationToken cancellationToken)
+    public static async Task<ApiSaveResult> SaveAsync<TInput>(HttpResponseMessage response, int? knownId, CancellationToken cancellationToken, bool keepNestedPaths = false)
     {
         if (response.StatusCode == HttpStatusCode.BadRequest)
         {
             await ThrowIfTenantRejectedAsync(response, cancellationToken);
-            return ApiSaveResult.Invalid(await ReadValidationErrorsAsync<TInput>(response, cancellationToken));
+            return ApiSaveResult.Invalid(await ReadValidationErrorsAsync<TInput>(response, cancellationToken, keepNestedPaths));
         }
 
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -106,7 +106,7 @@ internal static class ApiResponses
     /// that name no property (e.g. a JSON path the API could not bind) map to <see cref="string.Empty"/>,
     /// a model-level error.
     /// </summary>
-    public static async Task<IReadOnlyDictionary<string, string>> ReadValidationErrorsAsync<TInput>(HttpResponseMessage response, CancellationToken cancellationToken)
+    public static async Task<IReadOnlyDictionary<string, string>> ReadValidationErrorsAsync<TInput>(HttpResponseMessage response, CancellationToken cancellationToken, bool keepNestedPaths = false)
     {
         var problem = await ReadJsonOrDefaultAsync<ValidationProblem>(response, cancellationToken);
         var properties = typeof(TInput).GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -117,6 +117,18 @@ internal static class ApiResponses
         {
             var name = key.StartsWith("$.", StringComparison.Ordinal) ? key[2..] : key;
             var field = properties.TryGetValue(name, out var property) ? property : string.Empty;
+
+            // An input with a nested part (a device inside its setup, a setting by key) keeps the path of an error below a known property,
+            // so the form can show it by the field.
+            if (field.Length == 0 && keepNestedPaths)
+            {
+                var split = name.IndexOfAny(['.', '[']);
+                if (split > 0 && properties.TryGetValue(name[..split], out var parent))
+                {
+                    field = parent + name[split..];
+                }
+            }
+
             var message = string.Join(" ", messages);
             errors[field] = errors.TryGetValue(field, out var existing) ? $"{existing} {message}" : message;
         }

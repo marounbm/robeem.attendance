@@ -18,13 +18,14 @@ public sealed class NormalizedTransactionsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var type = NormalizedTransactionsIndexViewModel.EventTypes.Contains(eventType ?? string.Empty) ? eventType : null;
         var repeat = NormalizedTransactionsIndexViewModel.DuplicateStatuses.Contains(duplicate ?? string.Empty) ? duplicate : null;
         var chosenFlag = NormalizedTransactionsIndexViewModel.Flags.Contains(flag ?? string.Empty) ? flag : null;
+        var chosenStatus = NormalizedTransactionsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status : null;
         var size = NormalizedTransactionsIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : NormalizedTransactionsIndexViewModel.DefaultPageSize;
-        var result = await _transactions.ListNormalizedAsync(integrationId, rawId, employee, type, repeat, chosenFlag, from, to, Math.Max(page, 1), size, cancellationToken);
+        var result = await _transactions.ListNormalizedAsync(integrationId, rawId, employee, type, repeat, chosenFlag, chosenStatus, from, to, Math.Max(page, 1), size, cancellationToken);
         return View(new NormalizedTransactionsIndexViewModel
         {
             Rows = result.Items,
@@ -38,6 +39,7 @@ public sealed class NormalizedTransactionsController : Controller
             EventType = type,
             Duplicate = repeat,
             Flag = chosenFlag,
+            Status = chosenStatus,
             From = from,
             To = to,
         });

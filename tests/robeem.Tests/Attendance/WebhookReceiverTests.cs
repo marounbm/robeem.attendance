@@ -22,13 +22,18 @@ public sealed class WebhookReceiverTests : IDisposable
     {
         _database.SeedAttendanceCatalog();
         _secrets.Set("hook-secret", "shared-secret");
-        using var db = _database.CreateContext(TestDatabase.TenantA);
 
-        // The built-in webhook vendor is seeded switched off, until an administrator turns it on.
-        var connector = AttendanceTestData.Seeded(db, "generic-webhook");
-        connector.IsActive = true;
-        db.AttendanceVendors.Single(v => v.Id == connector.VendorId).IsActive = true;
-        var integration = new AttendanceIntegration { Connector = connector, DisplayName = "Pushed" }
+        // The built-in webhook vendor is seeded switched off, until a platform administrator turns it on in the catalog.
+        using (var catalog = _database.CreateCatalog())
+        {
+            var connector = catalog.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == "generic-webhook");
+            connector.IsActive = true;
+            catalog.AttendanceVendors.Single(v => v.Id == connector.VendorId).IsActive = true;
+            catalog.SaveChanges();
+        }
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var integration = new AttendanceIntegration { ConnectorKey = "generic-webhook", DisplayName = "Pushed" }
             .WithConnection(AttendanceTransport.Webhook, "hook-secret");
         db.Add(integration);
         db.SaveChanges();
@@ -143,7 +148,7 @@ public sealed class WebhookReceiverTests : IDisposable
     private async Task<WebhookReceipt> ReceiveAsync(int? connectionId, WebhookCredentials credentials)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await new WebhookReceiver(db, _secrets, _ingestion).ReceiveAsync(_integrationId, connectionId, Body, credentials, CancellationToken.None);
+        return await new WebhookReceiver(db, _database.CreateCatalogReader(), _secrets, _ingestion).ReceiveAsync(_integrationId, connectionId, Body, credentials, CancellationToken.None);
     }
 
     private sealed class CapturingIngestion : IIngestionService

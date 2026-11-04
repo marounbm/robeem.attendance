@@ -18,10 +18,13 @@ namespace robeem.DataModel
         [MaxLength(ITenantScoped.TenantIdMaxLength)]
         public string TenantId { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Gets or sets the key of the connector (<see cref="AttendanceConnectorDefinition.ConnectorKey"/>) this integration is made with.
+        /// The connector lives in the prime tenant's catalog, so it is referred to by key, not by a foreign key.
+        /// </summary>
         [Required]
-        public int ConnectorId { get; set; }
-
-        public AttendanceConnectorDefinition? Connector { get; set; }
+        [MaxLength(100)]
+        public string ConnectorKey { get; set; } = string.Empty;
 
         [Required]
         [MaxLength(255)]
@@ -34,15 +37,6 @@ namespace robeem.DataModel
         /// </summary>
         [MaxLength(255)]
         public string PayloadKeyRef { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Gets or sets the file layout uploads are read by; null for the connector's
-        /// <see cref="AttendanceConnectorDefinition.DefaultPayloadFormat"/>.
-        /// Only meaningful when the default connection's transport is <see cref="AttendanceTransport.FileUpload"/>.
-        /// </summary>
-        public int? PayloadFormatId { get; set; }
-
-        public AttendancePayloadFormat? PayloadFormat { get; set; }
 
         /// <summary>
         /// Gets or sets the device every punch of an uploaded file is attributed to, ignoring the device

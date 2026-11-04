@@ -9,6 +9,9 @@ public interface IExceptionsApiClient
     /// <param name="take">At most this many, newest first.</param>
     Task<IReadOnlyList<ExceptionListItem>> ListAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken);
 
+    /// <summary>The employees whose exceptions the user may see (HR everyone, a manager their reports and themselves, an employee themselves), to filter the list by one of them.</summary>
+    Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);
+
     /// <summary>Accepts a break exception as it is, with a reason (the employee's manager, or HR). A refusal comes back as the result's errors.</summary>
     Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken);
 }

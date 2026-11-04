@@ -148,10 +148,11 @@ public sealed class TimestampSpecTests : IDisposable
         var created = await CreateAsync(input);
         Assert.True(created.Succeeded, string.Join(" ", created.Errors.Values));
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var stored = db.AttendancePayloadFormats.Single();
+        using var catalog = _database.CreateCatalog();
+        var stored = catalog.AttendancePayloadFormats.Single();
         Assert.Equal(("dd/MM/yyyy;yyyy-MM-dd", "HH:mm", string.Empty, "fr-FR"), (stored.DateFormats, stored.TimeFormats, stored.TimestampFormats, stored.TimestampCulture));
 
+        using var db = _database.CreateContext(TestDatabase.TenantA);
         var back = (await FormatService(db).GetInputAsync(created.Id!.Value, CancellationToken.None))!;
         Assert.Equal(["dd/MM/yyyy", "yyyy-MM-dd"], back.DateFormats!.Split(Environment.NewLine));
         Assert.Equal(("HH:mm", "fr-FR"), (back.TimeFormats, back.TimestampCulture));
@@ -169,8 +170,8 @@ public sealed class TimestampSpecTests : IDisposable
         var created = await CreateAsync(input);
 
         Assert.True(created.Succeeded, string.Join(" ", created.Errors.Values));
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        var stored = db.AttendancePayloadFormats.Single();
+        using var catalog = _database.CreateCatalog();
+        var stored = catalog.AttendancePayloadFormats.Single();
         Assert.Equal((string.Empty, string.Empty, "dd/MM/yyyy HH:mm"), (stored.DateFormats, stored.TimeFormats, stored.TimestampFormats));
     }
 
@@ -347,8 +348,7 @@ public sealed class TimestampSpecTests : IDisposable
         return await FormatService(db).CreateAsync(input, CancellationToken.None);
     }
 
-    private AttendancePayloadFormatService FormatService(RobeemDbContext db) =>
-        new(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory());
+    private AttendancePayloadFormatService FormatService(RobeemDbContext db) => _database.PayloadFormatService(db);
 
     private sealed record Cell(string? Text, double? Number, int Style);
 }

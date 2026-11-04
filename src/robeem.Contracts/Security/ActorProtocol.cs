@@ -17,6 +17,7 @@ public static class ActorProtocol
         "HRAdministrator",
         "PayrollAdministrator",
         "IntegrationAdministrator",
+        "PlatformAdministrator",
     ];
 
     /// <summary>Builds the value: <c>{employee id, or -};{role,role}</c>.</summary>

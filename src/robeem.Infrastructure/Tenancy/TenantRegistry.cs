@@ -51,15 +51,32 @@ public sealed class TenantRegistry : ITenantRegistry
             }
         }
 
+        TenantDefinition? prime = null;
+        if (string.IsNullOrWhiteSpace(value.PrimeTenantId))
+        {
+            errors.Add($"'{nameof(TenancyOptions.PrimeTenantId)}' is required: the prime tenant owns the attendance catalog every tenant reads.");
+        }
+        else
+        {
+            prime = Find(value.PrimeTenantId);
+            if (prime is null)
+            {
+                errors.Add($"Prime tenant '{value.PrimeTenantId}' is not a configured tenant.");
+            }
+        }
+
         if (errors.Count > 0)
         {
             throw new InvalidOperationException($"Invalid '{TenancyOptions.SectionName}' configuration: {string.Join(" ", errors)}");
         }
 
         Tenants = value.Tenants.AsReadOnly();
+        PrimeTenant = prime!;
     }
 
     public IReadOnlyList<TenantDefinition> Tenants { get; }
+
+    public TenantDefinition PrimeTenant { get; }
 
     public TenantDefinition? DefaultTenant { get; }
 

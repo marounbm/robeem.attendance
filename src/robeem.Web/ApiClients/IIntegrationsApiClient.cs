@@ -41,6 +41,9 @@ public interface IIntegrationsApiClient
 
     Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken);
 
+    /// <summary>Sets a device up from the vendor down; the connector's integration is found or made by the Api.</summary>
+    Task<DeviceSetupApiResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken);
+
     Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken);
 
     Task<ApiSaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken);

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -8,27 +9,32 @@ namespace robeem.Application.Attendance;
 
 public sealed class AttendanceDeviceTypeService : IAttendanceDeviceTypeService
 {
-    private readonly IRobeemDbContext _db;
+    private readonly ICatalogDbContext _db;
+    private readonly ICatalogReader _catalog;
+    private readonly IRobeemDbContext _tenantDb;
+    private readonly ICatalogWriteAccess _access;
     private readonly IAttendanceAuditTrail _audit;
 
-    public AttendanceDeviceTypeService(IRobeemDbContext db, IAttendanceAuditTrail audit)
+    public AttendanceDeviceTypeService(ICatalogDbContext db, ICatalogReader catalog, IRobeemDbContext tenantDb, ICatalogWriteAccess access, IAttendanceAuditTrail audit)
     {
         _db = db;
+        _catalog = catalog;
+        _tenantDb = tenantDb;
+        _access = access;
         _audit = audit;
     }
 
     public async Task<IReadOnlyList<DeviceTypeItem>> ListAsync(CancellationToken cancellationToken) =>
         await _db.AttendanceDeviceTypes.AsNoTracking()
             .OrderBy(t => t.Name)
-            .Select(t => new DeviceTypeItem { Id = t.Id, Name = t.Name, IsActive = t.IsActive, DeviceCount = _db.AttendanceDevices.Count(d => d.DeviceTypeId == t.Id) })
+            .Select(t => new DeviceTypeItem { Id = t.Id, Name = t.Name, IsActive = t.IsActive })
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<DeviceTypeOption>> ListOptionsAsync(CancellationToken cancellationToken) =>
-        await _db.AttendanceDeviceTypes.AsNoTracking()
+        (await _catalog.ListDeviceTypesAsync(cancellationToken))
             .Where(t => t.IsActive)
-            .OrderBy(t => t.Name)
-            .Select(t => new DeviceTypeOption { Id = t.Id, Name = t.Name })
-            .ToListAsync(cancellationToken);
+            .Select(t => new DeviceTypeOption { Name = t.Name })
+            .ToList();
 
     public async Task<DeviceTypeInput?> GetInputAsync(int id, CancellationToken cancellationToken) =>
         await _db.AttendanceDeviceTypes.AsNoTracking()
@@ -38,6 +44,7 @@ public sealed class AttendanceDeviceTypeService : IAttendanceDeviceTypeService
 
     public async Task<SaveResult> CreateAsync(DeviceTypeInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var errors = await ValidateAsync(input, null, cancellationToken);
         if (errors.Count > 0)
         {
@@ -49,29 +56,30 @@ public sealed class AttendanceDeviceTypeService : IAttendanceDeviceTypeService
         await _db.SaveChangesAsync(cancellationToken);
 
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceDeviceType), type.Id, $"Device type '{type.Name}' created.");
-        await _db.SaveChangesAsync(cancellationToken);
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(type.Id);
     }
 
     public async Task<SaveResult> UpdateAsync(int id, DeviceTypeInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var type = await _db.AttendanceDeviceTypes.SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
         if (type is null)
         {
             return SaveResult.Missing();
         }
 
-        var errors = await ValidateAsync(input, id, cancellationToken);
-        if (errors.Count > 0)
+        // Devices refer to their type by this name, in every tenant: it is the key, so it stays. Deactivate a type instead.
+        if ((input.Name ?? string.Empty).Trim() != type.Name)
         {
-            return SaveResult.Invalid(errors);
+            return SaveResult.Invalid(nameof(DeviceTypeInput.Name), "The name can't be changed: devices refer to the type by it. Switch the type off and add another.");
         }
 
         var before = $"{type.Name}; {(type.IsActive ? "active" : "inactive")}";
-        type.Name = input.Name.Trim();
         type.IsActive = input.IsActive;
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceDeviceType), type.Id, $"Device type changed. Before: {before}. After: {type.Name}; {(type.IsActive ? "active" : "inactive")}.");
         await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceDeviceType), type.Id, $"Device type changed. Before: {before}. After: {type.Name}; {(type.IsActive ? "active" : "inactive")}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(type.Id);
     }
 

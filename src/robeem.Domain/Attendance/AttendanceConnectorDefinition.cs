@@ -13,13 +13,9 @@ namespace robeem.DataModel
     /// rather than a profile because <c>Profile</c> is robeem's employee entity.
     /// </summary>
     [Serializable]
-    [Table(nameof(AttendanceConnectorDefinition), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceConnectorDefinition : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendanceConnectorDefinition), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendanceConnectorDefinition : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
         [Required]
         public int VendorId { get; set; }
 

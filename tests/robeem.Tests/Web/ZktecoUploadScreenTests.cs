@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Attendance.Seeding;
 using robeem.Application.Persistence;
 using robeem.Application.Seeding;
@@ -34,14 +35,12 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
 
     public ZktecoUploadScreenTests()
     {
+        _database.SeedAttendanceCatalog();
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            new SeedDataRunner(db, new ISeedContributor[] { new AttendanceSeedContributor() }, NullLogger<SeedDataRunner>.Instance)
-                .RunAsync(CancellationToken.None).GetAwaiter().GetResult();
-
             var integration = new AttendanceIntegration
             {
-                Connector = AttendanceTestData.Seeded(db, "zkteco"),
+                ConnectorKey = "zkteco",
                 DisplayName = "Head office U350",
             };
             db.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" });
@@ -54,6 +53,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
             services.AddSingleton<ICustomFormatFileReader, CustomFormatFileReader>();
             services.AddSingleton<IRawPayloadSanitizer>(new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())));
             services.AddScoped<IRobeemDbContext>(_ => _database.CreateContext(TestDatabase.TenantA));
+            services.AddScoped<ICatalogReader>(_ => _database.CreateCatalogReader());
             services.AddScoped<IIngestionService, IngestionService>();
         });
         _api.Client.DefaultRequestHeaders.Add("X-Test-User", TestApi.As(1, AttendanceRoles.HRAdministrator));

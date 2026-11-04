@@ -6,4 +6,7 @@ public enum NavAccess
     Allowed,
     MissingRole,
     NeedsEmployee,
+
+    /// <summary>The screen manages platform data, which only the prime tenant has.</summary>
+    NotInThisTenant,
 }

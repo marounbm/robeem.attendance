@@ -33,6 +33,40 @@ public sealed class DevicesController : Controller
         });
     }
 
+    /// <summary>Sets a device up from the vendor down. The integration the device belongs to is found or made by the Api; the person never names it.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Setup(CancellationToken cancellationToken)
+    {
+        var model = new DeviceSetupViewModel();
+        await FillSetupAsync(model, cancellationToken);
+        var first = model.Connectors.FirstOrDefault(c => c.IsActive);
+        model.VendorKey = first?.VendorKey ?? string.Empty;
+        model.Input.ConnectorKey = first?.Key ?? string.Empty;
+        model.Input.Transport = first?.SupportedTransports.FirstOrDefault(t => t.IsActive)?.Key ?? "FileUpload";
+        model.Input.Device.TimeZoneId = "UTC";
+        return View(model);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Setup(DeviceSetupViewModel model, CancellationToken cancellationToken)
+    {
+        if (ModelState.IsValid)
+        {
+            var setup = await _integrations.SetUpDeviceAsync(model.Input, cancellationToken);
+            if (setup.Result.Succeeded && setup.Response is { } done)
+            {
+                TempData["StatusMessage"] = (done.IntegrationCreated ? "The integration for this connector was created. " : string.Empty)
+                    + $"Device '{model.Input.Device.Name}' was added. Map its employee ids below.";
+                return RedirectToAction(nameof(Edit), new { integrationId = done.IntegrationId, id = done.DeviceId });
+            }
+
+            AddErrors(setup.Result, nameof(DeviceSetupViewModel.Input));
+        }
+
+        await FillSetupAsync(model, cancellationToken);
+        return View(model);
+    }
+
     [HttpGet]
     public async Task<IActionResult> Create(int? integrationId, CancellationToken cancellationToken)
     {
@@ -89,7 +123,7 @@ public sealed class DevicesController : Controller
             {
                 ExternalDeviceId = device.ExternalDeviceId,
                 Name = device.Name,
-                DeviceTypeId = device.DeviceTypeId ?? 0,
+                DeviceTypeName = device.DeviceType,
                 ConnectionId = device.ConnectionId,
                 Model = device.Model,
                 SoftwareVersion = device.SoftwareVersion,
@@ -161,6 +195,26 @@ public sealed class DevicesController : Controller
     [HttpPost]
     public async Task<IActionResult> DeleteMapping(int integrationId, int id, int mappingId, CancellationToken cancellationToken) =>
         MappingDone(integrationId, id, await _integrations.DeleteMappingAsync(integrationId, id, mappingId, cancellationToken), "The mapping was removed.");
+
+    private async Task FillSetupAsync(DeviceSetupViewModel model, CancellationToken cancellationToken)
+    {
+        model.Connectors = await _integrations.ListConnectorsAsync(cancellationToken);
+        model.Descriptors = await _connections.ListDescriptorsAsync(cancellationToken);
+        model.DeviceTypes = await _integrations.ListDeviceTypeOptionsAsync(cancellationToken);
+
+        // The connections a device can be reached through are those of the integration the Api would put it in: the connector's first active one.
+        var integrations = await _integrations.ListAsync(cancellationToken);
+        var byConnector = new Dictionary<string, IReadOnlyList<ConnectionListItem>>(StringComparer.Ordinal);
+        foreach (var integration in integrations.Where(i => i.Status == "Active").OrderBy(i => i.Id))
+        {
+            if (!byConnector.ContainsKey(integration.ConnectorKey))
+            {
+                byConnector[integration.ConnectorKey] = (await _connections.ListAsync(integration.Id, cancellationToken) ?? []).Where(c => c.IsActive).ToList();
+            }
+        }
+
+        model.ConnectionsByConnector = byConnector;
+    }
 
     private async Task FillAsync(DeviceFormViewModel model, DeviceItem device, CancellationToken cancellationToken)
     {

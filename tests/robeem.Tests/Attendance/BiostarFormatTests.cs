@@ -87,7 +87,7 @@ public sealed class BiostarFormatTests : IDisposable
 
     private AttendancePayloadFormat Format()
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        using var db = _database.CreateCatalog();
         return db.AttendancePayloadFormats.Include(f => f.EventCodes).AsNoTracking().Single(f => f.Name == "Suprema BioStar 2 export");
     }
 }

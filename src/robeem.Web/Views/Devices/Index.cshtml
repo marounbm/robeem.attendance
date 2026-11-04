@@ -5,7 +5,10 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h3 mb-0">Devices</h1>
-    <a class="btn btn-primary" asp-action="Create" asp-route-integrationId="@Model.IntegrationId">Add device</a>
+    <div>
+        <a class="btn btn-primary" asp-action="Setup">Set up a device</a>
+        <a class="btn btn-outline-secondary" asp-action="Create" asp-route-integrationId="@Model.IntegrationId">Add to an existing integration</a>
+    </div>
 </div>
 
 <p class="text-muted">
@@ -35,7 +38,7 @@
     {
         <div class="card-body text-muted">
             No devices@(Model.IntegrationId is null ? string.Empty : " for this integration") yet.
-            <a asp-action="Create" asp-route-integrationId="@Model.IntegrationId">Add the first one.</a>
+            <a asp-action="Setup">Set up the first one.</a>
         </div>
     }
     else
@@ -64,7 +67,7 @@
                         <tr>
                             <td><a asp-action="Edit" asp-route-integrationId="@device.IntegrationId" asp-route-id="@device.Id">@device.Name</a></td>
                             <td><code>@device.ExternalDeviceId</code></td>
-                            <td><a asp-controller="Integrations" asp-action="Details" asp-route-id="@device.IntegrationId">@device.IntegrationName</a></td>
+                            <td><a asp-controller="Connections" asp-action="Index" asp-route-integrationId="@device.IntegrationId" title="The connections of this integration">@device.IntegrationName</a></td>
                             <td>@(device.ConnectionName.Length == 0 ? "—" : device.ConnectionName)@(device.ConnectionId is null ? string.Empty : " ")@if (device.ConnectionId is null && device.ConnectionName.Length > 0) { <span class="text-muted small">(default)</span> }</td>
                             <td>@(device.DeviceType.Length == 0 ? "—" : device.DeviceType)</td>
                             <td>@(device.Model.Length == 0 ? "—" : device.Model)</td>

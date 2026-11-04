@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Persistence;
 using robeem.DataModel;
 
@@ -11,6 +12,7 @@ public sealed class NormalizationService : INormalizationService
     private const string UtcTimeZoneId = "UTC";
 
     private readonly IRobeemDbContext _db;
+    private readonly ICatalogReader _catalog;
     private readonly INormalizedTransactionRecorder _recorder;
     private readonly IAttendancePolicyResolver _policies;
     private readonly IServiceProvider _services;
@@ -18,12 +20,14 @@ public sealed class NormalizationService : INormalizationService
 
     public NormalizationService(
         IRobeemDbContext db,
+        ICatalogReader catalog,
         INormalizedTransactionRecorder recorder,
         IAttendancePolicyResolver policies,
         IServiceProvider services,
         ILogger<NormalizationService> logger)
     {
         _db = db;
+        _catalog = catalog;
         _recorder = recorder;
         _policies = policies;
         _services = services;
@@ -48,9 +52,11 @@ public sealed class NormalizationService : INormalizationService
 
         // The payload format version the batch was read by, if it records one: its rows are interpreted by that version even
         // when the format has been changed since (CLAUDE.md, Stage 4 follow-up).
+        var recorded = await _db.AttendanceProcessingBatches.Where(b => b.Id == batchId).Select(b => new { b.PayloadFormatName, b.PayloadFormatVersion }).SingleOrDefaultAsync(cancellationToken);
         var run = new Run
         {
-            PayloadFormatId = await _db.AttendanceProcessingBatches.Where(b => b.Id == batchId).Select(b => b.PayloadFormatId).SingleOrDefaultAsync(cancellationToken),
+            PayloadFormatName = recorded?.PayloadFormatName,
+            PayloadFormatVersion = recorded?.PayloadFormatVersion,
         };
         foreach (var rawId in pendingIds)
         {
@@ -122,7 +128,7 @@ public sealed class NormalizationService : INormalizationService
         if (utc is null)
         {
             var reason = zoneId is null
-                ? $"{NormalizationFailures.NoTimeZonePrefix} and device '{raw.DeviceExternalId}' is unknown, so its time zone is too, and the integration has no time zone. Set the integration's time zone (or register the device), then retry the failed punches."
+                ? $"{NormalizationFailures.NoTimeZonePrefix} and device '{raw.DeviceExternalId}' is unknown, so its time zone is too, and the integration has no time zone. Register the device under Devices with this id (as the file reports it) and its time zone: the failed punches are then retried automatically."
                 : $"The timestamp does not exist in {(device is null ? "integration" : "device")} time zone '{zoneId}' (daylight-saving gap).";
             await FailAsync(raw, reason, run, cancellationToken);
             return;
@@ -213,24 +219,40 @@ public sealed class NormalizationService : INormalizationService
 
         var integration = await _db.AttendanceIntegrations
             .Where(i => i.Id == integrationId)
-            .Select(i => new { i.Connector!.Vendor!.VendorKey, i.Connector.AdapterKey, i.PayloadFormatId, ConnectorPayloadFormatId = i.Connector.DefaultPayloadFormatId, i.TimeZoneId, DefaultTransport = i.Connections.Where(c => c.IsDefault).Select(c => (AttendanceTransport?)c.Transport).FirstOrDefault(), i.DefaultDeviceId })
+            .Select(i => new { i.ConnectorKey, i.TimeZoneId, DefaultTransport = i.Connections.Where(c => c.IsDefault).Select(c => (AttendanceTransport?)c.Transport).FirstOrDefault(), i.DefaultDeviceId })
             .SingleAsync(cancellationToken);
-        var vendorKey = integration.VendorKey;
+
+        // The connector and its vendor are the prime tenant's catalog; a connector that has gone from it can't be interpreted.
+        var connector = await _catalog.GetConnectorAsync(integration.ConnectorKey, cancellationToken)
+            ?? throw new MissingInterpreterException(integration.ConnectorKey);
+        var vendorKey = connector.VendorKey;
 
         // An integration with no connection yet is read as a manual upload, as it was before connections existed.
         var transport = integration.DefaultTransport ?? AttendanceTransport.FileUpload;
 
         // An integration that reads its uploads by a payload format (its own, else its connector's default) is interpreted by that format's own patterns and labels.
+        // A batch that recorded the exact version it was read by is interpreted by that version, even when the format has changed since.
         IAttendanceEventInterpreter interpreter;
-        if ((run.PayloadFormatId ?? PayloadFormatResolution.EffectiveFormatId(transport, integration.PayloadFormatId, integration.ConnectorPayloadFormatId)) is { } formatId)
+        AttendancePayloadFormat? format = null;
+        if (run.PayloadFormatName is { } recordedName)
         {
-            var format = await _db.AttendancePayloadFormats.AsNoTracking().Include(f => f.EventCodes).SingleAsync(f => f.Id == formatId, cancellationToken);
+            format = run.PayloadFormatVersion is { } recordedVersion
+                ? await _catalog.GetFormatVersionAsync(recordedName, recordedVersion, cancellationToken)
+                : await _catalog.GetLatestFormatAsync(recordedName, cancellationToken);
+        }
+        else if (PayloadFormatResolution.EffectiveFormatName(transport, connector.DefaultPayloadFormatName) is { } formatName)
+        {
+            format = await _catalog.GetLatestFormatAsync(formatName, cancellationToken);
+        }
+
+        if (format is not null)
+        {
             interpreter = _services.GetRequiredService<ICustomFormatInterpreterFactory>().Create(format);
         }
         else
         {
-            interpreter = (integration.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceEventInterpreter>(adapterKey) : null)
-                ?? throw new MissingInterpreterException(integration.AdapterKey ?? string.Empty);
+            interpreter = (connector.AdapterKey is { Length: > 0 } adapterKey ? _services.GetKeyedService<IAttendanceEventInterpreter>(adapterKey) : null)
+                ?? throw new MissingInterpreterException(connector.AdapterKey ?? string.Empty);
         }
 
         var devices = await _db.AttendanceDevices
@@ -275,7 +297,9 @@ public sealed class NormalizationService : INormalizationService
     /// <summary>Per-run state: counters and lookups loaded once per batch.</summary>
     private sealed class Run
     {
-        public int? PayloadFormatId { get; init; }
+        public string? PayloadFormatName { get; init; }
+
+        public int? PayloadFormatVersion { get; init; }
 
         public Dictionary<int, IntegrationLookups> Integrations { get; } = [];
 

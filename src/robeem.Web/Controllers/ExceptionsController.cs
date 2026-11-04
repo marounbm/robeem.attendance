@@ -28,15 +28,17 @@ public sealed class ExceptionsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, int? employeeId, CancellationToken cancellationToken)
     {
         var chosen = ExceptionsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status! : "Active";
         return View(new ExceptionsIndexViewModel
         {
-            Items = await _exceptions.ListAsync(chosen, from, to, null, PageSize, cancellationToken),
+            Items = await _exceptions.ListAsync(chosen, from, to, employeeId, PageSize, cancellationToken),
+            Employees = await _exceptions.ListEmployeeOptionsAsync(cancellationToken),
             Status = chosen,
             From = from,
             To = to,
+            EmployeeId = employeeId,
         });
     }
 

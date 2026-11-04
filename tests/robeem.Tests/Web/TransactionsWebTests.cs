@@ -37,11 +37,11 @@ public sealed class TransactionsWebTests
         var options = new StubHttpHandler(HttpStatusCode.OK, """[{"id":3,"name":"HQ"}]""");
 
         var result = await new TransactionsApiClient(normalized.CreateClient())
-            .ListNormalizedAsync(3, 9, "hiba", "CheckIn", "Unique", "None", new DateTime(2026, 4, 1), null, 2, 20, CancellationToken.None);
+            .ListNormalizedAsync(3, 9, "hiba", "CheckIn", "Unique", "None", "Processed", new DateTime(2026, 4, 1), null, 2, 20, CancellationToken.None);
         var integrations = await new TransactionsApiClient(options.CreateClient()).ListIntegrationsAsync(CancellationToken.None);
 
         Assert.Equal(
-            "/api/attendance/transactions/normalized?page=2&pageSize=20&integrationId=3&rawId=9&employee=hiba&eventType=CheckIn&duplicate=Unique&flag=None&from=2026-04-01",
+            "/api/attendance/transactions/normalized?page=2&pageSize=20&integrationId=3&rawId=9&employee=hiba&eventType=CheckIn&duplicate=Unique&flag=None&status=Processed&from=2026-04-01",
             normalized.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal((45, 2, 3), (result.Total, result.Page, result.PageCount));
         Assert.Equal((2, 9, "CheckIn"), (result.Items[0].Id, result.Items[0].RawId, result.Items[0].EventType));
@@ -107,12 +107,15 @@ public sealed class TransactionsWebTests
         var transactions = new FakeTransactions { NormalizedTotal = 45 };
         var controller = new NormalizedTransactionsController(transactions);
 
-        var page = await controller.Index(null, 9, "hiba", "CheckIn", "Nope", "Nope", null, null, 2, 50, CancellationToken.None);
+        var page = await controller.Index(null, 9, "hiba", "CheckIn", "Nope", "Nope", "Nope", null, null, 2, 50, CancellationToken.None);
         var model = Assert.IsType<NormalizedTransactionsIndexViewModel>(Assert.IsType<ViewResult>(page).Model);
-        await controller.Index(null, null, null, null, null, null, null, null, -1, 7, CancellationToken.None);
+        await controller.Index(null, null, null, null, null, null, "Excluded", null, null, -1, 7, CancellationToken.None);
 
-        Assert.Equal((9, "hiba", "CheckIn", null, null), (model.RawId, model.Employee, model.EventType, model.Duplicate, model.Flag));
+        Assert.Equal((9, "hiba", "CheckIn", null, null, null), (model.RawId, model.Employee, model.EventType, model.Duplicate, model.Flag, model.Status));
         Assert.Equal((2, 50, 45), (model.Page, model.PageSize, model.Total));
+
+        // An unknown status is dropped; a known one is passed on.
+        Assert.Equal([null, "Excluded"], transactions.NormalizedStatuses);
 
         // Asked for page 2 of 50, then (an unknown size and a page before the first) page 1 of the default 20.
         Assert.Equal([(2, 50), (1, 20)], transactions.NormalizedAsks);
@@ -132,12 +135,13 @@ public sealed class TransactionsWebTests
             EventType = "CheckIn",
             Duplicate = "Unique",
             Flag = "None",
+            Status = "Processed",
             From = new DateTime(2026, 4, 1),
             To = new DateTime(2026, 4, 30),
         };
 
         Assert.Equal(
-            new Dictionary<string, string?> { ["pageSize"] = "10", ["integrationId"] = "3", ["rawId"] = "9", ["employee"] = "hiba", ["eventType"] = "CheckIn", ["duplicate"] = "Unique", ["flag"] = "None", ["from"] = "2026-04-01", ["to"] = "2026-04-30", ["page"] = "2" },
+            new Dictionary<string, string?> { ["pageSize"] = "10", ["integrationId"] = "3", ["rawId"] = "9", ["employee"] = "hiba", ["eventType"] = "CheckIn", ["duplicate"] = "Unique", ["flag"] = "None", ["status"] = "Processed", ["from"] = "2026-04-01", ["to"] = "2026-04-30", ["page"] = "2" },
             model.Pager.For(2));
         Assert.Equal(5, model.Pager.PageCount);
     }
@@ -167,6 +171,8 @@ public sealed class TransactionsWebTests
 
         public List<(int Page, int PageSize)> NormalizedAsks { get; } = [];
 
+        public List<string?> NormalizedStatuses { get; } = [];
+
         public int NormalizedTotal { get; set; }
 
         public Task<PagedResult<RawTransactionListItem>> ListRawAsync(int? integrationId, int? batchId, string? status, DateTime? from, DateTime? to, string? search, string? employee, int page, int pageSize, CancellationToken cancellationToken)
@@ -176,8 +182,9 @@ public sealed class TransactionsWebTests
             return Task.FromResult(new PagedResult<RawTransactionListItem> { Total = RawTotal, Page = page, PageSize = pageSize });
         }
 
-        public Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+        public Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
         {
+            NormalizedStatuses.Add(status);
             NormalizedAsks.Add((page, pageSize));
             return Task.FromResult(new PagedResult<NormalizedTransactionListItem> { Total = NormalizedTotal, Page = page, PageSize = pageSize });
         }

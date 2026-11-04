@@ -17,4 +17,10 @@ public static class TenancyProtocol
 
     /// <summary>403: the authenticated user's tenant is not configured.</summary>
     public const string TenantUnavailableCode = "tenant_unavailable";
+
+    /// <summary>403: the attendance catalog belongs to the prime tenant, and the request's tenant is not it.</summary>
+    public const string CatalogReadOnlyCode = "catalog_read_only";
+
+    /// <summary>503: the prime tenant's Api could not give the attendance catalog.</summary>
+    public const string CatalogUnavailableCode = "catalog_unavailable";
 }

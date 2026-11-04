@@ -8,7 +8,8 @@ public sealed class AttendanceDeviceConfiguration : IEntityTypeConfiguration<Att
 {
     public void Configure(EntityTypeBuilder<AttendanceDevice> builder)
     {
-        builder.HasOne(d => d.DeviceType).WithMany().HasForeignKey(d => d.DeviceTypeId);
+        // The device type is a catalog row of the prime tenant, referred to by name: there is no foreign key across databases.
+        builder.HasIndex(d => d.DeviceTypeName);
 
         // The connection a device is reached through, when it is not the integration's default. Restrict, like every foreign key.
         builder.HasOne(d => d.Connection).WithMany().HasForeignKey(d => d.ConnectionId).OnDelete(DeleteBehavior.Restrict);

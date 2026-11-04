@@ -44,7 +44,7 @@ public sealed class VendorAndConnectorTests : IDisposable
 
         var list = await Vendors(v => v.ListAsync(CancellationToken.None));
         var acme = list.Single(v => v.VendorKey == "acme");
-        Assert.Equal(("Acme, renamed", false, 0, 0), (acme.DisplayName, acme.IsActive, acme.ConnectorCount, acme.IntegrationCount));
+        Assert.Equal(("Acme, renamed", false, 0), (acme.DisplayName, acme.IsActive, acme.ConnectorCount));
         Assert.Equal(1, list.Single(v => v.VendorKey == "zkteco").ConnectorCount);
         using var check = _database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(2, check.AttendanceAuditLogs.Count(a => a.TargetType == nameof(AttendanceVendor)));
@@ -90,10 +90,10 @@ public sealed class VendorAndConnectorTests : IDisposable
     [Fact]
     public async Task AConnector_IsNotUsableWhileItsVendorIsInactive()
     {
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        using (var catalog = _database.CreateCatalog())
         {
-            db.AttendanceVendors.Single(v => v.VendorKey == "zkteco").IsActive = false;
-            db.SaveChanges();
+            catalog.AttendanceVendors.Single(v => v.VendorKey == "zkteco").IsActive = false;
+            catalog.SaveChanges();
         }
 
         var zkteco = (await Connectors(c => c.ListAsync(CancellationToken.None))).Single(c => c.ConnectorKey == "zkteco");
@@ -122,13 +122,13 @@ public sealed class VendorAndConnectorTests : IDisposable
     {
         File.WriteAllText(_csvPath, "employee_id,timestamp,type,device_id\r\nE-1,2026-10-04 09:00,IN,DEV-1\r\n");
         var vendorId = VendorId("generic-csv");
-        var second = (await Connectors(c => c.CreateAsync(NewConnector(vendorId, "generic-csv-b", defaultFormat: "Generic CSV"), CancellationToken.None))).Id!.Value;
+        await Connectors(c => c.CreateAsync(NewConnector(vendorId, "generic-csv-b", defaultFormat: "Generic CSV"), CancellationToken.None));
         int first;
         int other;
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var one = new AttendanceIntegration { Connector = AttendanceTestData.Seeded(db, "generic-csv"), DisplayName = "First" };
-            var two = new AttendanceIntegration { ConnectorId = second, DisplayName = "Second" };
+            var one = new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "First" };
+            var two = new AttendanceIntegration { ConnectorKey = "generic-csv-b", DisplayName = "Second" };
             db.AddRange(one, two);
             db.SaveChanges();
             (first, other) = (one.Id, two.Id);
@@ -141,7 +141,7 @@ public sealed class VendorAndConnectorTests : IDisposable
         foreach (var id in new[] { first, other })
         {
             using var db = _database.CreateContext(TestDatabase.TenantA);
-            var result = await new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), services)
+            var result = await new IngestionService(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), services)
                 .IngestManualUploadAsync(id, _csvPath, CancellationToken.None);
             Assert.Equal(1, result!.RecordsIngested);
         }
@@ -157,9 +157,9 @@ public sealed class VendorAndConnectorTests : IDisposable
         var vendorId = VendorId("zkteco");
         var connectorId = (await Connectors(c => c.CreateAsync(NewConnector(vendorId, "zkteco-export-2", defaultFormat: "ZKTeco attendance export"), CancellationToken.None))).Id!.Value;
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceIntegrationService(db, new NoSync(), Audit(db), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
+        var service = new AttendanceIntegrationService(db, _database.CreateCatalogReader(), new NoSync(), Audit(db), new ServiceCollection().BuildServiceProvider());
 
-        var created = await service.CreateAsync(new IntegrationInput { ConnectorId = connectorId, DisplayName = "Branch", Transport = "FileUpload", Status = "Active" }, CancellationToken.None);
+        var created = await service.CreateAsync(new IntegrationInput { ConnectorKey = "zkteco-export-2", DisplayName = "Branch", Transport = "FileUpload", Status = "Active" }, CancellationToken.None);
 
         Assert.True(created.Succeeded, string.Join(" ", created.Errors.Values));
         var item = Assert.Single(await service.ListAsync(CancellationToken.None));
@@ -184,26 +184,26 @@ public sealed class VendorAndConnectorTests : IDisposable
 
     private int VendorId(string key)
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceVendors.Single(v => v.VendorKey == key).Id;
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendanceVendors.Single(v => v.VendorKey == key).Id;
     }
 
     private int FormatId(string name)
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendancePayloadFormats.Single(f => f.Name == name).Id;
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendancePayloadFormats.Single(f => f.Name == name).Id;
     }
 
     private async Task<T> Vendors<T>(Func<AttendanceVendorService, Task<T>> action)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await action(new AttendanceVendorService(db, Audit(db)));
+        return await action(_database.VendorService(db));
     }
 
     private async Task<T> Connectors<T>(Func<AttendanceConnectorService, Task<T>> action)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await action(new AttendanceConnectorService(db, Audit(db), new StubAdapterCatalog()));
+        return await action(_database.ConnectorService(db));
     }
 
     private sealed class NoSync : IIntegrationSyncService

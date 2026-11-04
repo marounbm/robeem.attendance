@@ -150,7 +150,7 @@ public sealed class ConnectionsController : Controller
     {
         // The transports the integration's connector offers, and file upload.
         var connectors = await _integrations.ListConnectorsAsync(cancellationToken);
-        model.Transports = connectors.FirstOrDefault(c => c.Id == model.Integration.ConnectorId)?.SupportedTransports ?? [];
+        model.Transports = connectors.FirstOrDefault(c => c.Key == model.Integration.ConnectorKey)?.SupportedTransports ?? [];
         model.Descriptors = await _connections.ListDescriptorsAsync(cancellationToken);
     }
 

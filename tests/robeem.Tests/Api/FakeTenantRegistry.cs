@@ -14,5 +14,7 @@ internal sealed class FakeTenantRegistry : ITenantRegistry
 
     public TenantDefinition? DefaultTenant => Tenants.FirstOrDefault();
 
+    public TenantDefinition PrimeTenant => Tenants.First();
+
     public TenantDefinition? Find(string? tenantId) => Tenants.FirstOrDefault(t => t.Id == tenantId);
 }

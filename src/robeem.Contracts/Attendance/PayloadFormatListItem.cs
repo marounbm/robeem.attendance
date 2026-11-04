@@ -19,7 +19,4 @@ public sealed class PayloadFormatListItem
     public bool IsActive { get; init; }
 
     public int EventCodeCount { get; init; }
-
-    /// <summary>Gets how many integrations read their uploads by this format.</summary>
-    public int IntegrationCount { get; init; }
 }

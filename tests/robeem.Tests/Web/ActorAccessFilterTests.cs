@@ -183,6 +183,53 @@ public sealed class ActorAccessFilterTests
         Assert.Null(actor.Effective);
     }
 
+    [Theory]
+    [InlineData(typeof(PayloadFormatsController), "Create")]
+    [InlineData(typeof(PayloadFormatsController), "Edit")]
+    [InlineData(typeof(PayloadFormatsController), "Preview")]
+    [InlineData(typeof(PayloadFormatsController), "Sample")]
+    [InlineData(typeof(VendorsController), "Index")]
+    [InlineData(typeof(ConnectorsController), "Create")]
+    [InlineData(typeof(TransportsController), "Index")]
+    [InlineData(typeof(DeviceTypesController), "Index")]
+    public void TheCatalogIsChangedInThePrimeTenantOnly_EvenByAPlatformAdministrator(Type controller, string action)
+    {
+        var elsewhere = RunInTenant(controller, action, ["PlatformAdministrator", "IntegrationAdministrator"], isPrime: false);
+        var inPrime = RunInTenant(controller, action, ["PlatformAdministrator"], isPrime: true);
+        var unknown = RunInTenant(controller, action, ["PlatformAdministrator"], isPrime: null);
+
+        var view = Assert.IsType<ViewResult>(elsewhere.Result);
+        Assert.Equal(("AccessDenied", 403), (view.ViewName, view.StatusCode));
+        Assert.Contains("prime tenant", (string)view.ViewData[AccessDeniedPage.ReasonKey]!);
+        Assert.Null(inPrime.Result);
+
+        // While the tenant is not known, the Api decides.
+        Assert.Null(unknown.Result);
+    }
+
+    [Theory]
+    [InlineData(typeof(PayloadFormatsController), "Create")]
+    [InlineData(typeof(PayloadFormatsController), "Edit")]
+    [InlineData(typeof(VendorsController), "Index")]
+    public void AnIntegrationAdministrator_WhoIsNotAPlatformAdministrator_CanNotChangeTheCatalog_EvenInThePrimeTenant(Type controller, string action)
+    {
+        var context = RunInTenant(controller, action, ["IntegrationAdministrator"], isPrime: true);
+
+        Assert.Equal(403, Assert.IsType<ViewResult>(context.Result).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(typeof(PayloadFormatsController), "Index")]
+    [InlineData(typeof(PayloadFormatsController), "Details")]
+    [InlineData(typeof(PayloadFormatsController), "Download")]
+    public void EveryTenantsIntegrationAdministrator_ViewsThePayloadFormats_AndDownloadsAnExample(Type controller, string action)
+    {
+        Assert.Null(RunInTenant(controller, action, ["IntegrationAdministrator"], isPrime: false).Result);
+        Assert.Null(RunInTenant(controller, action, ["IntegrationAdministrator"], isPrime: true).Result);
+        Assert.Null(RunInTenant(controller, action, ["PlatformAdministrator"], isPrime: false).Result);
+        Assert.Equal(403, Assert.IsType<ViewResult>(RunInTenant(controller, action, ["Employee"], isPrime: false).Result).StatusCode);
+    }
+
     [Fact]
     public async Task ARefusal_CarriesTheApisReason_ToTheExceptionAndThePage()
     {
@@ -218,8 +265,38 @@ public sealed class ActorAccessFilterTests
         return context;
     }
 
+    private static ActionExecutingContext RunInTenant(Type controller, string action, string[] roles, bool? isPrime)
+    {
+        // An action may have a GET and a POST overload: the metadata of every one named so, as the action's own.
+        var methods = controller.GetMethods().Where(m => m.Name == action).ToList();
+        Assert.NotEmpty(methods);
+        var descriptor = new ActionDescriptor
+        {
+            EndpointMetadata = [.. controller.GetCustomAttributes(inherit: true), .. methods.SelectMany(m => m.GetCustomAttributes(inherit: true))],
+        };
+        var route = new RouteData();
+        route.Values["controller"] = controller.Name[..^"Controller".Length];
+        var context = new ActionExecutingContext(new ActionContext(new DefaultHttpContext(), route, descriptor), [], new Dictionary<string, object?>(), controller);
+
+        new ActorAccessFilter(new FakeActor(new ActingAs(1, "x", roles)), new FakeTenant(isPrime))
+            .OnActionExecutionAsync(context, () => Task.FromResult(new ActionExecutedContext(context, [], controller))).GetAwaiter().GetResult();
+        return context;
+    }
+
     private static void RunFilter(ICurrentActor actor, ActionExecutingContext context, Type controller) =>
         new ActorAccessFilter(actor).OnActionExecutionAsync(context, () => Task.FromResult(new ActionExecutedContext(context, [], controller))).GetAwaiter().GetResult();
+
+    private sealed class FakeTenant : robeem.Web.Tenancy.ICurrentTenantInfo
+    {
+        public FakeTenant(bool? isPrime)
+        {
+            IsPrime = isPrime;
+        }
+
+        public bool? IsPrime { get; }
+
+        public Task ResolveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private sealed class FakeActor : ICurrentActor
     {

@@ -147,7 +147,7 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
         {
             await File.WriteAllTextAsync(path, csv);
             using var db = Database.CreateContext(TestDatabase.TenantA);
-            var service = new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _adapters);
+            var service = new IngestionService(db, Database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _adapters);
             Assert.NotNull(await service.IngestManualUploadAsync(_integrationId, path, CancellationToken.None));
         }
         finally
@@ -159,7 +159,7 @@ public sealed class AttendanceEndToEndTests : AttendanceEngineTestBase
     private async Task NormalizeAllAsync()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var service = new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _adapters, NullLogger<NormalizationService>.Instance);
+        var service = new NormalizationService(db, Database.CreateCatalogReader(), new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _adapters, NullLogger<NormalizationService>.Instance);
         foreach (var batchId in await service.ListBatchesWithPendingTransactionsAsync(CancellationToken.None))
         {
             await service.NormalizeBatchAsync(batchId, CancellationToken.None);

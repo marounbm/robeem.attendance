@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
 using robeem.DataModel;
@@ -9,14 +10,16 @@ namespace robeem.Application.Attendance;
 public sealed class IntegrationHealthService : IIntegrationHealthService
 {
     private readonly IRobeemDbContext _db;
+    private readonly ICatalogReader _catalog;
     private readonly IntegrationResilience _resilience;
     private readonly AttendanceSyncOptions _options;
     private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
 
-    public IntegrationHealthService(IRobeemDbContext db, IntegrationResilience resilience, IOptions<AttendanceSyncOptions> options, IAttendanceAuditTrail audit, TimeProvider clock)
+    public IntegrationHealthService(IRobeemDbContext db, ICatalogReader catalog, IntegrationResilience resilience, IOptions<AttendanceSyncOptions> options, IAttendanceAuditTrail audit, TimeProvider clock)
     {
         _db = db;
+        _catalog = catalog;
         _resilience = resilience;
         _options = options.Value;
         _audit = audit;
@@ -27,7 +30,6 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
     {
         var integration = await _db.AttendanceIntegrations
             .AsNoTracking()
-            .Include(i => i.Connector).ThenInclude(c => c!.Vendor)
             .SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
         {
@@ -93,7 +95,7 @@ public sealed class IntegrationHealthService : IIntegrationHealthService
         {
             IntegrationId = integration.Id,
             DisplayName = integration.DisplayName,
-            VendorKey = integration.Connector!.Vendor!.VendorKey,
+            VendorKey = (await _catalog.GetConnectorAsync(integration.ConnectorKey, cancellationToken))?.VendorKey ?? string.Empty,
             Status = integration.Status.ToString(),
             HealthStatus = integration.HealthStatus.ToString(),
             IsCircuitOpen = _resilience.Get(_db.CurrentTenantId, integration.Id).IsOpen,

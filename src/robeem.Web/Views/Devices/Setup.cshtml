@@ -1,0 +1,254 @@
+@model DeviceSetupViewModel
+@{
+    ViewData["Title"] = "Set up a device";
+
+    var usable = Model.Connectors.Where(c => c.IsActive).ToList();
+    var vendors = usable.GroupBy(c => c.VendorKey).Select(g => new { Key = g.Key, Name = g.First().VendorName }).OrderBy(v => v.Name).ToList();
+    var transports = usable.SelectMany(c => c.SupportedTransports).GroupBy(t => t.Key).Select(g => g.First()).ToList();
+    var connectorFacts = usable.Select(c => new
+    {
+        key = c.Key,
+        vendor = c.VendorKey,
+        transports = c.SupportedTransports.Where(t => t.IsActive || t.Key == Model.Input.Transport).Select(t => t.Key).ToArray(),
+        encrypted = c.EncryptionKind != "None",
+        hasIntegration = Model.ConnectionsByConnector.ContainsKey(c.Key),
+    }).ToList();
+    var pulling = transports.Where(t => t.IsPull).Select(t => t.Key).ToArray();
+}
+
+<h1 class="h3 mb-3">Set up a device</h1>
+
+<p class="text-muted">
+    Choose the vendor and the connector, say how the device is reached, then describe the device. You never create an integration
+    yourself: the first time a connector is used, robeem makes its integration for you, and later devices of the connector join it.
+</p>
+
+<form method="post" asp-action="Setup">
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+    @if (usable.Count == 0)
+    {
+        <div class="alert alert-warning">No connector can be used yet. A platform administrator must make one available in the catalog first.</div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-header">1. Vendor and connector</div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="setup-vendor">Vendor</label>
+                <select name="VendorKey" id="setup-vendor" class="form-select">
+                    @foreach (var vendor in vendors)
+                    {
+                        <option value="@vendor.Key" selected="@(vendor.Key == Model.VendorKey)">@vendor.Name</option>
+                    }
+                </select>
+                <div class="form-text">The company whose devices these are.</div>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Input.ConnectorKey" class="form-label"></label>
+                <select asp-for="Input.ConnectorKey" class="form-select" id="setup-connector">
+                    @foreach (var connector in usable)
+                    {
+                        <option value="@connector.Key" data-vendor="@connector.VendorKey" selected="@(connector.Key == Model.Input.ConnectorKey)">@connector.DisplayName</option>
+                    }
+                </select>
+                <div class="form-text">The software or protocol that delivers the vendor's attendance. Only the vendor's usable connectors are listed.</div>
+                <span asp-validation-for="Input.ConnectorKey" class="text-danger small"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">2. How the device is reached</div>
+        <div class="card-body row g-3">
+            <div class="col-md-6" id="setup-existing">
+                <label asp-for="Input.ConnectionId" class="form-label"></label>
+                <select asp-for="Input.ConnectionId" class="form-select" id="setup-connection">
+                    <option value="" data-connector="">A new connection (enter it below)</option>
+                    @foreach (var (connectorKey, connections) in Model.ConnectionsByConnector)
+                    {
+                        foreach (var connection in connections)
+                        {
+                            <option value="@connection.Id" data-connector="@connectorKey" selected="@(connection.Id == Model.Input.ConnectionId)">@connection.Name (@connection.TransportName)@(connection.IsDefault ? " — default" : string.Empty)</option>
+                        }
+                    }
+                </select>
+                <div class="form-text">Several devices can share a connection, for example one BioStar server. Choose one that exists, or enter a new one.</div>
+                <span asp-validation-for="Input.ConnectionId" class="text-danger small"></span>
+            </div>
+            <div class="col-12 form-text" id="setup-first-use">
+                This connector has no integration yet. One is created with the connection below as its default.
+            </div>
+        </div>
+        <div class="card-body row g-3 border-top" id="setup-new-connection">
+            <div class="col-md-6">
+                <label asp-for="Input.Transport" class="form-label"></label>
+                <select asp-for="Input.Transport" class="form-select" id="setup-transport">
+                    @foreach (var transport in transports)
+                    {
+                        <option value="@transport.Key" selected="@(transport.Key == Model.Input.Transport)">@transport.DisplayName</option>
+                    }
+                </select>
+                <div class="form-text">
+                    <strong>Manual file upload</strong>: HR uploads the exported file on the <em>Upload attendance</em> screen. The other choices are listed only as far as the connector supports them.
+                </div>
+                <span asp-validation-for="Input.Transport" class="text-danger small"></span>
+            </div>
+            <partial name="_ConnectionFields" model="@(new ConnectionFieldsModel { AuthMethod = Model.Input.AuthMethod, Settings = Model.Input.Settings, Descriptors = Model.Descriptors, TransportSelectId = "setup-transport" })" />
+            <div class="col-md-6">
+                <label asp-for="Input.ConnectionConfigRef" class="form-label"></label>
+                <input asp-for="Input.ConnectionConfigRef" class="form-control" autocomplete="off" placeholder="e.g. acme-clock-api" />
+                <div class="form-text">
+                    The <em>name</em> the secret is kept under in configuration. Never type the secret itself here. Leave it empty for a file upload.
+                </div>
+                <span asp-validation-for="Input.ConnectionConfigRef" class="text-danger small"></span>
+            </div>
+            <div class="col-md-6" id="setup-schedule">
+                <label asp-for="Input.PollingScheduleCron" class="form-label"></label>
+                <input asp-for="Input.PollingScheduleCron" class="form-control" autocomplete="off" placeholder="*/5 * * * *" />
+                <div class="form-text">When to pull from the vendor, in server time (for example <code>*/15 * * * *</code>). Empty: never pull.</div>
+                <span asp-validation-for="Input.PollingScheduleCron" class="text-danger small"></span>
+            </div>
+            <div class="col-md-6" id="setup-payload-key">
+                <label asp-for="Input.PayloadKeyRef" class="form-label"></label>
+                <input asp-for="Input.PayloadKeyRef" class="form-control" autocomplete="off" placeholder="e.g. acme-clock-file-key" />
+                <div class="form-text">This connector's files arrive encrypted. Give the <em>name</em> the decryption key is kept under in configuration, never the key itself.</div>
+                <span asp-validation-for="Input.PayloadKeyRef" class="text-danger small"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">3. The device</div>
+        <div class="card-body row g-3">
+            <div class="col-md-6">
+                <label asp-for="Input.Device.ExternalDeviceId" class="form-label"></label>
+                <input asp-for="Input.Device.ExternalDeviceId" class="form-control" autocomplete="off" maxlength="100" />
+                <span asp-validation-for="Input.Device.ExternalDeviceId" class="text-danger small"></span>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Input.Device.Name" class="form-label"></label>
+                <input asp-for="Input.Device.Name" class="form-control" autocomplete="off" maxlength="255" />
+                <span asp-validation-for="Input.Device.Name" class="text-danger small"></span>
+            </div>
+            <div class="col-md-4">
+                <label asp-for="Input.Device.DeviceTypeName" class="form-label"></label>
+                <select asp-for="Input.Device.DeviceTypeName" class="form-select">
+                    <option value="">— Choose —</option>
+                    @foreach (var type in Model.DeviceTypes)
+                    {
+                        <option value="@type.Name" selected="@(type.Name == Model.Input.Device.DeviceTypeName)">@type.Name</option>
+                    }
+                </select>
+                <span asp-validation-for="Input.Device.DeviceTypeName" class="text-danger small"></span>
+            </div>
+            <div class="col-md-4">
+                <label asp-for="Input.Device.TimeZoneId" class="form-label"></label>
+                <select asp-for="Input.Device.TimeZoneId" class="form-select">
+                    @foreach (var zone in TimeZoneOptions.Choices(Model.Input.Device.TimeZoneId))
+                    {
+                        <option value="@zone" selected="@(zone == Model.Input.Device.TimeZoneId?.Trim())">@zone</option>
+                    }
+                </select>
+                <span asp-validation-for="Input.Device.TimeZoneId" class="text-danger small"></span>
+            </div>
+            <div class="col-md-4">
+                <label asp-for="Input.Device.Model" class="form-label"></label>
+                <input asp-for="Input.Device.Model" class="form-control" autocomplete="off" maxlength="100" placeholder="e.g. U350" />
+                <span asp-validation-for="Input.Device.Model" class="text-danger small"></span>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Input.Device.SoftwareVersion" class="form-label"></label>
+                <input asp-for="Input.Device.SoftwareVersion" class="form-control" autocomplete="off" maxlength="100" placeholder="e.g. 4.8.7" />
+                <span asp-validation-for="Input.Device.SoftwareVersion" class="text-danger small"></span>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Input.Device.SdkVersion" class="form-label"></label>
+                <input asp-for="Input.Device.SdkVersion" class="form-control" autocomplete="off" maxlength="50" placeholder="e.g. 6.2.5.5" />
+                <span asp-validation-for="Input.Device.SdkVersion" class="text-danger small"></span>
+            </div>
+            <div class="col-12 form-text">
+                The time zone is the one the device's clock runs in: a punch without a UTC offset is read in it. After saving, you map the
+                device's employee ids to your employees.
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@(usable.Count == 0)">Add device</button>
+    <a class="btn btn-link" asp-action="Index">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            var connectors = @Json.Serialize(connectorFacts);
+            var pulling = @Json.Serialize(pulling);
+            var vendor = document.getElementById('setup-vendor');
+            var connector = document.getElementById('setup-connector');
+            var transport = document.getElementById('setup-transport');
+            var connection = document.getElementById('setup-connection');
+            var existingBox = document.getElementById('setup-existing');
+            var firstUse = document.getElementById('setup-first-use');
+            var newBox = document.getElementById('setup-new-connection');
+            var schedule = document.getElementById('setup-schedule');
+            var payloadKey = document.getElementById('setup-payload-key');
+            if (!vendor || !connector) { return; }
+
+            function show(option, visible) {
+                option.hidden = !visible;
+                option.disabled = !visible;
+            }
+
+            // Vendor, then connector: only the vendor's connectors are offered.
+            function refreshConnectors() {
+                var first = null;
+                Array.prototype.forEach.call(connector.options, function (option) {
+                    var ok = option.getAttribute('data-vendor') === vendor.value;
+                    show(option, ok);
+                    if (ok && first === null) { first = option; }
+                });
+                var current = connector.options[connector.selectedIndex];
+                if ((!current || current.disabled) && first !== null) { connector.value = first.value; }
+                refreshConnector();
+            }
+
+            // The connector decides the transports, the connections to share, and what else is asked.
+            function refreshConnector() {
+                var facts = connectors.filter(function (c) { return c.key === connector.value; })[0] || { transports: [], encrypted: false, hasIntegration: false };
+
+                Array.prototype.forEach.call(transport.options, function (option) { show(option, facts.transports.indexOf(option.value) >= 0); });
+                if (facts.transports.length > 0 && facts.transports.indexOf(transport.value) < 0) {
+                    transport.value = facts.transports[0];
+                    transport.dispatchEvent(new Event('change'));
+                }
+
+                var shared = 0;
+                Array.prototype.forEach.call(connection.options, function (option) {
+                    var own = option.value !== '' && option.getAttribute('data-connector') === connector.value;
+                    show(option, option.value === '' || own);
+                    if (own) { shared++; }
+                });
+                var chosen = connection.options[connection.selectedIndex];
+                if (chosen && chosen.disabled) { connection.value = ''; }
+                existingBox.hidden = shared === 0;
+                firstUse.hidden = facts.hasIntegration;
+                refreshConnection(facts);
+            }
+
+            // An existing connection needs nothing more; a new one asks for its fields.
+            function refreshConnection(facts) {
+                facts = facts || connectors.filter(function (c) { return c.key === connector.value; })[0] || { encrypted: false, hasIntegration: false };
+                newBox.hidden = connection.value !== '';
+                schedule.hidden = pulling.indexOf(transport.value) < 0;
+                payloadKey.hidden = !(facts.encrypted && !facts.hasIntegration);
+            }
+
+            vendor.addEventListener('change', refreshConnectors);
+            connector.addEventListener('change', refreshConnector);
+            connection.addEventListener('change', function () { refreshConnection(); });
+            transport.addEventListener('change', function () { refreshConnection(); });
+            refreshConnectors();
+        })();
+    </script>
+}

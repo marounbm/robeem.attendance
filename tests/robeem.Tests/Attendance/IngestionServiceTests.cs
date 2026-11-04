@@ -35,11 +35,8 @@ public sealed class IngestionServiceTests : IDisposable
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var integration = new AttendanceIntegration
         {
-            Connector = AttendanceTestData.Seeded(db, "generic-csv"),
+            ConnectorKey = "generic-csv",
             DisplayName = "HQ uploads",
-
-            // Named outright: an integration that does not receive uploads (a test below) still reads this file by it.
-            PayloadFormat = db.AttendancePayloadFormats.Single(f => f.Name == "Generic CSV"),
         };
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "Asia/Beirut" };
         db.AttendanceDevices.Add(device);
@@ -190,18 +187,16 @@ public sealed class IngestionServiceTests : IDisposable
     [Fact]
     public async Task UploadTargets_AreTheActiveIntegrationsOfActiveFileProviders_WithTheirFormatsAndLayout()
     {
+        _database.Store(AttendanceTestData.Connector("rest-only", "REST"), AttendanceTestData.Connector("retired", "Retired", isActive: false));
         using (var seed = _database.CreateContext(TestDatabase.TenantA))
         {
-            var csv = AttendanceTestData.Seeded(seed, "generic-csv");
-            var rest = AttendanceTestData.Connector("rest-only", "REST");
-            var retired = AttendanceTestData.Connector("retired", "Retired", isActive: false);
             seed.AttendanceIntegrations.AddRange(
-                new AttendanceIntegration { Connector = csv, DisplayName = "B takes uploads" },
-                new AttendanceIntegration { Connector = csv, DisplayName = "A takes uploads" },
-                new AttendanceIntegration { Connector = csv, DisplayName = "Paused", Status = AttendanceIntegrationStatus.Paused },
-                new AttendanceIntegration { Connector = csv, DisplayName = "Pushed by webhook" }.WithConnection(AttendanceTransport.Webhook),
-                new AttendanceIntegration { Connector = rest, DisplayName = "Pulls only" }.WithConnection(AttendanceTransport.RestApi),
-                new AttendanceIntegration { Connector = retired, DisplayName = "Retired provider" });
+                new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "B takes uploads" },
+                new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "A takes uploads" },
+                new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "Paused", Status = AttendanceIntegrationStatus.Paused },
+                new AttendanceIntegration { ConnectorKey = "generic-csv", DisplayName = "Pushed by webhook" }.WithConnection(AttendanceTransport.Webhook),
+                new AttendanceIntegration { ConnectorKey = "rest-only", DisplayName = "Pulls only" }.WithConnection(AttendanceTransport.RestApi),
+                new AttendanceIntegration { ConnectorKey = "retired", DisplayName = "Retired provider" });
             seed.SaveChanges();
         }
 
@@ -307,8 +302,7 @@ public sealed class IngestionServiceTests : IDisposable
 
         var batch = context.AttendanceProcessingBatches.Single(b => b.Id == result!.BatchId);
         Assert.Equal(connectionId, batch.ConnectionId);
-        Assert.Equal(context.AttendanceIntegrations.Single().PayloadFormatId, batch.PayloadFormatId);
-        Assert.NotNull(batch.PayloadFormatId);
+        Assert.Equal(("Generic CSV", 1), (batch.PayloadFormatName, batch.PayloadFormatVersion));
     }
 
     [Fact]
@@ -322,7 +316,7 @@ public sealed class IngestionServiceTests : IDisposable
         var result = await CreateService(db).IngestWebhookPayloadAsync(_integrationId, connection.Id, _csvPath, CancellationToken.None);
 
         var batch = db.AttendanceProcessingBatches.Single(b => b.Id == result!.BatchId);
-        Assert.Equal((connection.Id, null), (batch.ConnectionId, batch.PayloadFormatId));
+        Assert.Equal((connection.Id, null), (batch.ConnectionId, batch.PayloadFormatName));
     }
 
     [Fact]
@@ -364,5 +358,5 @@ public sealed class IngestionServiceTests : IDisposable
     }
 
     private IngestionService CreateService(RobeemDbContext db) =>
-        new(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _adapters);
+        new(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _adapters);
 }

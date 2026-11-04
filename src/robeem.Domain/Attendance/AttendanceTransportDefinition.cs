@@ -12,14 +12,10 @@ namespace robeem.DataModel
     /// from a screen; it can be relabeled or switched off.
     /// </summary>
     [Serializable]
-    [Table(nameof(AttendanceTransportDefinition), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceTransportDefinition : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendanceTransportDefinition), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendanceTransportDefinition : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
-        /// <summary>Gets or sets the name of the <see cref="AttendanceTransport"/> member this row describes. Unique per tenant.</summary>
+        /// <summary>Gets or sets the name of the <see cref="AttendanceTransport"/> member this row describes. Unique.</summary>
         [Required]
         [MaxLength(32)]
         public string TransportKey { get; set; } = string.Empty;

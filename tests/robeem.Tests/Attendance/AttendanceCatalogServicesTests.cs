@@ -8,7 +8,7 @@ using robeem.Infrastructure.Persistence;
 
 namespace robeem.Tests.Attendance;
 
-/// <summary>The catalog an integration administrator manages: vendors, device types and the names of the transports.</summary>
+/// <summary>The catalog the prime tenant's platform administrators manage: connectors, device types and the names of the transports.</summary>
 public sealed class AttendanceCatalogServicesTests : IDisposable
 {
     private readonly TestDatabase _database = new();
@@ -17,8 +17,8 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
     public AttendanceCatalogServicesTests()
     {
         _database.SeedAttendanceCatalog();
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        _vendorId = db.AttendanceVendors.Single(v => v.VendorKey == "generic-csv").Id;
+        using var catalog = _database.CreateCatalog();
+        _vendorId = catalog.AttendanceVendors.Single(v => v.VendorKey == "generic-csv").Id;
     }
 
     public void Dispose() => _database.Dispose();
@@ -32,7 +32,7 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
 
         Assert.True(created.Succeeded);
         var item = (await Connectors(db => db.ListAsync(CancellationToken.None))).Single(p => p.ConnectorKey == "acme-clock");
-        Assert.Equal(("Acme clock", "ZKTeco attendance export", true, false, true, 0), (item.DisplayName, item.DefaultPayloadFormatName, item.IsActive, item.HasAdapter, item.IsUsable, item.IntegrationCount));
+        Assert.Equal(("Acme clock", "ZKTeco attendance export", true, false, true), (item.DisplayName, item.DefaultPayloadFormatName, item.IsActive, item.HasAdapter, item.IsUsable));
         Assert.Equal(["RestApi", "Webhook"], item.Transports);
 
         var input = (await Connectors(db => db.GetInputAsync(created.Id!.Value, CancellationToken.None)))!;
@@ -94,7 +94,7 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
 
         Assert.Contains("ConnectorKey", keyRefused.Errors.Keys);
         Assert.True(updated.Succeeded);
-        using var check = _database.CreateContext(TestDatabase.TenantA);
+        using var check = _database.CreateCatalog();
         var vendor = check.AttendanceConnectorDefinitions.Include(p => p.Transports).ThenInclude(t => t.Transport).Single(p => p.Id == id);
         Assert.Equal(("Acme, renamed", false), (vendor.DisplayName, vendor.IsActive));
         Assert.Equal(["Webhook"], vendor.Transports.Select(t => t.Transport!.TransportKey));
@@ -107,10 +107,10 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
     {
         var formatId = FormatId("Generic CSV");
         var id = (await Connectors(db => db.CreateAsync(NewConnector(formatId: formatId), CancellationToken.None))).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        using (var catalog = _database.CreateCatalog())
         {
-            db.AttendancePayloadFormats.Single(f => f.Id == formatId).IsActive = false;
-            db.SaveChanges();
+            catalog.AttendancePayloadFormats.Single(f => f.Id == formatId).IsActive = false;
+            catalog.SaveChanges();
         }
 
         var keeps = await Connectors(db => db.UpdateAsync(id, NewConnector(formatId: formatId), CancellationToken.None));
@@ -121,42 +121,26 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
     }
 
     [Fact]
-    public async Task DeviceTypes_AreAddedRenamedAndRetired_NeverDeleted_AndOnlyActiveOnesAreOptions()
+    public async Task DeviceTypes_AreAddedAndRetired_NeverRenamedOrDeleted_AndOnlyActiveOnesAreOptions()
     {
         var added = await DeviceTypes(db => db.CreateAsync(new DeviceTypeInput { Name = "  Palm reader " }, CancellationToken.None));
         var duplicate = await DeviceTypes(db => db.CreateAsync(new DeviceTypeInput { Name = "palm READER" }, CancellationToken.None));
         var blank = await DeviceTypes(db => db.CreateAsync(new DeviceTypeInput { Name = " " }, CancellationToken.None));
         var retired = await DeviceTypes(db => db.UpdateAsync(added.Id!.Value, new DeviceTypeInput { Name = "Palm reader", IsActive = false }, CancellationToken.None));
-        var clash = await DeviceTypes(db => db.UpdateAsync(added.Id!.Value, new DeviceTypeInput { Name = "Facial" }, CancellationToken.None));
+        var renamed = await DeviceTypes(db => db.UpdateAsync(added.Id!.Value, new DeviceTypeInput { Name = "Facial" }, CancellationToken.None));
 
         Assert.True(added.Succeeded);
         Assert.Contains("Name", duplicate.Errors.Keys);
         Assert.Contains("Name", blank.Errors.Keys);
         Assert.True(retired.Succeeded);
-        Assert.Contains("Name", clash.Errors.Keys);
+
+        // Devices in every tenant refer to the type by its name, so the name is the type's key.
+        Assert.Contains("can't be changed", renamed.Errors["Name"]);
         Assert.DoesNotContain("Palm reader", (await DeviceTypes(db => db.ListOptionsAsync(CancellationToken.None))).Select(o => o.Name));
         Assert.Equal(7, (await DeviceTypes(db => db.ListAsync(CancellationToken.None))).Count);
         Assert.True((await DeviceTypes(db => db.UpdateAsync(999, new DeviceTypeInput { Name = "x" }, CancellationToken.None))).NotFound);
         var input = (await DeviceTypes(db => db.GetInputAsync(added.Id!.Value, CancellationToken.None)))!;
         Assert.Equal(("Palm reader", false), (input.Name, input.IsActive));
-    }
-
-    [Fact]
-    public async Task ADeviceTypesCount_IsTheDevicesThatHaveIt()
-    {
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
-        {
-            var integration = new AttendanceIntegration { Connector = AttendanceTestData.Seeded(db, "zkteco"), DisplayName = "HQ" };
-            var facial = db.AttendanceDeviceTypes.Single(t => t.Name == "Facial");
-            db.AttendanceDevices.AddRange(
-                new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "A", TimeZoneId = "UTC", DeviceType = facial },
-                new AttendanceDevice { Integration = integration, ExternalDeviceId = "2", Name = "B", TimeZoneId = "UTC", DeviceType = facial });
-            db.SaveChanges();
-        }
-
-        var counts = (await DeviceTypes(db => db.ListAsync(CancellationToken.None))).ToDictionary(t => t.Name, t => t.DeviceCount);
-
-        Assert.Equal((2, 0), (counts["Facial"], counts["Biometric"]));
     }
 
     [Fact]
@@ -190,21 +174,24 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
         int integrationId;
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var biostar = AttendanceTestData.Seeded(db, "suprema-biostar");
-            var integration = new AttendanceIntegration { Connector = biostar, DisplayName = "BioStar" }.WithConnection(AttendanceTransport.RestApi);
+            var integration = new AttendanceIntegration { ConnectorKey = "suprema-biostar", DisplayName = "BioStar" }.WithConnection(AttendanceTransport.RestApi);
             db.Add(integration);
             db.SaveChanges();
             integrationId = integration.Id;
-            db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "RestApi").IsActive = false;
-            db.SaveChanges();
+        }
+
+        using (var catalog = _database.CreateCatalog())
+        {
+            catalog.AttendanceTransportDefinitions.Single(t => t.TransportKey == "RestApi").IsActive = false;
+            catalog.SaveChanges();
         }
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceIntegrationService(check, new NoSync(), new AttendanceAuditTrail(check, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog("suprema-biostar"));
+        var service = new AttendanceIntegrationService(check, _database.CreateCatalogReader(new StubAdapterCatalog("suprema-biostar")), new NoSync(), new AttendanceAuditTrail(check, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
         var input = (await service.GetInputAsync(integrationId, CancellationToken.None))!;
 
         var keeps = await service.UpdateAsync(integrationId, input, CancellationToken.None);
-        var fresh = await service.CreateAsync(new IntegrationInput { ConnectorId = input.ConnectorId, DisplayName = "Another", Transport = "RestApi", Status = "Active" }, CancellationToken.None);
+        var fresh = await service.CreateAsync(new IntegrationInput { ConnectorKey = input.ConnectorKey, DisplayName = "Another", Transport = "RestApi", Status = "Active" }, CancellationToken.None);
 
         Assert.True(keeps.Succeeded);
         Assert.Contains("not available for new integrations", fresh.Errors[nameof(IntegrationInput.Transport)]);
@@ -214,10 +201,10 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
     public async Task ASwitchedOffTransport_CanNotBeAddedToAVendor_ButAVendorKeepsItsOwn()
     {
         var id = (await Connectors(db => db.CreateAsync(NewConnector(transports: ["Sftp"]), CancellationToken.None))).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        using (var catalog = _database.CreateCatalog())
         {
-            db.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").IsActive = false;
-            db.SaveChanges();
+            catalog.AttendanceTransportDefinitions.Single(t => t.TransportKey == "Sftp").IsActive = false;
+            catalog.SaveChanges();
         }
 
         var keeps = await Connectors(db => db.UpdateAsync(id, NewConnector(transports: ["Sftp"]), CancellationToken.None));
@@ -247,30 +234,28 @@ public sealed class AttendanceCatalogServicesTests : IDisposable
         IsActive = isActive,
     };
 
-    private AttendanceAuditTrail Audit(RobeemDbContext db) => new(db, new TestUser(7), TimeProvider.System);
-
     private int FormatId(string name)
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendancePayloadFormats.Single(f => f.Name == name).Id;
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendancePayloadFormats.Single(f => f.Name == name).Id;
     }
 
     private async Task<T> Connectors<T>(Func<AttendanceConnectorService, Task<T>> action, IAttendanceAdapterCatalog? adapters = null)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await action(new AttendanceConnectorService(db, Audit(db), adapters ?? new StubAdapterCatalog()));
+        return await action(_database.ConnectorService(db, adapters));
     }
 
     private async Task<T> DeviceTypes<T>(Func<AttendanceDeviceTypeService, Task<T>> action)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await action(new AttendanceDeviceTypeService(db, Audit(db)));
+        return await action(_database.DeviceTypeService(db));
     }
 
     private async Task<T> Transports<T>(Func<AttendanceTransportService, Task<T>> action)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await action(new AttendanceTransportService(db, Audit(db)));
+        return await action(_database.TransportService(db));
     }
 
     private sealed class NoSync : IIntegrationSyncService

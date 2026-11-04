@@ -17,7 +17,7 @@ public interface ITransactionsApiClient
     /// <param name="flag">None, FlaggedInvalidSequence, FlaggedUnrecognizedEmployee or FlaggedUnrecognizedDevice; null for any.</param>
     /// <param name="page">The 1-based page, newest first; a page past the end answers the last.</param>
     /// <param name="pageSize">Punches per page.</param>
-    Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PagedResult<NormalizedTransactionListItem>> ListNormalizedAsync(int? integrationId, int? rawId, string? employee, string? eventType, string? duplicate, string? flag, string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken);
 
     /// <summary>The integrations to filter by.</summary>
     Task<IReadOnlyList<TransactionIntegrationOption>> ListIntegrationsAsync(CancellationToken cancellationToken);

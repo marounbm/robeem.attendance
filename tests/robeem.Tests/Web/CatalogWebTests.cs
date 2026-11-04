@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
+using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Controllers;
 using robeem.Web.Models;
@@ -126,11 +127,44 @@ public sealed class CatalogWebTests
     [InlineData("Connectors")]
     [InlineData("DeviceTypes")]
     [InlineData("Transports")]
-    public void TheCatalogScreens_AreForIntegrationAdministrators(string controller)
+    public void TheCatalogManagementScreens_AreForPlatformAdministrators_InThePrimeTenantOnly(string controller)
     {
         var item = NavigationMenu.Sections.SelectMany(s => s.Items).Single(i => i.Controller == controller);
 
-        Assert.Equal(["IntegrationAdministrator"], item.Roles);
+        Assert.Equal(["PlatformAdministrator"], item.Roles);
+        Assert.True(item.PrimeTenantOnly);
+    }
+
+    [Fact]
+    public void ThePayloadFormats_AreSeenByIntegrationAdministratorsOfEveryTenant_ButOnlyTheirManagementIsThePrimeTenants()
+    {
+        var item = NavigationMenu.Sections.SelectMany(s => s.Items).Single(i => i.Controller == "PayloadFormats");
+
+        Assert.Equal(["IntegrationAdministrator", "PlatformAdministrator"], item.Roles);
+        Assert.False(item.PrimeTenantOnly);
+
+        var ordinary = NavigationMenu.For(new Actor(["IntegrationAdministrator"]), isPrimeTenant: false).SelectMany(s => s.Items).Select(i => i.Controller).ToArray();
+        Assert.Contains("PayloadFormats", ordinary);
+        Assert.DoesNotContain("Vendors", ordinary);
+        Assert.DoesNotContain("Connectors", ordinary);
+        Assert.DoesNotContain("Transports", ordinary);
+        Assert.DoesNotContain("DeviceTypes", ordinary);
+    }
+
+    [Fact]
+    public void ThePlatformCatalog_ShowsInThePrimeTenantToAPlatformAdministrator_AndNowhereElse()
+    {
+        string[] Screens(string role, bool? prime) => [.. NavigationMenu.For(new Actor([role]), prime).SelectMany(s => s.Items).Select(i => i.Controller)];
+
+        string[] catalog = ["Vendors", "Connectors", "PayloadFormats", "Transports", "DeviceTypes"];
+        Assert.Equal(catalog.Order(), Screens("PlatformAdministrator", true).Where(catalog.Contains).Order());
+        Assert.Equal(["PayloadFormats"], Screens("PlatformAdministrator", false).Where(catalog.Contains));
+
+        // Not a platform administrator: nothing to manage, even in the prime tenant; the Api would refuse it as well.
+        Assert.Equal(["PayloadFormats"], Screens("IntegrationAdministrator", true).Where(catalog.Contains));
+
+        // While the tenant is not known, the Api decides and the menu shows what the role allows.
+        Assert.Equal(catalog.Order(), Screens("PlatformAdministrator", null).Where(catalog.Contains).Order());
     }
 
     private static VendorsController Vendors(FakeVendors vendors) =>
@@ -251,6 +285,8 @@ public sealed class CatalogWebTests
 
         public Task<ApiSaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<DeviceSetupApiResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<ApiSaveResult> DeleteDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -270,5 +306,25 @@ public sealed class CatalogWebTests
         public Task<PagedResult<RawNormalizedMappingItem>?> ListRawMappingAsync(int integrationId, int? batchId, string? status, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<VendorMappingGuide?> GetRawMappingGuideAsync(int integrationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class Actor : ICurrentActor
+    {
+        private readonly string[] _roles;
+
+        public Actor(string[] roles)
+        {
+            _roles = roles;
+        }
+
+        public bool HasChoice => true;
+
+        public ActingAs? Choice => new(1, "x", _roles);
+
+        public ActingAs? Effective => Choice;
+
+        public bool IsInRole(string role) => _roles.Contains(role);
+
+        public bool IsInAnyRole(params string[] roles) => roles.Any(IsInRole);
     }
 }

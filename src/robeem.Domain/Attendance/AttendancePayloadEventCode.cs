@@ -7,13 +7,9 @@ namespace robeem.DataModel
 {
     /// <summary>What one label in a file's type or direction column means, in an <see cref="AttendancePayloadFormat"/>.</summary>
     [Serializable]
-    [Table(nameof(AttendancePayloadEventCode), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendancePayloadEventCode : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendancePayloadEventCode), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendancePayloadEventCode : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
         [Required]
         public int PayloadFormatId { get; set; }
 

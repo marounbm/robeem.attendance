@@ -7,7 +7,7 @@
 
 @if (Model.Integrations.Count == 0)
 {
-    <div class="alert alert-warning">A device belongs to an integration. <a asp-controller="Integrations" asp-action="Create">Add an integration</a> first.</div>
+    <div class="alert alert-warning">There is no integration to add this device to yet. <a asp-action="Setup">Set the device up from the vendor down</a> instead: the integration is made for it.</div>
 }
 else
 {

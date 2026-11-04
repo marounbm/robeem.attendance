@@ -17,7 +17,4 @@ public sealed class VendorListItem
 
     /// <summary>Gets how many connectors the vendor has.</summary>
     public int ConnectorCount { get; init; }
-
-    /// <summary>Gets how many integrations were made with one of the vendor's connectors.</summary>
-    public int IntegrationCount { get; init; }
 }

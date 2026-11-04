@@ -95,6 +95,9 @@ public sealed class TestApi : IAsyncDisposable
         return await Client.SendAsync(request);
     }
 
+    /// <summary>Gets another client of the same in-memory server, for a caller of its own (a service calling this Api).</summary>
+    public HttpClient CreateClient() => _host.GetTestClient();
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();

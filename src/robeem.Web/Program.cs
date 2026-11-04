@@ -15,6 +15,7 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddRobeemApiClients();
 builder.Services.AddSingleton<StandInCache>();
 builder.Services.AddScoped<ICurrentActor, CurrentActor>();
+builder.Services.AddScoped<ICurrentTenantInfo, CurrentTenantInfo>();
 
 var app = builder.Build();
 

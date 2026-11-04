@@ -16,6 +16,7 @@ namespace robeem.Tests.Attendance;
 public sealed class CustomPayloadFormatTests : IDisposable
 {
     private const string RestKey = "rest-only";
+    private const string FormatName = "Branch export";
 
     // No header row; semicolons; date and time in separate columns; day first.
     private const string SemicolonFile =
@@ -39,12 +40,19 @@ public sealed class CustomPayloadFormatTests : IDisposable
             .AddSingleton<ICustomFormatInterpreterFactory, CustomFormatInterpreterFactory>()
             .BuildServiceProvider();
 
-        using var db = _database.CreateContext(TestDatabase.TenantA);
+        // The catalog is the prime tenant's: the connector and the transports it offers.
         var connector = AttendanceTestData.Connector(RestKey, "REST only", adapterKey: RestKey)
             .WithTransport(new AttendanceTransportDefinition { TransportKey = nameof(AttendanceTransport.RestApi), DisplayName = "REST API", IsPull = true });
-        db.Add(new AttendanceTransportDefinition { TransportKey = nameof(AttendanceTransport.FileUpload), DisplayName = "Manual file upload", UsesPayloadFormat = true });
+        _database.Store(connector);
+        using (var catalog = _database.CreateCatalog())
+        {
+            catalog.AttendanceTransportDefinitions.Add(new AttendanceTransportDefinition { TransportKey = nameof(AttendanceTransport.FileUpload), DisplayName = "Manual file upload", UsesPayloadFormat = true });
+            catalog.SaveChanges();
+        }
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
         var employee = new Profile { EmployeeNumber = "P-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
-        var integration = new AttendanceIntegration { Connector = connector, DisplayName = "Branch upload" }.WithConnection();
+        var integration = new AttendanceIntegration { ConnectorKey = RestKey, DisplayName = "Branch upload" }.WithConnection();
         var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Door", TimeZoneId = "Asia/Beirut" };
         db.AddRange(device, new ExternalEmployeeIdMapping { Device = device, ExternalEmployeeId = "E-1", Employee = employee });
         db.SaveChanges();
@@ -68,7 +76,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
         var service = FormatService(db);
         var list = await service.ListAsync(CancellationToken.None);
         var item = Assert.Single(list);
-        Assert.Equal(("Branch export", "Auto", "semicolons", 2, 0, true), (item.Name, item.PayloadKind, item.Delimiter, item.EventCodeCount, item.IntegrationCount, item.IsActive));
+        Assert.Equal(("Branch export", "Auto", "semicolons", 2, true), (item.Name, item.PayloadKind, item.Delimiter, item.EventCodeCount, item.IsActive));
         Assert.Equal(["Branch export"], (await service.ListOptionsAsync(CancellationToken.None)).Select(o => o.Name));
 
         var input = (await service.GetInputAsync(created.Id!.Value, CancellationToken.None))!;
@@ -78,7 +86,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
     }
 
     [Fact]
-    public async Task ChangingAFormat_KeepsUpdatesAddsAndDropsItsLabels_AndIsAudited()
+    public async Task ChangingAFormatsLabels_MakesTheNextVersion_WhichHasTheNewLabels_AndIsAudited()
     {
         var id = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
         var changed = SemicolonFormat();
@@ -92,8 +100,14 @@ public sealed class CustomPayloadFormatTests : IDisposable
         var result = await FormatService(db).UpdateAsync(id, changed, CancellationToken.None);
 
         Assert.True(result.Succeeded);
+
+        // Which tenants' punches were read by the format is not visible from the catalog, so a change to how a file is read is a new version.
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        var codes = check.AttendancePayloadEventCodes.OrderBy(c => c.Code).Select(c => new { c.Code, c.EventType }).ToList();
+        using var catalog = _database.CreateCatalog();
+        var versions = catalog.AttendancePayloadFormats.OrderBy(f => f.Version).ToList();
+        Assert.Equal([1, 2], versions.Select(f => f.Version));
+        Assert.Equal(versions[0].Id, versions[1].SupersedesId);
+        var codes = catalog.AttendancePayloadEventCodes.Where(c => c.PayloadFormatId == versions[1].Id).OrderBy(c => c.Code).Select(c => new { c.Code, c.EventType }).ToList();
         Assert.Equal([("LUNCH OUT", NormalizedEventType.BreakOut), ("i", NormalizedEventType.BreakIn)], codes.Select(c => (c.Code, c.EventType)));
         Assert.Equal(2, check.AttendanceAuditLogs.Count(l => l.Action == AttendanceAuditActions.IntegrationChanged));
         Assert.True((await FormatService(check).UpdateAsync(999, changed, CancellationToken.None)).NotFound);
@@ -175,48 +189,44 @@ public sealed class CustomPayloadFormatTests : IDisposable
     }
 
     [Fact]
-    public async Task AnIntegrationOfAConnectorWithNoFileReader_CanBeSetToManualUpload_AndPicksAFormat()
+    public async Task AnIntegrationOfAConnectorWithNoFileReader_CanBeSetToManualUpload_AndIsReadByTheConnectorsDefaultFormat()
     {
         var formatId = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
+        UseAsConnectorDefault(formatId);
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = IntegrationService(db);
         var connectors = await service.ListConnectorsAsync(CancellationToken.None);
         Assert.Equal([nameof(AttendanceTransport.RestApi), nameof(AttendanceTransport.FileUpload)], connectors.Single(p => p.Key == RestKey).SupportedTransports.Select(t => t.Key));
 
-        var result = await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
+        var result = await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload"), CancellationToken.None);
 
         Assert.True(result.Succeeded);
-        var input = (await service.GetInputAsync(_integrationId, CancellationToken.None))!;
-        Assert.Equal(("FileUpload", formatId), (input.Transport, input.PayloadFormatId));
-        var item = (await service.GetAsync(_integrationId, CancellationToken.None))!;
-        Assert.Equal("Branch export", item.PayloadFormatName);
+        Assert.Equal("FileUpload", (await service.GetInputAsync(_integrationId, CancellationToken.None))!.Transport);
+        Assert.Equal("Branch export", (await service.GetAsync(_integrationId, CancellationToken.None))!.PayloadFormatName);
     }
 
     [Fact]
-    public async Task TheFormat_IsDroppedWhenTheIntegrationStopsBeingAnUpload_AndMustExistAndBeActiveToBeChosen()
+    public async Task TheFormatShown_IsTheConnectorsDefault_AndNoneOnceTheIntegrationStopsBeingAnUpload()
     {
         var formatId = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
+        UseAsConnectorDefault(formatId);
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = IntegrationService(db);
 
-        Assert.Contains("does not exist", (await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload", 999), CancellationToken.None)).Errors[nameof(IntegrationInput.PayloadFormatId)]);
+        await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload"), CancellationToken.None);
+        Assert.Equal(FormatName, (await service.GetAsync(_integrationId, CancellationToken.None))!.PayloadFormatName);
 
-        await service.UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
-        await service.UpdateAsync(_integrationId, InputFor(db, "RestApi", formatId), CancellationToken.None);
-
-        Assert.Null((await service.GetInputAsync(_integrationId, CancellationToken.None))!.PayloadFormatId);
+        await service.UpdateAsync(_integrationId, InputFor(db, "RestApi"), CancellationToken.None);
+        Assert.Null((await service.GetAsync(_integrationId, CancellationToken.None))!.PayloadFormatName);
     }
 
     [Fact]
-    public async Task ARetiredFormat_CanNotBeChosenAnew_ButAnIntegrationKeepsItsOwn()
+    public async Task ARetiredFormat_IsNoLongerOffered_ButStillReadsTheUploadsOfItsConnector()
     {
         var input = SemicolonFormat();
         var formatId = (await CreateFormatAsync(input)).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
-        {
-            await IntegrationService(db).UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
-        }
+        UseAsConnectorDefault(formatId);
 
         input.IsActive = false;
         using (var db = _database.CreateContext(TestDatabase.TenantA))
@@ -224,10 +234,11 @@ public sealed class CustomPayloadFormatTests : IDisposable
             await FormatService(db).UpdateAsync(formatId, input, CancellationToken.None);
         }
 
+        File.WriteAllText(_path, SemicolonFile);
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        var service = IntegrationService(check);
         Assert.Empty(await FormatService(check).ListOptionsAsync(CancellationToken.None));
-        Assert.True((await service.UpdateAsync(_integrationId, InputFor(check, "FileUpload", formatId), CancellationToken.None)).Succeeded);
+        var result = await IngestionService(check).IngestManualUploadAsync(_integrationId, _path, CancellationToken.None);
+        Assert.Equal((nameof(AttendanceBatchStatus.Succeeded), 3), (result!.Status, result.RecordsIngested));
     }
 
     [Fact]
@@ -245,7 +256,8 @@ public sealed class CustomPayloadFormatTests : IDisposable
         Assert.Equal(["CheckIn", "CheckOut", null], preview.Rows.Select(r => r.EventType));
         Assert.Equal(string.Empty, preview.Rows[0].Problem);
         Assert.Contains("the label 'X' is not mapped", preview.Rows[2].Problem);
-        Assert.Empty(db.AttendancePayloadFormats);
+        using var catalog = _database.CreateCatalog();
+        Assert.Empty(catalog.AttendancePayloadFormats);
         Assert.Empty(db.RawAttendanceTransactions);
     }
 
@@ -289,7 +301,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
     }
 
     [Fact]
-    public async Task ARestVendorsIntegration_SetToUploadWithNoFormat_IsATarget_ThatSaysToChooseAFormat()
+    public async Task ARestVendorsIntegration_SetToUploadWithNoFormat_IsATarget_ThatSaysTheConnectorNeedsADefaultFormat()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
 
@@ -297,7 +309,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
 
         Assert.Equal((RestKey, "Branch upload"), (target.VendorKey, target.DisplayName));
         Assert.Empty(target.FileExtensions);
-        Assert.Contains("choose a file format", target.Layout.Summary);
+        Assert.Contains("has no default payload format", target.Layout.Summary);
         Assert.Equal(RestKey, target.Layout.VendorKey);
     }
 
@@ -310,20 +322,16 @@ public sealed class CustomPayloadFormatTests : IDisposable
         var result = await IngestionService(db).IngestManualUploadAsync(_integrationId, _path, CancellationToken.None);
 
         Assert.Equal(nameof(AttendanceBatchStatus.Failed), result!.Status);
-        Assert.Contains("has no file format", result.ErrorSummary);
+        Assert.Contains("has no default payload format", result.ErrorSummary);
         Assert.Equal(0, _rest.Calls);
         Assert.Empty(db.RawAttendanceTransactions);
     }
 
     [Fact]
-    public async Task AConnectorsDefaultFormat_ReadsTheUploadsOfAnIntegrationThatNamesNone()
+    public async Task AConnectorsDefaultFormat_ReadsTheUploadsOfItsIntegrations()
     {
         var formatId = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
-        {
-            db.AttendanceConnectorDefinitions.Single().DefaultPayloadFormatId = formatId;
-            db.SaveChanges();
-        }
+        UseAsConnectorDefault(formatId);
 
         File.WriteAllText(_path, SemicolonFile);
         using var check = _database.CreateContext(TestDatabase.TenantA);
@@ -336,13 +344,9 @@ public sealed class CustomPayloadFormatTests : IDisposable
     }
 
     [Fact]
-    public async Task AnIntegrationWithAFormat_ShowsItsOwnLayout_AndReadsAndNormalizesTheUploadByIt()
+    public async Task AnIntegration_ShowsTheConnectorsDefaultLayout_AndReadsAndNormalizesTheUploadByIt()
     {
-        var formatId = (await CreateFormatAsync(SemicolonFormat())).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
-        {
-            await IntegrationService(db).UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
-        }
+        UseAsConnectorDefault((await CreateFormatAsync(SemicolonFormat())).Id!.Value);
 
         File.WriteAllText(_path, SemicolonFile);
         AttendanceIngestionResult? ingested;
@@ -362,6 +366,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
         using var normalizing = _database.CreateContext(TestDatabase.TenantA);
         var result = await new NormalizationService(
             normalizing,
+            _database.CreateCatalogReader(),
             new NormalizedTransactionRecorder(normalizing),
             new AttendancePolicyResolver(normalizing),
             _services,
@@ -382,11 +387,7 @@ public sealed class CustomPayloadFormatTests : IDisposable
     {
         var format = SemicolonFormat();
         format.PayloadKind = "Excel";
-        var formatId = (await CreateFormatAsync(format)).Id!.Value;
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
-        {
-            await IntegrationService(db).UpdateAsync(_integrationId, InputFor(db, "FileUpload", formatId), CancellationToken.None);
-        }
+        UseAsConnectorDefault((await CreateFormatAsync(format)).Id!.Value);
 
         File.WriteAllText(_path, SemicolonFile);
         using var check = _database.CreateContext(TestDatabase.TenantA);
@@ -415,17 +416,24 @@ public sealed class CustomPayloadFormatTests : IDisposable
         ],
     };
 
-    private static IntegrationInput InputFor(RobeemDbContext db, string transport, int? formatId)
+    private static IntegrationInput InputFor(RobeemDbContext db, string transport)
     {
         var integration = db.AttendanceIntegrations.Single();
         return new IntegrationInput
         {
-            ConnectorId = integration.ConnectorId,
+            ConnectorKey = integration.ConnectorKey,
             DisplayName = integration.DisplayName,
             Transport = transport,
-            PayloadFormatId = formatId,
             Status = "Active",
         };
+    }
+
+    /// <summary>Makes the format the default of the one connector, in the prime tenant's catalog: the only way an integration's files are given a format.</summary>
+    private void UseAsConnectorDefault(int formatId)
+    {
+        using var catalog = _database.CreateCatalog();
+        catalog.AttendanceConnectorDefinitions.Single().DefaultPayloadFormatId = formatId;
+        catalog.SaveChanges();
     }
 
     private async Task<robeem.Application.Common.SaveResult> CreateFormatAsync(PayloadFormatInput input)
@@ -434,14 +442,13 @@ public sealed class CustomPayloadFormatTests : IDisposable
         return await FormatService(db).CreateAsync(input, CancellationToken.None);
     }
 
-    private AttendancePayloadFormatService FormatService(RobeemDbContext db) =>
-        new(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory());
+    private AttendancePayloadFormatService FormatService(RobeemDbContext db) => _database.PayloadFormatService(db);
 
     private AttendanceIntegrationService IntegrationService(RobeemDbContext db) =>
-        new(db, new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services, new StubAdapterCatalog());
+        new(db, _database.CreateCatalogReader(new StubAdapterCatalog(RestKey)), new NoSync(), new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), _services);
 
     private IngestionService IngestionService(RobeemDbContext db) =>
-        new(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
+        new(db, _database.CreateCatalogReader(new StubAdapterCatalog(RestKey)), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services);
 
     private sealed class RestStub : IAttendanceAdapter
     {

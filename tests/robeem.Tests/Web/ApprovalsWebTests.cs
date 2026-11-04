@@ -291,10 +291,37 @@ public sealed class ApprovalsWebTests
         var exceptions = new FakeExceptions();
         var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Employee"]));
 
-        var result = await controller.Index(status, null, null, CancellationToken.None);
+        var result = await controller.Index(status, null, null, null, CancellationToken.None);
 
         Assert.Equal(expected, Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(result).Model).Status);
         Assert.Equal(expected, exceptions.Statuses.Single());
+    }
+
+    [Fact]
+    public async Task TheExceptionsList_CanBeNarrowedToOneEmployee_AndOffersTheEmployeesTheUserMaySee()
+    {
+        var exceptions = new FakeExceptions();
+        exceptions.Employees.AddRange([new EmployeeOption { Id = 5, Name = "Hiba Rahme (21001)" }, new EmployeeOption { Id = 6, Name = "Yara Jabbour (22002)" }]);
+        var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["HRAdministrator"]));
+
+        var narrowed = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, 6, CancellationToken.None)).Model);
+        var everyone = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, null, CancellationToken.None)).Model);
+
+        Assert.Equal([6, null], exceptions.EmployeeIds);
+        Assert.Equal(6, narrowed.EmployeeId);
+        Assert.Null(everyone.EmployeeId);
+        Assert.Equal([5, 6], narrowed.Employees.Select(e => e.Id));
+    }
+
+    [Fact]
+    public async Task TheClient_AsksForTheEmployeesOfTheFilter_FromTheRecordsOptions()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, """[{"id":5,"name":"Hiba Rahme (21001)"}]""");
+
+        var options = await new ExceptionsApiClient(handler.CreateClient()).ListEmployeeOptionsAsync(CancellationToken.None);
+
+        Assert.Equal("/api/attendance/records/employee-options", handler.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal("Hiba Rahme (21001)", options.Single().Name);
     }
 
     [Theory]
@@ -428,6 +455,10 @@ public sealed class ApprovalsWebTests
     {
         public List<string?> Statuses { get; } = [];
 
+        public List<int?> EmployeeIds { get; } = [];
+
+        public List<EmployeeOption> Employees { get; } = [];
+
         public List<(int ExceptionId, string Reason, bool IsHr)> Accepted { get; } = [];
 
         public string? Refusal { get; set; }
@@ -435,8 +466,12 @@ public sealed class ApprovalsWebTests
         public Task<IReadOnlyList<ExceptionListItem>> ListAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken)
         {
             Statuses.Add(status);
+            EmployeeIds.Add(employeeId);
             return Task.FromResult<IReadOnlyList<ExceptionListItem>>([]);
         }
+
+        public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<EmployeeOption>>(Employees);
 
         public Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken)
         {

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly.CircuitBreaker;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.DataModel;
@@ -14,6 +15,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
     private const int ErrorSummaryMaxLength = 1000;
 
     private readonly IRobeemDbContext _db;
+    private readonly ICatalogReader _catalog;
     private readonly RawBatchWriter _writer;
     private readonly IServiceProvider _services;
     private readonly IntegrationResilience _resilience;
@@ -24,6 +26,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
 
     public IntegrationSyncService(
         IRobeemDbContext db,
+        ICatalogReader catalog,
         IRawPayloadSanitizer sanitizer,
         IServiceProvider services,
         IntegrationResilience resilience,
@@ -33,6 +36,7 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         ILogger<IntegrationSyncService> logger)
     {
         _db = db;
+        _catalog = catalog;
         _writer = new RawBatchWriter(db, sanitizer);
         _services = services;
         _resilience = resilience;
@@ -101,7 +105,6 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
     private async Task<SyncOutcome> RunAsync(int integrationId, Mode mode, CancellationToken cancellationToken)
     {
         var integration = await _db.AttendanceIntegrations
-            .Include(i => i.Connector).ThenInclude(c => c!.Vendor)
             .Include(i => i.Connections)
             .SingleOrDefaultAsync(i => i.Id == integrationId, cancellationToken);
         if (integration is null)
@@ -122,16 +125,24 @@ public sealed class IntegrationSyncService : IIntegrationSyncService
         }
 
         // The vendor's key is what the raw rows record as their source; the connector's adapter key picks the code that fetches them.
-        var vendorKey = integration.Connector!.Vendor!.VendorKey;
-        var adapterKey = integration.Connector.AdapterKey;
         var handle = _resilience.Get(_db.CurrentTenantId, integration.Id);
         var batchType = mode == Mode.Incremental ? AttendanceBatchType.IncrementalSync : AttendanceBatchType.Reconciliation;
+
+        // The connector is the prime tenant's catalog. One that is gone from it can't be fetched.
+        var connector = await _catalog.GetConnectorAsync(integration.ConnectorKey, cancellationToken);
+        if (connector is null)
+        {
+            return await FailAsync(integration.Id, connection?.Id, batchType, $"Connector '{integration.ConnectorKey}' is not in the catalog.", handle);
+        }
+
+        var vendorKey = connector.VendorKey;
+        var adapterKey = connector.AdapterKey;
 
         // Adapters are keyed services, one per AttendanceConnectorDefinition.AdapterKey (CLAUDE.md §1.9).
         var adapter = adapterKey is { Length: > 0 } ? _services.GetKeyedService<IAttendanceAdapter>(adapterKey) : null;
         if (adapter is null)
         {
-            return await FailAsync(integration.Id, connection?.Id, batchType, $"No adapter is registered for connector '{integration.Connector.ConnectorKey}' (adapter key '{adapterKey}').", handle);
+            return await FailAsync(integration.Id, connection?.Id, batchType, $"No adapter is registered for connector '{connector.ConnectorKey}' (adapter key '{adapterKey}').", handle);
         }
 
         var config = new AttendanceIntegrationConfig(integration.Id, vendorKey, connection?.SecretRef ?? string.Empty)

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.DataModel;
@@ -15,12 +16,14 @@ public sealed class WebhookReceiver : IWebhookReceiver
     private const string NoSecret = "no secret: nothing can match";
 
     private readonly IRobeemDbContext _db;
+    private readonly ICatalogReader _catalog;
     private readonly ISecretStore _secrets;
     private readonly IIngestionService _ingestion;
 
-    public WebhookReceiver(IRobeemDbContext db, ISecretStore secrets, IIngestionService ingestion)
+    public WebhookReceiver(IRobeemDbContext db, ICatalogReader catalog, ISecretStore secrets, IIngestionService ingestion)
     {
         _db = db;
+        _catalog = catalog;
         _secrets = secrets;
         _ingestion = ingestion;
     }
@@ -31,12 +34,10 @@ public sealed class WebhookReceiver : IWebhookReceiver
         var webhook = nameof(AttendanceTransport.Webhook);
         var integration = await _db.AttendanceIntegrations.AsNoTracking()
             .Where(i => i.Id == integrationId)
-            .Select(i => new
-            {
-                i.Status,
-                TakesWebhooks = i.Connector!.IsActive && i.Connector.Vendor!.IsActive && i.Connector.Transports.Any(t => t.Transport!.TransportKey == webhook),
-            })
+            .Select(i => new { i.Status, i.ConnectorKey })
             .SingleOrDefaultAsync(cancellationToken);
+        var connector = integration is null ? null : await _catalog.GetConnectorAsync(integration.ConnectorKey, cancellationToken);
+        var takesWebhooks = connector is { IsActive: true, VendorIsActive: true } && connector.Transports.Contains(webhook);
 
         // The connection the route names; the old route names none, and means the default one if that is a webhook, else the first active webhook one.
         var connections = await _db.AttendanceConnections.AsNoTracking()
@@ -48,7 +49,7 @@ public sealed class WebhookReceiver : IWebhookReceiver
             ? connections.FirstOrDefault(c => c.Id == named)
             : connections.FirstOrDefault(c => c.IsDefault) ?? connections.FirstOrDefault();
 
-        var accepts = integration is { Status: AttendanceIntegrationStatus.Active, TakesWebhooks: true } && connection is not null;
+        var accepts = integration is { Status: AttendanceIntegrationStatus.Active } && takesWebhooks && connection is not null;
         var secret = accepts ? await _secrets.GetSecretAsync(connection!.SecretRef, cancellationToken) : null;
 
         // The credential is always checked, whatever else is wrong.

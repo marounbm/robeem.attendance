@@ -164,7 +164,7 @@ public sealed class AttendanceTransactionQuery : IAttendanceTransactionQuery
         var employee = Normalize(filter.Employee);
 
         var details = $"Normalized punches (integration {Describe(filter.IntegrationId)}, raw {Describe(filter.RawId)}, employee '{employee}', event {Describe(filter.EventType)}, "
-            + $"duplicate {Describe(filter.Duplicate)}, flag {Describe(filter.Flag)}, from {Describe(filter.From)}, to {Describe(filter.To)}, page {Math.Max(filter.Page, 1)}, {pageSize} per page).";
+            + $"duplicate {Describe(filter.Duplicate)}, flag {Describe(filter.Flag)}, status {Describe(filter.Status)}, from {Describe(filter.From)}, to {Describe(filter.To)}, page {Math.Max(filter.Page, 1)}, {pageSize} per page).";
         _audit.Record(AttendanceAuditActions.AttendanceDataRead, nameof(NormalizedAttendanceTransaction), null, details);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -199,6 +199,11 @@ public sealed class AttendanceTransactionQuery : IAttendanceTransactionQuery
         if (filter.Flag is { } flag)
         {
             punches = punches.Where(n => n.ExceptionStatus == flag);
+        }
+
+        if (filter.Status is { } status)
+        {
+            punches = punches.Where(n => n.ProcessingStatus == status);
         }
 
         if (filter.From is { } from)

@@ -35,11 +35,12 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
     {
         File.WriteAllText(_csvPath, Csv);
         _database.SeedAttendanceCatalog();
+        _database.Store(AttendanceTestData.Connector("other", "Other"));
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            var integration = new AttendanceIntegration { Connector = AttendanceTestData.Seeded(db, "zkteco"), DisplayName = "Head office clock" };
-            var other = new AttendanceIntegration { Connector = AttendanceTestData.Connector("other", "Other"), DisplayName = "Branch clock" };
+            var integration = new AttendanceIntegration { ConnectorKey = "zkteco", DisplayName = "Head office clock" };
+            var other = new AttendanceIntegration { ConnectorKey = "other", DisplayName = "Branch clock" };
             var device = new AttendanceDevice { Integration = integration, ExternalDeviceId = "1", Name = "U350", TimeZoneId = "Asia/Beirut" };
             db.AddRange(
                 other,
@@ -63,13 +64,13 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            _batchId = new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services)
+            _batchId = new IngestionService(db, _database.CreateCatalogReader(), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), _services)
                 .IngestManualUploadAsync(_integrationId, _csvPath, CancellationToken.None).GetAwaiter().GetResult()!.BatchId;
         }
 
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
-            new NormalizationService(db, new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _services, NullLogger<NormalizationService>.Instance)
+            new NormalizationService(db, _database.CreateCatalogReader(), new NormalizedTransactionRecorder(db), new AttendancePolicyResolver(db), _services, NullLogger<NormalizationService>.Instance)
                 .NormalizeBatchAsync(_batchId, CancellationToken.None).GetAwaiter().GetResult();
         }
     }
@@ -306,6 +307,34 @@ public sealed class AttendanceTransactionQueryTests : IDisposable
         Assert.NotNull(raw[3].NormalizedId);
         Assert.Equal(3, normalized.Count);
         Assert.Single(normalized, n => n.ProcessingStatus == "Excluded");
+    }
+
+    [Fact]
+    public async Task NormalizedPunches_AreNarrowedByTheirProcessingStatus()
+    {
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var punches = db.NormalizedAttendanceTransactions.OrderBy(n => n.Id).ToList();
+            punches[0].ProcessingStatus = NormalizedTransactionProcessingStatus.Excluded;
+            punches[1].ProcessingStatus = NormalizedTransactionProcessingStatus.Processed;
+            punches[2].ProcessingStatus = NormalizedTransactionProcessingStatus.Processed;
+            db.SaveChanges();
+        }
+
+        var replaced = await ListNormalizedAsync(new NormalizedTransactionFilter(null, null, null, null, null, null, null, null, 1, 0) { Status = NormalizedTransactionProcessingStatus.Excluded });
+        var processed = await ListNormalizedAsync(new NormalizedTransactionFilter(null, null, null, null, null, null, null, null, 1, 0) { Status = NormalizedTransactionProcessingStatus.Processed });
+        var pending = await ListNormalizedAsync(new NormalizedTransactionFilter(null, null, null, null, null, null, null, null, 1, 0) { Status = NormalizedTransactionProcessingStatus.Pending });
+        var all = await ListNormalizedAsync(new NormalizedTransactionFilter(null, null, null, null, null, null, null, null, 1, 0));
+
+        Assert.Equal(["Excluded"], replaced.Select(n => n.ProcessingStatus));
+        Assert.Equal(["Processed", "Processed"], processed.Select(n => n.ProcessingStatus));
+        Assert.Empty(pending);
+        Assert.Equal(3, all.Count);
+
+        // The total follows the filter, and the combination with another filter narrows it further.
+        var page = await ListNormalizedPageAsync(new NormalizedTransactionFilter(null, null, null, null, null, null, null, null, 1, 1) { Status = NormalizedTransactionProcessingStatus.Processed });
+        Assert.Equal((2, 1), (page.Total, page.Items.Count));
+        Assert.Empty(await ListNormalizedAsync(new NormalizedTransactionFilter(null, null, "nobody", null, null, null, null, null, 1, 0) { Status = NormalizedTransactionProcessingStatus.Processed }));
     }
 
     [Fact]

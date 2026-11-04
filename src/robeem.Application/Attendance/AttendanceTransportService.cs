@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -8,22 +9,22 @@ namespace robeem.Application.Attendance;
 
 public sealed class AttendanceTransportService : IAttendanceTransportService
 {
-    private readonly IRobeemDbContext _db;
+    private readonly ICatalogDbContext _db;
+    private readonly IRobeemDbContext _tenantDb;
+    private readonly ICatalogWriteAccess _access;
     private readonly IAttendanceAuditTrail _audit;
 
-    public AttendanceTransportService(IRobeemDbContext db, IAttendanceAuditTrail audit)
+    public AttendanceTransportService(ICatalogDbContext db, IRobeemDbContext tenantDb, ICatalogWriteAccess access, IAttendanceAuditTrail audit)
     {
         _db = db;
+        _tenantDb = tenantDb;
+        _access = access;
         _audit = audit;
     }
 
     public async Task<IReadOnlyList<TransportItem>> ListAsync(CancellationToken cancellationToken)
     {
         var definitions = await _db.AttendanceTransportDefinitions.AsNoTracking().ToListAsync(cancellationToken);
-
-        // How many integrations have a connection by each transport.
-        var integrations = (await _db.AttendanceConnections.AsNoTracking().GroupBy(c => c.Transport).Select(g => new { Transport = g.Key, Count = g.Select(c => c.IntegrationId).Distinct().Count() }).ToListAsync(cancellationToken))
-            .ToDictionary(g => g.Transport.ToString(), g => g.Count, StringComparer.Ordinal);
         var connectors = await _db.AttendanceConnectorTransports.AsNoTracking()
             .GroupBy(t => t.TransportId)
             .Select(g => new { TransportId = g.Key, Count = g.Count() })
@@ -39,7 +40,6 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
                 IsPull = t.IsPull,
                 UsesPayloadFormat = t.UsesPayloadFormat,
                 IsActive = t.IsActive,
-                IntegrationCount = integrations.GetValueOrDefault(t.TransportKey),
                 ConnectorCount = connectors.GetValueOrDefault(t.Id),
             })
             .ToList();
@@ -53,6 +53,7 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
 
     public async Task<SaveResult> UpdateAsync(int id, TransportInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var transport = await _db.AttendanceTransportDefinitions.SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
         if (transport is null)
         {
@@ -74,8 +75,9 @@ public sealed class AttendanceTransportService : IAttendanceTransportService
         var before = $"{transport.DisplayName}; {(transport.IsActive ? "active" : "inactive")}";
         transport.DisplayName = name;
         transport.IsActive = input.IsActive;
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceTransportDefinition), transport.Id, $"Transport {transport.TransportKey} changed. Before: {before}. After: {name}; {(transport.IsActive ? "active" : "inactive")}.");
         await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceTransportDefinition), transport.Id, $"Transport {transport.TransportKey} changed. Before: {before}. After: {name}; {(transport.IsActive ? "active" : "inactive")}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(transport.Id);
     }
 }

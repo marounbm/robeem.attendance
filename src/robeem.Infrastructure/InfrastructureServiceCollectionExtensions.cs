@@ -2,14 +2,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Persistence;
 using robeem.Application.Security;
 using robeem.Application.Tenancy;
+using robeem.Contracts.Attendance;
 using robeem.Infrastructure.Attendance;
+using robeem.Infrastructure.Attendance.Catalog;
 using robeem.Infrastructure.Attendance.Decryption;
 using robeem.Infrastructure.Attendance.Providers;
 using robeem.Infrastructure.Persistence;
+using robeem.Infrastructure.Persistence.Catalog;
 using robeem.Infrastructure.Security;
 using robeem.Infrastructure.Seeding;
 using robeem.Infrastructure.Tenancy;
@@ -39,6 +44,35 @@ public static class InfrastructureServiceCollectionExtensions
         });
 
         services.AddScoped<IRobeemDbContext>(sp => sp.GetRequiredService<RobeemDbContext>());
+
+        // The attendance catalog lives in the prime tenant's database and is read by every tenant's scope. Only the prime
+        // tenant's scope can save to it (the context refuses the save of any other).
+        services.AddScoped<IPrimeTenantContext, PrimeTenantContext>();
+        services.AddDbContext<CatalogDbContext>((sp, options) =>
+        {
+            var prime = sp.GetRequiredService<ITenantRegistry>().PrimeTenant;
+            options.UseNpgsql(prime.ConnectionString, npgsql => npgsql.MigrationsHistoryTable(CatalogDbContext.MigrationsHistoryTable, "Catalog"));
+        });
+        services.AddScoped<ICatalogDbContext>(sp => sp.GetRequiredService<CatalogDbContext>());
+        services.AddScoped<CatalogSeedRunner>();
+        services.AddSingleton<CatalogDatabaseInitializer>();
+
+        // Every other tenant's scope reads the catalog by calling the prime tenant's Api (nothing is cached): a plain read-only
+        // HTTP client holding the shared service key. The Api checks these options when it starts (Program.cs).
+        services.Configure<PrimeCatalogOptions>(configuration.GetSection(PrimeCatalogOptions.SectionName));
+        services.AddHttpClient<IRemoteCatalogReader, RemoteCatalogReader>((sp, http) =>
+        {
+            var options = sp.GetRequiredService<IOptions<PrimeCatalogOptions>>().Value;
+            var errors = options.Validate(requireHttps: false);
+            if (errors.Count > 0)
+            {
+                throw new InvalidOperationException($"Invalid '{PrimeCatalogOptions.SectionName}' configuration: {string.Join(" ", errors)}");
+            }
+
+            http.BaseAddress = new Uri(options.PrimeApiBaseUrl!.TrimEnd('/') + "/" + CatalogProtocol.Route + "/");
+            http.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+            http.DefaultRequestHeaders.Add(CatalogProtocol.ServiceKeyHeader, options.ServiceKey);
+        });
 
         services.AddScoped<ISecretStore, ConfigurationSecretStore>();
         services.AddScoped<SeedDataRunner>();

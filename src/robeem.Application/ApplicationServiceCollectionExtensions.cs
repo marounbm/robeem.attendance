@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Attendance.Jobs;
 using robeem.Application.Attendance.Seeding;
 using robeem.Application.Common;
@@ -9,6 +10,7 @@ using robeem.Application.HR.Schedules;
 using robeem.Application.HR.Seeding;
 using robeem.Application.Security;
 using robeem.Application.Seeding;
+using robeem.Application.Tenancy;
 
 namespace robeem.Application;
 
@@ -26,6 +28,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddOptions<SampleDataOptions>();
         services.AddScoped<ISeedContributor, ProfileSeedContributor>();
         services.AddScoped<ISeedContributor, AttendanceSeedContributor>();
+        services.AddScoped<ICatalogSeedContributor, CatalogSeedContributor>();
+
+        // How tenant code reads the prime tenant's catalog, and who may change it. The prime tenant's own scope reads the catalog
+        // database (CatalogReader, which the prime Api's catalog endpoints also use). Every other tenant's scope asks the prime Api
+        // (IRemoteCatalogReader, implemented in Infrastructure). The choice is made when the scope first resolves the reader,
+        // by which tenant the scope is for, as RobeemDbContext does for its database.
+        services.AddScoped<CatalogReader>();
+        services.AddScoped<ICatalogReader>(sp => sp.GetRequiredService<IPrimeTenantContext>().IsCurrentTenantPrime
+            ? sp.GetRequiredService<CatalogReader>()
+            : sp.GetRequiredService<IRemoteCatalogReader>());
+        services.AddScoped<ICatalogWriteAccess, CatalogWriteAccess>();
 
         // Pure and stateless. Options are bound by the host (section RawPayloadSanitizerOptions.SectionName).
         services.AddOptions<RawPayloadSanitizerOptions>();

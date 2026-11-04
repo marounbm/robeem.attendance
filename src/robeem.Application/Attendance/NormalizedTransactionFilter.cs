@@ -17,4 +17,8 @@ public sealed record NormalizedTransactionFilter(
     DateTime? From,
     DateTime? To,
     int Page,
-    int PageSize);
+    int PageSize)
+{
+    /// <summary>Gets the processing status to list: Pending, Processed or Excluded (a punch replaced by a re-normalization). Null: any.</summary>
+    public NormalizedTransactionProcessingStatus? Status { get; init; }
+}

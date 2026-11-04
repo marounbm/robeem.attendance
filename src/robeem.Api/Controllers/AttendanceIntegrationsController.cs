@@ -84,6 +84,19 @@ public sealed class AttendanceIntegrationsController : ControllerBase
         return result.Succeeded ? StatusCode(StatusCodes.Status201Created, new CreatedResponse { Id = result.Id!.Value }) : Failure(result);
     }
 
+    /// <summary>
+    /// Sets a device up from the vendor down: the connector, how the device is reached, the device. The connector's integration is found, or
+    /// made, and need not be named. Answers 201 with the device and the integration it was put in.
+    /// </summary>
+    [HttpPost("device-setup")]
+    public async Task<ActionResult<DeviceSetupResponse>> SetUpDevice(DeviceSetupInput input, CancellationToken cancellationToken)
+    {
+        var setup = await _integrations.SetUpDeviceAsync(input, cancellationToken);
+        return setup.Result.Succeeded
+            ? StatusCode(StatusCodes.Status201Created, new DeviceSetupResponse { DeviceId = setup.Result.Id!.Value, IntegrationId = setup.IntegrationId, IntegrationCreated = setup.IntegrationCreated, ConnectionCreated = setup.ConnectionCreated })
+            : Failure(setup.Result);
+    }
+
     [HttpPut("{id:int}/devices/{deviceId:int}")]
     public async Task<IActionResult> UpdateDevice(int id, int deviceId, DeviceInput input, CancellationToken cancellationToken)
     {

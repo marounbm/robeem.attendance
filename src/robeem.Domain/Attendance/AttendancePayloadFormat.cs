@@ -12,14 +12,13 @@ namespace robeem.DataModel
     /// set to manual upload may use one instead of its connector's default layout.
     /// </summary>
     [Serializable]
-    [Table(nameof(AttendancePayloadFormat), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendancePayloadFormat : Entity, ISeedData, ITenantScoped
+    [Table(nameof(AttendancePayloadFormat), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendancePayloadFormat : Entity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
-        /// <summary>Gets or sets the format's name. Unique per tenant.</summary>
+        /// <summary>
+        /// Gets or sets the format's name. One row per version of a name. Integrations refer to a format by this name and read by its
+        /// latest version, so a name is never changed once the format has been used.
+        /// </summary>
         [Required]
         [MaxLength(255)]
         public string Name { get; set; } = string.Empty;

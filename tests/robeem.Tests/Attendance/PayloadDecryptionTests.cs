@@ -225,11 +225,11 @@ public sealed class PayloadDecryptionTests : IDisposable
         Assert.True(created.Succeeded, string.Join(" ", created.Errors.Values));
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceIntegrationService(db, null!, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog(), Catalog());
-        var withoutKey = await service.CreateAsync(new IntegrationInput { ConnectorId = created.Id!.Value, DisplayName = "Feed", Transport = "FileUpload", Status = "Active" }, CancellationToken.None);
-        var withKey = await service.CreateAsync(new IntegrationInput { ConnectorId = created.Id.Value, DisplayName = "Feed", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "feed-key" }, CancellationToken.None);
-        var notAKey = await service.CreateAsync(new IntegrationInput { ConnectorId = created.Id.Value, DisplayName = "Feed 2", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "-----BEGIN PGP PRIVATE KEY BLOCK-----" }, CancellationToken.None);
-        var plainWithKey = await service.CreateAsync(new IntegrationInput { ConnectorId = ConnectorId("generic-csv"), DisplayName = "Plain", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "feed-key" }, CancellationToken.None);
+        var service = new AttendanceIntegrationService(db, _database.CreateCatalogReader(new StubAdapterCatalog(), Catalog()), null!, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
+        var withoutKey = await service.CreateAsync(new IntegrationInput { ConnectorKey = "encrypted-feed", DisplayName = "Feed", Transport = "FileUpload", Status = "Active" }, CancellationToken.None);
+        var withKey = await service.CreateAsync(new IntegrationInput { ConnectorKey = "encrypted-feed", DisplayName = "Feed", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "feed-key" }, CancellationToken.None);
+        var notAKey = await service.CreateAsync(new IntegrationInput { ConnectorKey = "encrypted-feed", DisplayName = "Feed 2", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "-----BEGIN PGP PRIVATE KEY BLOCK-----" }, CancellationToken.None);
+        var plainWithKey = await service.CreateAsync(new IntegrationInput { ConnectorKey = "generic-csv", DisplayName = "Plain", Transport = "FileUpload", Status = "Active", PayloadKeyRef = "feed-key" }, CancellationToken.None);
 
         Assert.Contains(nameof(IntegrationInput.PayloadKeyRef), withoutKey.Errors.Keys);
         Assert.True(withKey.Succeeded, string.Join(" ", withKey.Errors.Values));
@@ -316,16 +316,22 @@ public sealed class PayloadDecryptionTests : IDisposable
             .AddSingleton(Catalog())
             .AddSingleton(secrets)
             .BuildServiceProvider();
-        return new IngestionService(db, new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), services);
+        return new IngestionService(db, _database.CreateCatalogReader(new StubAdapterCatalog(), Catalog()), new RawPayloadSanitizer(Options.Create(new RawPayloadSanitizerOptions())), services);
     }
 
     private int AddIntegration(PayloadEncryptionKind kind, string keyRef)
     {
+        using (var catalog = _database.CreateCatalog())
+        {
+            var connector = AttendanceTestData.Connector("encrypted-csv", "Encrypted CSV");
+            connector.EncryptionKind = kind;
+            connector.DefaultPayloadFormat = catalog.AttendancePayloadFormats.Single(f => f.Name == "Generic CSV");
+            catalog.AttendanceConnectorDefinitions.Add(connector);
+            catalog.SaveChanges();
+        }
+
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var connector = AttendanceTestData.Connector("encrypted-csv", "Encrypted CSV");
-        connector.EncryptionKind = kind;
-        connector.DefaultPayloadFormat = db.AttendancePayloadFormats.Single(f => f.Name == "Generic CSV");
-        var integration = new AttendanceIntegration { Connector = connector, DisplayName = "Encrypted uploads", PayloadKeyRef = keyRef };
+        var integration = new AttendanceIntegration { ConnectorKey = "encrypted-csv", DisplayName = "Encrypted uploads", PayloadKeyRef = keyRef };
         db.AttendanceDevices.Add(new AttendanceDevice { Integration = integration, ExternalDeviceId = "DEV-1", Name = "Front door", TimeZoneId = "UTC" });
         db.SaveChanges();
         return integration.Id;
@@ -334,24 +340,18 @@ public sealed class PayloadDecryptionTests : IDisposable
     private AttendanceConnectorService Connectors(IPayloadDecryptorCatalog? decryptors)
     {
         var db = _database.CreateContext(TestDatabase.TenantA);
-        return new AttendanceConnectorService(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new StubAdapterCatalog(), decryptors);
+        return _database.ConnectorService(db, new StubAdapterCatalog(), decryptors);
     }
 
     private int VendorId(string key)
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceVendors.Single(v => v.VendorKey == key).Id;
-    }
-
-    private int ConnectorId(string key)
-    {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == key).Id;
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendanceVendors.Single(v => v.VendorKey == key).Id;
     }
 
     private int FormatId(string name)
     {
-        using var db = _database.CreateContext(TestDatabase.TenantA);
-        return db.AttendancePayloadFormats.Single(f => f.Name == name).Id;
+        using var catalog = _database.CreateCatalog();
+        return catalog.AttendancePayloadFormats.Single(f => f.Name == name).Id;
     }
 }

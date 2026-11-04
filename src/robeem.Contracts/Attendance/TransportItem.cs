@@ -15,9 +15,6 @@ public sealed class TransportItem
 
     public bool IsActive { get; init; }
 
-    /// <summary>Gets how many integrations receive attendance this way.</summary>
-    public int IntegrationCount { get; init; }
-
     /// <summary>Gets how many connectors list it as a transport.</summary>
     public int ConnectorCount { get; init; }
 }

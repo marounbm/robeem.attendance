@@ -8,9 +8,9 @@ using robeem.Contracts.Common;
 
 namespace robeem.Api.Controllers;
 
-/// <summary>The kinds of punch device a tenant defines. A type is made inactive, never deleted (devices point at it).</summary>
+/// <summary>The kinds of punch device the catalog offers, managed in the prime tenant. A type is made inactive, never deleted (devices point at it).</summary>
 [ApiController]
-[Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
+[CatalogReadOnlyFilter]
 [Route("api/attendance/device-types")]
 public sealed class AttendanceDeviceTypesController : ControllerBase
 {
@@ -22,19 +22,23 @@ public sealed class AttendanceDeviceTypesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<IReadOnlyList<DeviceTypeItem>> List(CancellationToken cancellationToken) =>
         await _types.ListAsync(cancellationToken);
 
     /// <summary>The active types, to choose from on a device.</summary>
     [HttpGet("options")]
+    [Authorize(Roles = AttendanceRoles.CatalogReaders)]
     public async Task<IReadOnlyList<DeviceTypeOption>> Options(CancellationToken cancellationToken) =>
         await _types.ListOptionsAsync(cancellationToken);
 
     [HttpGet("{id:int}/input")]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<ActionResult<DeviceTypeInput>> GetInput(int id, CancellationToken cancellationToken) =>
         await _types.GetInputAsync(id, cancellationToken) is { } input ? input : NotFound();
 
     [HttpPost]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<ActionResult<CreatedResponse>> Create(DeviceTypeInput input, CancellationToken cancellationToken)
     {
         var result = await _types.CreateAsync(input, cancellationToken);
@@ -42,6 +46,7 @@ public sealed class AttendanceDeviceTypesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
     public async Task<IActionResult> Update(int id, DeviceTypeInput input, CancellationToken cancellationToken)
     {
         var result = await _types.UpdateAsync(id, input, cancellationToken);

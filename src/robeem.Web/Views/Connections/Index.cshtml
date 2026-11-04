@@ -7,7 +7,7 @@
     <div>
         <h1 class="h3 mb-0">Connections</h1>
         <div class="text-muted">
-            <a asp-controller="Integrations" asp-action="Details" asp-route-id="@Model.Integration.Id">@Model.Integration.DisplayName</a>
+            <a asp-controller="Devices" asp-action="Index" asp-route-integrationId="@Model.Integration.Id">@Model.Integration.DisplayName</a>
             (@Model.Integration.VendorName)
         </div>
     </div>

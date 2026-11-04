@@ -161,115 +161,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.ToTable("AttendanceConnection", "Attendance");
                 });
 
-            modelBuilder.Entity("robeem.DataModel.AttendanceConnectorDefinition", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AdapterKey")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("ConnectorKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<int?>("DefaultPayloadFormatId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("EncryptionKind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<bool>("SupportsIncrementalSync")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("VendorId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DefaultPayloadFormatId");
-
-                    b.HasIndex("VendorId");
-
-                    b.HasIndex("TenantId", "ConnectorKey")
-                        .IsUnique();
-
-                    b.ToTable("AttendanceConnectorDefinition", "Attendance");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendanceConnectorTransport", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ConnectorId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("TransportId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConnectorId");
-
-                    b.HasIndex("TransportId");
-
-                    b.HasIndex("TenantId", "ConnectorId", "TransportId")
-                        .IsUnique();
-
-                    b.ToTable("AttendanceConnectorTransport", "Attendance");
-                });
-
             modelBuilder.Entity("robeem.DataModel.AttendanceCorrection", b =>
                 {
                     b.Property<int>("Id")
@@ -495,8 +386,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedOn")
                         .HasColumnType("timestamp without time zone");
 
-                    b.Property<int?>("DeviceTypeId")
-                        .HasColumnType("integer");
+                    b.Property<string>("DeviceTypeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("ExternalDeviceId")
                         .IsRequired()
@@ -552,7 +444,7 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ConnectionId");
 
-                    b.HasIndex("DeviceTypeId");
+                    b.HasIndex("DeviceTypeName");
 
                     b.HasIndex("IntegrationId");
 
@@ -560,51 +452,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("AttendanceDevice", "Attendance");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendanceDeviceType", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("AttendanceDeviceType", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendanceException", b =>
@@ -720,8 +567,10 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ConnectorId")
-                        .HasColumnType("integer");
+                    b.Property<string>("ConnectorKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("CreatedBy")
                         .HasColumnType("integer");
@@ -754,9 +603,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ModifiedOn")
                         .HasColumnType("timestamp without time zone");
 
-                    b.Property<int?>("PayloadFormatId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("PayloadKeyRef")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -781,11 +627,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConnectorId");
+                    b.HasIndex("ConnectorKey");
 
                     b.HasIndex("DefaultDeviceId");
-
-                    b.HasIndex("PayloadFormatId");
 
                     b.ToTable("AttendanceIntegration", "Attendance");
                 });
@@ -847,207 +691,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "JobName", "Id");
 
                     b.ToTable("AttendanceJobRun", "Attendance");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendancePayloadEventCode", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<int>("PayloadFormatId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PayloadFormatId");
-
-                    b.HasIndex("TenantId", "PayloadFormatId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("AttendancePayloadEventCode", "Attendance");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendancePayloadFormat", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int?>("ConnectorId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("DateColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("DateFormats")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("Delimiter")
-                        .IsRequired()
-                        .HasMaxLength(1)
-                        .HasColumnType("character varying(1)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("DeviceColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("DirectionColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("EmployeeColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("HasHeaderRow")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("PayloadColumns")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("PayloadKind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("RecordPath")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<int>("SheetNumber")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("SupersedesId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("TimeColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("TimeFormats")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("TimestampColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("TimestampCulture")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.Property<string>("TimestampFormats")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("TransactionIdColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("TypeColumn")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConnectorId");
-
-                    b.HasIndex("SupersedesId");
-
-                    b.HasIndex("TenantId", "Name", "Version")
-                        .IsUnique();
-
-                    b.ToTable("AttendancePayloadFormat", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendancePolicy", b =>
@@ -1181,7 +824,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<int?>("IntegrationId")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("PayloadFormatId")
+                    b.Property<string>("PayloadFormatName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("PayloadFormatVersion")
                         .HasColumnType("integer");
 
                     b.Property<int>("RecordsFailed")
@@ -1209,7 +856,7 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("IntegrationId");
 
-                    b.HasIndex("PayloadFormatId");
+                    b.HasIndex("PayloadFormatName", "PayloadFormatVersion");
 
                     b.ToTable("AttendanceProcessingBatch", "Attendance");
                 });
@@ -1417,62 +1064,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.ToTable("AttendanceReviewDecision", "Attendance");
                 });
 
-            modelBuilder.Entity("robeem.DataModel.AttendanceTransportDefinition", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsPull")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("TransportKey")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<bool>("UsesPayloadFormat")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "TransportKey")
-                        .IsUnique();
-
-                    b.ToTable("AttendanceTransportDefinition", "Attendance");
-                });
-
             modelBuilder.Entity("robeem.DataModel.AttendanceUploadedFile", b =>
                 {
                     b.Property<int>("Id")
@@ -1525,66 +1116,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "IntegrationId", "Id");
 
                     b.ToTable("AttendanceUploadedFile", "Attendance");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendanceVendor", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnOrder(0);
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CreatedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("GUID")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Manufacturer")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<int>("ModifiedBy")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ModifiedOn")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("VendorKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("WebsiteUrl")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "VendorKey")
-                        .IsUnique();
-
-                    b.ToTable("AttendanceVendor", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.ExternalEmployeeIdMapping", b =>
@@ -2242,43 +1773,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("Integration");
                 });
 
-            modelBuilder.Entity("robeem.DataModel.AttendanceConnectorDefinition", b =>
-                {
-                    b.HasOne("robeem.DataModel.AttendancePayloadFormat", "DefaultPayloadFormat")
-                        .WithMany()
-                        .HasForeignKey("DefaultPayloadFormatId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("robeem.DataModel.AttendanceVendor", "Vendor")
-                        .WithMany()
-                        .HasForeignKey("VendorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("DefaultPayloadFormat");
-
-                    b.Navigation("Vendor");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendanceConnectorTransport", b =>
-                {
-                    b.HasOne("robeem.DataModel.AttendanceConnectorDefinition", "Connector")
-                        .WithMany("Transports")
-                        .HasForeignKey("ConnectorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("robeem.DataModel.AttendanceTransportDefinition", "Transport")
-                        .WithMany()
-                        .HasForeignKey("TransportId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Connector");
-
-                    b.Navigation("Transport");
-                });
-
             modelBuilder.Entity("robeem.DataModel.AttendanceCorrection", b =>
                 {
                     b.HasOne("robeem.DataModel.AttendanceException", "AttendanceException")
@@ -2351,11 +1845,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ConnectionId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("robeem.DataModel.AttendanceDeviceType", "DeviceType")
-                        .WithMany()
-                        .HasForeignKey("DeviceTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("robeem.DataModel.AttendanceIntegration", "Integration")
                         .WithMany()
                         .HasForeignKey("IntegrationId")
@@ -2363,8 +1852,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Connection");
-
-                    b.Navigation("DeviceType");
 
                     b.Navigation("Integration");
                 });
@@ -2396,27 +1883,12 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("robeem.DataModel.AttendanceIntegration", b =>
                 {
-                    b.HasOne("robeem.DataModel.AttendanceConnectorDefinition", "Connector")
-                        .WithMany()
-                        .HasForeignKey("ConnectorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("robeem.DataModel.AttendanceDevice", "DefaultDevice")
                         .WithMany()
                         .HasForeignKey("DefaultDeviceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("robeem.DataModel.AttendancePayloadFormat", "PayloadFormat")
-                        .WithMany()
-                        .HasForeignKey("PayloadFormatId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Connector");
-
                     b.Navigation("DefaultDevice");
-
-                    b.Navigation("PayloadFormat");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendanceJobRun", b =>
@@ -2427,34 +1899,6 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("RequestedBy");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendancePayloadEventCode", b =>
-                {
-                    b.HasOne("robeem.DataModel.AttendancePayloadFormat", "PayloadFormat")
-                        .WithMany("EventCodes")
-                        .HasForeignKey("PayloadFormatId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PayloadFormat");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendancePayloadFormat", b =>
-                {
-                    b.HasOne("robeem.DataModel.AttendanceConnectorDefinition", "Connector")
-                        .WithMany()
-                        .HasForeignKey("ConnectorId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("robeem.DataModel.AttendancePayloadFormat", "Supersedes")
-                        .WithMany()
-                        .HasForeignKey("SupersedesId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Connector");
-
-                    b.Navigation("Supersedes");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendancePolicy", b =>
@@ -2479,16 +1923,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasForeignKey("IntegrationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("robeem.DataModel.AttendancePayloadFormat", "PayloadFormat")
-                        .WithMany()
-                        .HasForeignKey("PayloadFormatId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Connection");
 
                     b.Navigation("Integration");
-
-                    b.Navigation("PayloadFormat");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendanceRecord", b =>
@@ -2738,19 +2175,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("TimeSchedule");
                 });
 
-            modelBuilder.Entity("robeem.DataModel.AttendanceConnectorDefinition", b =>
-                {
-                    b.Navigation("Transports");
-                });
-
             modelBuilder.Entity("robeem.DataModel.AttendanceIntegration", b =>
                 {
                     b.Navigation("Connections");
-                });
-
-            modelBuilder.Entity("robeem.DataModel.AttendancePayloadFormat", b =>
-                {
-                    b.Navigation("EventCodes");
                 });
 #pragma warning restore 612, 618
         }

@@ -190,9 +190,9 @@ public sealed class StructuredPayloadTests : IDisposable
 
         var created = await CreateAsync(json);
         Assert.True(created.Succeeded, string.Join(" ", created.Errors.Values));
-        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        using (var catalog = _database.CreateCatalog())
         {
-            var stored = db.AttendancePayloadFormats.Single(f => f.Id == created.Id);
+            var stored = catalog.AttendancePayloadFormats.Single(f => f.Id == created.Id);
             Assert.Equal((AttendancePayloadKind.Json, true, "data.punches[*]"), (stored.PayloadKind, stored.HasHeaderRow, stored.RecordPath));
         }
 
@@ -242,7 +242,6 @@ public sealed class StructuredPayloadTests : IDisposable
     private async Task<robeem.Application.Common.SaveResult> CreateAsync(PayloadFormatInput input)
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        return await new AttendancePayloadFormatService(db, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new CustomFormatFileReader(), new CustomFormatInterpreterFactory())
-            .CreateAsync(input, CancellationToken.None);
+        return await _database.PayloadFormatService(db).CreateAsync(input, CancellationToken.None);
     }
 }

@@ -42,6 +42,13 @@ public interface IAttendanceIntegrationService
 
     Task<SaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Sets a device up from the vendor down: the connector, how the device is reached, the device. The connector's integration is the
+    /// tenant's first active one, or is made (with the connection entered as its default); the connection is an existing one of it or a
+    /// new one. All of it is saved together, so a refused device leaves nothing behind. Audited.
+    /// </summary>
+    Task<DeviceSetupResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken);
+
     Task<SaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken);
 
     /// <summary>Deletes a device that no punch and no mapping refers to; one with punches on record is refused (raw data is never touched).</summary>

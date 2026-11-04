@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.Attendance.Catalog;
 using robeem.Application.Common;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -11,12 +12,16 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
 {
     private static readonly Regex KeyPattern = new("^[a-z0-9][a-z0-9._-]*$", RegexOptions.CultureInvariant);
 
-    private readonly IRobeemDbContext _db;
+    private readonly ICatalogDbContext _db;
+    private readonly IRobeemDbContext _tenantDb;
+    private readonly ICatalogWriteAccess _access;
     private readonly IAttendanceAuditTrail _audit;
 
-    public AttendanceVendorService(IRobeemDbContext db, IAttendanceAuditTrail audit)
+    public AttendanceVendorService(ICatalogDbContext db, IRobeemDbContext tenantDb, ICatalogWriteAccess access, IAttendanceAuditTrail audit)
     {
         _db = db;
+        _tenantDb = tenantDb;
+        _access = access;
         _audit = audit;
     }
 
@@ -25,10 +30,6 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
         var vendors = await _db.AttendanceVendors.AsNoTracking().OrderBy(v => v.DisplayName).ToListAsync(cancellationToken);
         var connectors = await _db.AttendanceConnectorDefinitions.AsNoTracking()
             .GroupBy(c => c.VendorId)
-            .Select(g => new { VendorId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.VendorId, g => g.Count, cancellationToken);
-        var integrations = await _db.AttendanceIntegrations.AsNoTracking()
-            .GroupBy(i => i.Connector!.VendorId)
             .Select(g => new { VendorId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.VendorId, g => g.Count, cancellationToken);
 
@@ -41,7 +42,6 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
             WebsiteUrl = v.WebsiteUrl,
             IsActive = v.IsActive,
             ConnectorCount = connectors.GetValueOrDefault(v.Id),
-            IntegrationCount = integrations.GetValueOrDefault(v.Id),
         }).ToList();
     }
 
@@ -62,6 +62,7 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
 
     public async Task<SaveResult> CreateAsync(VendorInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var errors = Validate(input, null);
         var key = Clean(input.VendorKey);
         if (key.Length > 0 && !errors.ContainsKey(nameof(VendorInput.VendorKey))
@@ -80,13 +81,15 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
         _db.AttendanceVendors.Add(vendor);
         await _db.SaveChangesAsync(cancellationToken);
 
+        // The catalog is saved first; the audit entry is the request tenant's own, in its own database (the two are not one transaction).
         _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceVendor), vendor.Id, $"Vendor '{vendor.DisplayName}' ({vendor.VendorKey}) created: {Summary(input)}.");
-        await _db.SaveChangesAsync(cancellationToken);
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(vendor.Id);
     }
 
     public async Task<SaveResult> UpdateAsync(int id, VendorInput input, CancellationToken cancellationToken)
     {
+        _access.EnsureCanWrite();
         var vendor = await _db.AttendanceVendors.SingleOrDefaultAsync(v => v.Id == id, cancellationToken);
         if (vendor is null)
         {
@@ -101,8 +104,9 @@ public sealed class AttendanceVendorService : IAttendanceVendorService
 
         var before = $"{vendor.DisplayName}; {(vendor.IsActive ? "active" : "inactive")}";
         Apply(input, vendor);
-        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceVendor), vendor.Id, $"Vendor '{vendor.VendorKey}' changed. Before: {before}. After: {Summary(input)}.");
         await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.IntegrationChanged, nameof(AttendanceVendor), vendor.Id, $"Vendor '{vendor.VendorKey}' changed. Before: {before}. After: {Summary(input)}.");
+        await _tenantDb.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(vendor.Id);
     }
 

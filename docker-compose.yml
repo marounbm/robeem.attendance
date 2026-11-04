@@ -1,0 +1,31 @@
+# Development PostgreSQL for robeem. One server; each tenant is a database on it
+# (robeem_demo, robeem_acme, robeem_prime). The Api creates the databases and
+# applies the migrations on start, so nothing is created by hand.
+#
+#   docker compose up -d        start (first time: creates the volume)
+#   docker compose stop         stop, keep the data
+#   docker compose down -v      remove the container AND the data
+#
+# POSTGRES_PASSWORD comes from .env (copy .env.example). .env is not committed.
+name: robeem
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: robeem-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${ROBEEM_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

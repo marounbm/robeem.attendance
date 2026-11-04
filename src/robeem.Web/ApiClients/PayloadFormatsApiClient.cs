@@ -47,6 +47,12 @@ public sealed class PayloadFormatsApiClient : IPayloadFormatsApiClient
         return await ApiResponses.ReadAsync<PayloadFormatSample>(response, cancellationToken);
     }
 
+    public async Task<PayloadFormatSample?> SampleOfSavedAsync(int id, string kind, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync($"{Path}/{id.ToString(CultureInfo.InvariantCulture)}/sample?kind={Uri.EscapeDataString(kind)}", cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<PayloadFormatSample>(response, cancellationToken);
+    }
+
     public async Task<ApiCommandResult<PayloadFormatPreview>> PreviewAsync(PayloadFormatInput input, Stream file, string fileName, CancellationToken cancellationToken)
     {
         using var content = new MultipartFormDataContent

@@ -164,6 +164,9 @@ public sealed class PayloadFormatsWebTests
         public Task<PayloadFormatSample> SampleAsync(PayloadFormatInput input, string kind, CancellationToken cancellationToken) =>
             Task.FromResult(PayloadFormatSampleBuilder.Build(input, kind));
 
+        public Task<PayloadFormatSample?> SampleOfSavedAsync(int id, string kind, CancellationToken cancellationToken) =>
+            Task.FromResult<PayloadFormatSample?>(null);
+
         public Task<ApiCommandResult<PayloadFormatPreview>> PreviewAsync(PayloadFormatInput input, Stream file, string fileName, CancellationToken cancellationToken)
         {
             Previews++;

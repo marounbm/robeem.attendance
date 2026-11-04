@@ -17,10 +17,19 @@ The solution has two processes:
 |---|---|
 | .NET SDK 10 | `dotnet --version` should print `10.x`. |
 | `dotnet-ef` 10 | `dotnet tool install -g dotnet-ef`. Needed only to add migrations. |
-| PostgreSQL server | Development uses `localhost:5432`, user `postgres`. The user must be allowed to create databases. |
+| Docker (Docker Desktop) | Runs the development PostgreSQL (`docker-compose.yml`). Do not also run a local PostgreSQL service on port 5432. |
 | Git | |
 
-Each tenant is a separate PostgreSQL **database**. The Api creates a missing database and applies the migrations on start (section 4), so you do not create any tables by hand.
+Each tenant is a separate PostgreSQL **database** on that one server. The Api creates a missing database and applies the migrations on start (section 4), so you do not create any tables by hand.
+
+Start the database from the repository root:
+
+```bash
+cp .env.example .env        # then set POSTGRES_PASSWORD in .env (not committed)
+docker compose up -d
+```
+
+It listens on `127.0.0.1:5432` as user `postgres`, and keeps its data in the `robeem_pgdata` Docker volume. `docker compose stop` keeps the data; `docker compose down -v` deletes it. If port 5432 is taken (for example by a local PostgreSQL service), stop that service, or set `ROBEEM_PG_PORT` in `.env` and add `Port=<n>` to the connection strings in section 3.
 
 ---
 
@@ -38,14 +47,23 @@ A clean build has zero errors and zero warnings. If it fails on a StyleCop rule,
 
 ## 3. Configure the database connections (Development)
 
-`src/robeem.Api/appsettings.Development.json` lists two tenants, `demo` and `acme`, with **password-less** connection strings. Passwords are never committed. Put the full strings in the Api's user-secrets (its `UserSecretsId` is `robeem-attendance-api`); they override the file by array index:
+`src/robeem.Api/appsettings.Development.json` lists three tenants, `demo`, `acme` and `prime`, with **password-less** connection strings. Passwords are never committed. Put the full strings in the Api's user-secrets (its `UserSecretsId` is `robeem-attendance-api`); they override the file by array index:
 
 ```bash
-dotnet user-secrets set "Tenancy:Tenants:0:ConnectionString" "Host=localhost;Database=robeem_demo;Username=postgres;Password=<pwd>" --project src/robeem.Api
+dotnet user-secrets set "Tenancy:Tenants:0:ConnectionString" "Host=localhost;Database=robeem_demo;Username=postgres;Password=<POSTGRES_PASSWORD from .env>" --project src/robeem.Api
 dotnet user-secrets set "Tenancy:Tenants:1:ConnectionString" "Host=localhost;Database=robeem_acme;Username=postgres;Password=<pwd>" --project src/robeem.Api
+dotnet user-secrets set "Tenancy:Tenants:2:ConnectionString" "Host=localhost;Database=robeem_prime;Username=postgres;Password=<pwd>" --project src/robeem.Api
 ```
 
-Index 0 is `demo`, index 1 is `acme`: the order in `appsettings.Development.json`. If you change that order, change the indexes.
+Index 0 is `demo`, index 1 is `acme`, index 2 is `prime`: the order in `appsettings.Development.json`. If you change that order, change the indexes.
+
+`prime` is the **prime tenant** (`Tenancy:PrimeTenantId`): robeem's own tenant, which owns the attendance catalog (vendors, connectors, transports, device types, payload formats) that every tenant reads. Its database holds the catalog in the `Catalog` schema. To manage the catalog, switch to the `prime` tenant and act as a `PlatformAdministrator`; in `demo` and `acme` the payload formats are read-only (with example files to download). The first start with `Database:InitializeOnStartup` migrates all three databases, then seeds the catalog once in `robeem_prime`.
+
+**The catalog service key.** `demo` and `acme` do not open `robeem_prime`: they read the catalog by calling the prime tenant's Api (`Catalog:PrimeApiBaseUrl`, `http://localhost:5181` in Development, which is this same Api). The call carries a shared key, which the Api also demands of the calls it answers. The Api refuses to start without it (at least 32 characters). Generate one and keep it in user-secrets:
+
+```bash
+dotnet user-secrets set "Catalog:ServiceKey" "<a random string of 32 or more characters>" --project src/robeem.Api
+```
 
 Check what is stored: `dotnet user-secrets list --project src/robeem.Api`.
 
@@ -94,7 +112,7 @@ Open http://localhost:5180.
 |---|---|
 | `Employee` | See their own days and exceptions; propose a correction for a missing punch. |
 | `Manager` | The same for their direct reports; decide corrections and reviews of their reports. |
-| `HRAdministrator` | Employees, schedules, policies, the audit log; everyone's attendance; HR decisions; "Calculate again"; uploading attendance files (*Import → Upload attendance*). |
+| `HRAdministrator` | Employees, schedules, policies, the audit log; everyone's attendance; HR decisions; "Calculate again"; uploading attendance files (*Attendance data → Upload attendance*). |
 | `PayrollAdministrator` | Pay periods and the approved-days payroll view. |
 | `IntegrationAdministrator` | Integrations, devices, employee-id mappings and sync. |
 
@@ -110,13 +128,13 @@ Do this once per tenant, as a user with the roles shown.
    - Assign a time schedule. The employee joins that schedule's default team. An employee without a schedule gets a "no schedule configured" result rather than a guessed one.
    - Optionally set a manager. A manager sees and decides only their direct reports; HR covers employees with no (or an inactive) manager.
 2. **Check the attendance policy** (`HRAdministrator`, *Policies*). The seeded default policy applies to everyone. A schedule can have its own policy. A change applies to days processed from then on.
-3. **Create an integration** (`IntegrationAdministrator`, *Integrations*).
-   - Choose a provider. Only a provider with an adapter can be chosen: today that is **Generic CSV upload**.
-   - *Secret reference*: the *name* a secret is kept under in configuration (letters, digits and `. _ : / -`). Never type the secret itself. Leave it empty for an integration you only upload files to (section 7).
-   - *Schedule*: a cron expression of five fields (minute hour day month weekday; for example `*/5 * * * *`) or six with seconds first, or empty for uploads only.
-4. **Add the devices** on the integration's page. For each: the id as the vendor reports it, a name, the type, and the **IANA time zone of the device's clock** (for example `Asia/Beirut`). A punch without a UTC offset is read in its device's zone. Model, software version and SDK version are optional and are for your records.
-5. **Map vendor employee ids to employees** on the integration's page. A punch whose vendor id has no mapping cannot be assigned to an employee.
-6. **Upload a file** (`HRAdministrator`, *Import → Upload attendance*). Choose the integration: it fixes the file format and the screen shows the layout the file is read by. For Generic CSV, an RFC 4180 CSV with a header row and columns such as `transaction_id, employee_id, timestamp, type, device_id`. The accepted header names are listed in `src/robeem.Infrastructure/Attendance/Providers/GenericCsvProvider.cs`.
+3. **Set up a device** (`IntegrationAdministrator`, *Devices* → *Set up a device*). There is no integration to create: the integration is made for you the first time a connector is used.
+   - Choose the vendor, then the connector (only usable ones are listed, such as the ZKTeco export or the generic CSV).
+   - Say how the device is reached. Share an existing connection, or enter a new one. *Secret reference*: the *name* a secret is kept under in configuration (letters, digits and `. _ : / -`); never type the secret itself, and leave it empty for a file upload (section 7). *Schedule*: a cron expression of five fields (minute hour day month weekday; for example `*/5 * * * *`) or six with seconds first, for a pulled transport.
+   - Describe the device: the id as the vendor reports it, a name, the type, and the **IANA time zone of the device's clock** (for example `Asia/Beirut`). A punch without a UTC offset is read in its device's zone. Model, software version and SDK version are optional and are for your records.
+4. **Map vendor employee ids to employees** on the device's page, which opens after saving. A punch whose vendor id has no mapping cannot be assigned to an employee.
+5. **Check the connections** if needed: the integration name in the Devices grid opens the connections of that integration (add, change, test, make default).
+6. **Upload a file** (`HRAdministrator`, *Attendance data → Upload attendance*). Choose the integration: it fixes the file format and the screen shows the layout the file is read by. For Generic CSV, an RFC 4180 CSV with a header row and columns such as `transaction_id, employee_id, timestamp, type, device_id`. The accepted header names are listed in `src/robeem.Infrastructure/Attendance/Providers/GenericCsvProvider.cs`.
 7. **Wait a few seconds.** Ingestion stores every punch unchanged (raw data is never edited). The normalization job (every 10 seconds by default) then turns raw punches into events, resolves the employee and device, and marks duplicates. The processing engine then calculates the day.
 8. **Look at the result**: *Attendance* (one line per employee and day, with the full working-out when you open a day) and *Exceptions* (missing punches and wrong order, which a person has to settle).
 

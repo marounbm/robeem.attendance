@@ -154,7 +154,6 @@ public sealed class UploadsWebTests
         Assert.Equal([NavigationMenu.Hr], item.Roles);
         Assert.DoesNotContain("Uploads", Controllers("Employee", "Manager", "PayrollAdministrator", "IntegrationAdministrator"));
         Assert.Contains("Uploads", Controllers("HRAdministrator"));
-        Assert.DoesNotContain("Upload", NavigationMenu.Find("Integrations")!.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> Controllers(params string[] roles) =>

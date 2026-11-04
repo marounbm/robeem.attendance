@@ -9,35 +9,38 @@ namespace robeem.Tests.Attendance;
 /// <summary>Integration setup (screens phase 2): integrations, devices, vendor-id mappings and run-now.</summary>
 public sealed class AttendanceIntegrationServiceTests : IDisposable
 {
+    private const string CsvConnector = "generic-csv";
+    private const string InactiveConnector = "zkteco";
+    private const string UnreadableConnector = "unreadable";
+
     private readonly TestDatabase _database = new();
     private readonly FakeSync _sync = new();
-    private readonly int _csvConnectorId;
-    private readonly int _inactiveConnectorId;
-    private readonly int _unreadableConnectorId;
     private readonly int _employeeId;
-    private readonly Dictionary<string, int> _deviceTypeIds;
 
     public AttendanceIntegrationServiceTests()
     {
         _database.SeedAttendanceCatalog();
-        using var db = _database.CreateContext(TestDatabase.TenantA);
 
         // The seeded Generic CSV connector (default payload format: usable), given two more transports; the seeded ZKTeco one switched off;
-        // and one that is active but has neither a default payload format nor a code adapter.
-        var csv = AttendanceTestData.Seeded(db, "generic-csv");
-        foreach (var key in new[] { "Webhook", "RestApi" })
+        // and one that is active but has neither a default payload format nor a code adapter. The catalog is the prime tenant's.
+        using (var catalog = _database.CreateCatalog())
         {
-            csv.Transports.Add(new AttendanceConnectorTransport { Transport = db.AttendanceTransportDefinitions.Single(t => t.TransportKey == key) });
+            var csv = catalog.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == CsvConnector);
+            foreach (var key in new[] { "Webhook", "RestApi" })
+            {
+                csv.Transports.Add(new AttendanceConnectorTransport { Transport = catalog.AttendanceTransportDefinitions.Single(t => t.TransportKey == key) });
+            }
+
+            catalog.AttendanceConnectorDefinitions.Single(c => c.ConnectorKey == InactiveConnector).IsActive = false;
+            catalog.AttendanceConnectorDefinitions.Add(AttendanceTestData.Connector(UnreadableConnector, "Unreadable", adapterKey: UnreadableConnector));
+            catalog.SaveChanges();
         }
 
-        var zk = AttendanceTestData.Seeded(db, "zkteco");
-        zk.IsActive = false;
-        var unreadable = AttendanceTestData.Connector("unreadable", "Unreadable", adapterKey: "unreadable");
+        using var db = _database.CreateContext(TestDatabase.TenantA);
         var ada = new Profile { EmployeeNumber = "E-1", FirstName = "Ada", LastName = "Lovelace", Title = "Ada Lovelace" };
-        db.AddRange(unreadable, ada);
+        db.Add(ada);
         db.SaveChanges();
-        (_csvConnectorId, _inactiveConnectorId, _unreadableConnectorId, _employeeId) = (csv.Id, zk.Id, unreadable.Id, ada.Id);
-        _deviceTypeIds = db.AttendanceDeviceTypes.ToDictionary(t => t.Name, t => t.Id, StringComparer.OrdinalIgnoreCase);
+        _employeeId = ada.Id;
     }
 
     public void Dispose() => _database.Dispose();
@@ -53,7 +56,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         var connection = db.AttendanceConnections.Single();
         Assert.Equal(("HQ clock", "hq-clock", "*/5 * * * *", AttendanceIntegrationStatus.Active), (integration.DisplayName, connection.SecretRef, connection.PollingSchedule, integration.Status));
         Assert.Equal((integration.Id, true, AttendanceTransport.RestApi, ConnectionAuthMethod.SessionLogin), (connection.IntegrationId, connection.IsDefault, connection.Transport, connection.AuthMethod));
-        Assert.Equal(_csvConnectorId, integration.ConnectorId);
+        Assert.Equal(CsvConnector, integration.ConnectorKey);
         var entry = Assert.Single(db.AttendanceAuditLogs);
         Assert.Equal((AttendanceAuditActions.IntegrationChanged, integration.Id), (entry.Action, entry.TargetId));
     }
@@ -109,10 +112,10 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("ConnectorId", 999, "does not exist")]
-    public async Task AnUnknownVendor_IsRefused(string field, int connectorId, string fragment)
+    [InlineData("ConnectorKey", "no-such-connector", "does not exist")]
+    public async Task AnUnknownVendor_IsRefused(string field, string connectorKey, string fragment)
     {
-        var result = await CreateAsync(Input(connectorId: connectorId));
+        var result = await CreateAsync(Input(connectorKey: connectorKey));
 
         Assert.Contains(fragment, result.Errors[field]);
     }
@@ -120,21 +123,21 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     [Fact]
     public async Task AnInactiveVendor_CanNotBeChosen()
     {
-        var result = await CreateAsync(Input(connectorId: _inactiveConnectorId));
+        var result = await CreateAsync(Input(connectorKey: InactiveConnector));
 
-        Assert.Contains("not active", result.Errors[nameof(IntegrationInput.ConnectorId)]);
+        Assert.Contains("not active", result.Errors[nameof(IntegrationInput.ConnectorKey)]);
     }
 
     [Fact]
     public async Task AVendorNothingCanRead_CanNotBeChosen_UntilItHasAFormatOrAnAdapter()
     {
-        var refused = await CreateAsync(Input(connectorId: _unreadableConnectorId));
-        Assert.Contains("neither a default payload format nor a code adapter", refused.Errors[nameof(IntegrationInput.ConnectorId)]);
+        var refused = await CreateAsync(Input(connectorKey: UnreadableConnector));
+        Assert.Contains("neither a default payload format nor a code adapter", refused.Errors[nameof(IntegrationInput.ConnectorKey)]);
 
         // A code adapter registered under its key is enough.
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var withAdapter = new AttendanceIntegrationService(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog("unreadable"));
-        Assert.True((await withAdapter.CreateAsync(Input(connectorId: _unreadableConnectorId), CancellationToken.None)).Succeeded);
+        var withAdapter = new AttendanceIntegrationService(db, _database.CreateCatalogReader(new StubAdapterCatalog("unreadable")), _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
+        Assert.True((await withAdapter.CreateAsync(Input(connectorKey: UnreadableConnector), CancellationToken.None)).Succeeded);
     }
 
     [Fact]
@@ -225,9 +228,9 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     {
         var id = (await CreateAsync(Input())).Id!.Value;
 
-        var result = await UpdateAsync(id, Input(connectorId: _inactiveConnectorId));
+        var result = await UpdateAsync(id, Input(connectorKey: InactiveConnector));
 
-        Assert.Contains("can't be changed", result.Errors[nameof(IntegrationInput.ConnectorId)]);
+        Assert.Contains("can't be changed", result.Errors[nameof(IntegrationInput.ConnectorKey)]);
     }
 
     [Fact]
@@ -254,7 +257,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.Equal((2, 1, "generic-csv", "Generic CSV upload", "Unknown", "Active"), (b.DeviceCount, b.MappingCount, b.VendorKey, b.VendorName, b.HealthStatus, b.Status));
         Assert.Equal(("b-ref", "0 * * * *"), (b.ConnectionConfigRef, b.PollingScheduleCron));
         var input = (await service.GetInputAsync(id, CancellationToken.None))!;
-        Assert.Equal(("B clock", "b-ref", "0 * * * *", "Active", _csvConnectorId), (input.DisplayName, input.ConnectionConfigRef, input.PollingScheduleCron, input.Status, input.ConnectorId));
+        Assert.Equal(("B clock", "b-ref", "0 * * * *", "Active", CsvConnector), (input.DisplayName, input.ConnectionConfigRef, input.PollingScheduleCron, input.Status, input.ConnectorKey));
         Assert.Null(await service.GetAsync(999, CancellationToken.None));
         Assert.Null(await service.GetInputAsync(999, CancellationToken.None));
     }
@@ -300,7 +303,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         using (var db = _database.CreateContext(TestDatabase.TenantA))
         {
             var device = db.AttendanceDevices.Single();
-            Assert.Equal(("DEV-1", "Main entrance", _deviceTypeIds["Facial"], "UTC"), (device.ExternalDeviceId, device.Name, device.DeviceTypeId, device.TimeZoneId));
+            Assert.Equal(("DEV-1", "Main entrance", "Facial", "UTC"), (device.ExternalDeviceId, device.Name, device.DeviceTypeName, device.TimeZoneId));
         }
 
         Assert.True((await DeleteDeviceAsync(integrationId, deviceId)).Succeeded);
@@ -314,12 +317,12 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     [InlineData("DEV-1", "", "UTC", "Biometric", "Name", "required")]
     [InlineData("DEV-1", "Front", "Mars/Olympus", "Biometric", "TimeZoneId", "IANA")]
     [InlineData("DEV-1", "Front", "", "Biometric", "TimeZoneId", "IANA")]
-    [InlineData("DEV-1", "Front", "UTC", "Toaster", "DeviceTypeId", "active device types")]
+    [InlineData("DEV-1", "Front", "UTC", "Toaster", "DeviceTypeName", "active device types")]
     public async Task ABadDevice_IsRefused(string external, string name, string zone, string type, string field, string fragment)
     {
         var integrationId = (await CreateAsync(Input())).Id!.Value;
 
-        var result = await AddDeviceAsync(integrationId, new DeviceInput { ExternalDeviceId = external, Name = name, TimeZoneId = zone, DeviceTypeId = _deviceTypeIds.GetValueOrDefault(type, 999) });
+        var result = await AddDeviceAsync(integrationId, new DeviceInput { ExternalDeviceId = external, Name = name, TimeZoneId = zone, DeviceTypeName = type });
 
         Assert.Contains(fragment, result.Errors[field]);
     }
@@ -608,11 +611,11 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         Assert.Null(db.AttendanceIntegrations.Single(i => i.Id == id).DefaultDeviceId);
     }
 
-    private static IntegrationInput Input(int connectorId = 0, string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active", string transport = "FileUpload", string? zone = null, int? defaultDeviceId = null) => new()
+    private static IntegrationInput Input(string connectorKey = "", string name = "HQ clock", string? reference = null, string? cron = null, string status = "Active", string transport = "FileUpload", string? zone = null, int? defaultDeviceId = null) => new()
     {
         DefaultDeviceId = defaultDeviceId,
         TimeZoneId = zone,
-        ConnectorId = connectorId,
+        ConnectorKey = connectorKey,
         DisplayName = name,
 
         // Every authenticated transport needs a secret; a plain upload needs none.
@@ -627,19 +630,19 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
         ExternalDeviceId = external,
         Name = name,
         TimeZoneId = zone,
-        DeviceTypeId = _deviceTypeIds[type],
+        DeviceTypeName = type,
     };
 
     private async Task<robeem.Application.Common.SaveResult> CreateAsync(IntegrationInput input)
     {
-        input.ConnectorId = input.ConnectorId == 0 ? _csvConnectorId : input.ConnectorId;
+        input.ConnectorKey = input.ConnectorKey.Length == 0 ? CsvConnector : input.ConnectorKey;
         using var db = _database.CreateContext(TestDatabase.TenantA);
         return await CreateService(db).CreateAsync(input, CancellationToken.None);
     }
 
     private async Task<robeem.Application.Common.SaveResult> UpdateAsync(int id, IntegrationInput input)
     {
-        input.ConnectorId = input.ConnectorId == 0 ? _csvConnectorId : input.ConnectorId;
+        input.ConnectorKey = input.ConnectorKey.Length == 0 ? CsvConnector : input.ConnectorKey;
         using var db = _database.CreateContext(TestDatabase.TenantA);
         return await CreateService(db).UpdateAsync(id, input, CancellationToken.None);
     }
@@ -675,7 +678,7 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     private AttendanceIntegrationService CreateService(RobeemDbContext db) =>
-        new(db, _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider(), new StubAdapterCatalog());
+        new(db, _database.CreateCatalogReader(), _sync, new AttendanceAuditTrail(db, new TestUser(7), TimeProvider.System), new ServiceCollection().BuildServiceProvider());
 
     private sealed class FakeSync : IIntegrationSyncService
     {

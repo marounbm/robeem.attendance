@@ -36,13 +36,14 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         ["GET", "api/attendance/integrations/employee-options", null!],
         ["GET", "api/attendance/integrations/1", null!],
         ["GET", "api/attendance/integrations/1/input", null!],
-        ["POST", "api/attendance/integrations", """{"vendorId":1,"displayName":"x"}"""],
-        ["PUT", "api/attendance/integrations/1", """{"vendorId":1,"displayName":"x"}"""],
+        ["POST", "api/attendance/integrations", """{"connectorKey":"zk","displayName":"x"}"""],
+        ["PUT", "api/attendance/integrations/1", """{"connectorKey":"zk","displayName":"x"}"""],
         ["GET", "api/attendance/integrations/devices", null!],
         ["GET", "api/attendance/integrations/1/devices", null!],
         ["GET", "api/attendance/integrations/1/devices/2", null!],
-        ["POST", "api/attendance/integrations/1/devices", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeId":1}"""],
-        ["PUT", "api/attendance/integrations/1/devices/2", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeId":1}"""],
+        ["POST", "api/attendance/integrations/1/devices", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeName":"Facial"}"""],
+        ["POST", "api/attendance/integrations/device-setup", """{"connectorKey":"zk","transport":"FileUpload","device":{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeName":"Facial"}}"""],
+        ["PUT", "api/attendance/integrations/1/devices/2", """{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeName":"Facial"}"""],
         ["DELETE", "api/attendance/integrations/1/devices/2", null!],
         ["GET", "api/attendance/integrations/1/devices/2/mappings", null!],
         ["POST", "api/attendance/integrations/1/devices/2/mappings", """{"externalEmployeeId":"e","employeeId":1}"""],
@@ -82,10 +83,10 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     public async Task Create_Answers201WithTheId_AndARefusalAs400KeyedByTheInputsProperties()
     {
         _integrations.Result = SaveResult.Success(42);
-        var created = await Send("POST", "api/attendance/integrations", Admin, """{"vendorId":1,"displayName":"HQ"}""");
+        var created = await Send("POST", "api/attendance/integrations", Admin, """{"connectorKey":"zk","displayName":"HQ"}""");
 
         _integrations.Result = SaveResult.Invalid("ConnectionConfigRef", "Give the name the secret is kept under.");
-        var refused = await Send("POST", "api/attendance/integrations", Admin, """{"vendorId":1,"displayName":"HQ"}""");
+        var refused = await Send("POST", "api/attendance/integrations", Admin, """{"connectorKey":"zk","displayName":"HQ"}""");
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal(42, (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.Id);
@@ -95,14 +96,31 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SettingADeviceUp_Answers201WithWhereItWasPut_AndARefusalAs400WithTheNestedField()
+    {
+        const string Body = """{"connectorKey":"zk","transport":"FileUpload","device":{"externalDeviceId":"d","name":"n","timeZoneId":"UTC","deviceTypeName":"Facial"}}""";
+        _integrations.Result = SaveResult.Success(42);
+        var created = await Send("POST", "api/attendance/integrations/device-setup", Admin, Body);
+
+        _integrations.Result = SaveResult.Invalid("Device.ExternalDeviceId", "Another device of this integration already has this id.");
+        var refused = await Send("POST", "api/attendance/integrations/device-setup", Admin, Body);
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var response = (await created.Content.ReadFromJsonAsync<DeviceSetupResponse>())!;
+        Assert.Equal((42, 3, true), (response.DeviceId, response.IntegrationId, response.IntegrationCreated));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("Device.ExternalDeviceId", (await refused.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors.Keys);
+    }
+
+    [Fact]
     public async Task UpdateAndDelete_Answer204_404_Or400()
     {
         _integrations.Result = SaveResult.Success(1);
-        Assert.Equal(HttpStatusCode.NoContent, (await Send("PUT", "api/attendance/integrations/1", Admin, """{"vendorId":1,"displayName":"HQ"}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send("PUT", "api/attendance/integrations/1", Admin, """{"connectorKey":"zk","displayName":"HQ"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await Send("DELETE", "api/attendance/integrations/1/devices/2", Admin, null)).StatusCode);
 
         _integrations.Result = SaveResult.Missing();
-        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/integrations/9", Admin, """{"vendorId":1,"displayName":"HQ"}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Send("PUT", "api/attendance/integrations/9", Admin, """{"connectorKey":"zk","displayName":"HQ"}""")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Send("DELETE", "api/attendance/integrations/1/devices/2/mappings/9", Admin, null)).StatusCode);
 
         _integrations.Result = SaveResult.Invalid("id", "This device has punches on record, so it can't be deleted.");
@@ -223,6 +241,9 @@ public sealed class IntegrationsEndpointTests : IAsyncDisposable
         public Task<DeviceItem?> GetDeviceAsync(int integrationId, int deviceId, CancellationToken cancellationToken) => Record<DeviceItem?>("device", Exists ? new DeviceItem { Id = deviceId } : null);
 
         public Task<SaveResult> AddDeviceAsync(int integrationId, DeviceInput input, CancellationToken cancellationToken) => Record("addDevice", Result);
+
+        public async Task<DeviceSetupResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken) =>
+            new(await Record("setUpDevice", Result), 3, IntegrationCreated: true);
 
         public Task<SaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken) => Record("updateDevice", Result);
 

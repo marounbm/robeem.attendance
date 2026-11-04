@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using robeem.Api.Attendance;
 using robeem.Api.Attendance.Jobs;
 using robeem.Api.Security;
@@ -6,12 +7,15 @@ using robeem.Application;
 using robeem.Application.Attendance;
 using robeem.Application.HR.Seeding;
 using robeem.Infrastructure;
+using robeem.Infrastructure.Attendance.Catalog;
 using robeem.Infrastructure.Persistence;
+using robeem.Infrastructure.Persistence.Catalog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<CatalogUnavailableExceptionHandler>();
 builder.Services.AddRobeemInfrastructure(builder.Configuration);
 builder.Services.AddRobeemApplication();
 
@@ -34,9 +38,20 @@ builder.Services.AddScoped<TenantResolutionMiddleware>();
 
 var app = builder.Build();
 
+// Every other tenant reads the attendance catalog by calling the prime tenant's Api, and this Api answers such calls itself:
+// both need the address and the service key. Fail fast, as the tenant configuration does.
+var catalogErrors = app.Services.GetRequiredService<IOptions<PrimeCatalogOptions>>().Value.Validate(requireHttps: !app.Environment.IsDevelopment());
+if (catalogErrors.Count > 0)
+{
+    throw new InvalidOperationException($"Invalid '{PrimeCatalogOptions.SectionName}' configuration: {string.Join(" ", catalogErrors)}");
+}
+
 if (app.Configuration.GetValue<bool>("Database:InitializeOnStartup"))
 {
     await app.Services.GetRequiredService<TenantDatabaseInitializer>().InitializeAllAsync(app.Lifetime.ApplicationStopping);
+
+    // The attendance catalog lives in the prime tenant's database and is migrated and seeded once, apart from the tenants' schema.
+    await app.Services.GetRequiredService<CatalogDatabaseInitializer>().InitializeAsync(app.Lifetime.ApplicationStopping);
 }
 
 app.UseExceptionHandler();

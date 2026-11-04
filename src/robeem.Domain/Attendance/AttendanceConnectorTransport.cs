@@ -7,13 +7,9 @@ namespace robeem.DataModel
 {
     /// <summary>One transport an <see cref="AttendanceConnectorDefinition"/> supports.</summary>
     [Serializable]
-    [Table(nameof(AttendanceConnectorTransport), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceConnectorTransport : SystemEntity, ISeedData, ITenantScoped
+    [Table(nameof(AttendanceConnectorTransport), Schema = nameof(SmartEnum.Module.Catalog))]
+    public class AttendanceConnectorTransport : SystemEntity, ISeedData
     {
-        [Required]
-        [MaxLength(ITenantScoped.TenantIdMaxLength)]
-        public string TenantId { get; set; } = string.Empty;
-
         [Required]
         public int ConnectorId { get; set; }
 

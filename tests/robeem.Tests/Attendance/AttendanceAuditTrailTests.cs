@@ -51,6 +51,7 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
         {
             var service = new IntegrationHealthService(
                 db,
+                Database.CreateCatalogReader(),
                 new IntegrationResilience(Options.Create(new AttendanceSyncOptions()), Clock),
                 Options.Create(new AttendanceSyncOptions()),
                 CreateAudit(db, new TestUser(77)),

@@ -14,6 +14,12 @@ public sealed class ExceptionsIndexViewModel
 
     public DateTime? To { get; init; }
 
+    /// <summary>Gets the one employee shown, or null for everyone the user may see.</summary>
+    public int? EmployeeId { get; init; }
+
+    /// <summary>Gets the employees the user can narrow the list to.</summary>
+    public IReadOnlyList<EmployeeOption> Employees { get; init; } = Array.Empty<EmployeeOption>();
+
     /// <summary>Gets the exceptions grouped by the day they are on, newest day first: the rows of the grid.</summary>
     public IReadOnlyList<ExceptionDay> Days =>
         Items

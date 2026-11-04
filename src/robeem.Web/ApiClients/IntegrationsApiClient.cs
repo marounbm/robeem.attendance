@@ -89,6 +89,20 @@ public sealed class IntegrationsApiClient : IIntegrationsApiClient
         return await ApiResponses.SaveAsync<DeviceInput>(response, null, cancellationToken);
     }
 
+    public async Task<DeviceSetupApiResult> SetUpDeviceAsync(DeviceSetupInput input, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/device-setup", input, cancellationToken);
+
+        // A refusal by field, a 404, or a failure the caller is told about is Save's to answer or throw; only a creation carries the response.
+        if (response.StatusCode != HttpStatusCode.Created)
+        {
+            return new DeviceSetupApiResult(await ApiResponses.SaveAsync<DeviceSetupInput>(response, null, cancellationToken, keepNestedPaths: true), null);
+        }
+
+        var created = await response.Content.ReadFromJsonAsync<DeviceSetupResponse>(cancellationToken);
+        return new DeviceSetupApiResult(ApiSaveResult.Success(created?.DeviceId), created);
+    }
+
     public async Task<ApiSaveResult> UpdateDeviceAsync(int integrationId, int deviceId, DeviceInput input, CancellationToken cancellationToken)
     {
         using var response = await _http.PutAsJsonAsync($"{IntegrationPath(integrationId)}/devices/{Number(deviceId)}", input, cancellationToken);

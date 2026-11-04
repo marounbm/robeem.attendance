@@ -9,11 +9,13 @@ using robeem.Contracts.Common;
 namespace robeem.Api.Controllers;
 
 /// <summary>
-/// The catalog of attendance vendors, the companies. A vendor is made inactive, never deleted (connectors and punches point at it).
+/// The catalog of attendance vendors, the companies, managed in the prime tenant by platform administrators. A vendor is made inactive,
+/// never deleted (connectors and punches point at it).
 /// How a vendor's data arrives is its connectors' business (<c>api/attendance/connectors</c>).
 /// </summary>
 [ApiController]
-[Authorize(Roles = AttendanceRoles.IntegrationAdministrator)]
+[Authorize(Roles = AttendanceRoles.PlatformAdministrator)]
+[CatalogReadOnlyFilter]
 [Route("api/attendance/vendors")]
 public sealed class AttendanceVendorsController : ControllerBase
 {
