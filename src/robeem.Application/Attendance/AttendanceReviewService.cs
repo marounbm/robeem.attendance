@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -8,6 +9,8 @@ namespace robeem.Application.Attendance;
 public sealed class AttendanceReviewService : IAttendanceReviewService
 {
     private const int ReasonMaxLength = 1000;
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 200;
 
     private readonly IRobeemDbContext _db;
     private readonly IAttendanceProcessingEngine _engine;
@@ -122,8 +125,9 @@ public sealed class AttendanceReviewService : IAttendanceReviewService
         return ReviewResult.Success(decision, record.Status);
     }
 
-    public async Task<IReadOnlyList<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, CancellationToken cancellationToken)
+    public async Task<PagedResult<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, ReviewFilter filter, CancellationToken cancellationToken)
     {
+        var pageSize = Math.Clamp(filter.PageSize <= 0 ? DefaultPageSize : filter.PageSize, 1, MaxPageSize);
         var records = _db.AttendanceRecords
             .AsNoTracking()
             .Where(r => r.IsCurrent
@@ -139,9 +143,44 @@ public sealed class AttendanceReviewService : IAttendanceReviewService
             records = records.Where(r => r.Employee!.ManagerId == approverEmployeeId);
         }
 
+        if (filter.EmployeeId is { } employeeId)
+        {
+            records = records.Where(r => r.EmployeeId == employeeId);
+        }
+
+        if (filter.From is { } from)
+        {
+            var first = from.Date;
+            records = records.Where(r => r.AttendanceDate >= first);
+        }
+
+        if (filter.To is { } to)
+        {
+            var last = to.Date;
+            records = records.Where(r => r.AttendanceDate <= last);
+        }
+
+        // The reason is worked out, not stored (see ReasonOf below): overtime first, then no shift, then a missing punch.
+        if (filter.Reason is { } wanted)
+        {
+            records = wanted switch
+            {
+                ReviewReason.Overtime => records.Where(r => r.OvertimeMinutes > 0),
+                ReviewReason.UnscheduledWork => records.Where(r => r.OvertimeMinutes <= 0 && r.TimeScheduleShiftId == null),
+                ReviewReason.IncompleteDay => records.Where(r => r.OvertimeMinutes <= 0 && r.TimeScheduleShiftId != null && (r.ActualCheckIn == null || r.ActualCheckOut == null)),
+                _ => records.Where(r => r.OvertimeMinutes <= 0 && r.TimeScheduleShiftId != null && r.ActualCheckIn != null && r.ActualCheckOut != null),
+            };
+        }
+
+        // The total is counted with the same filters as the page; a page past the end is answered with the last page.
+        var total = await records.CountAsync(cancellationToken);
+        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
+
         var rows = await records
             .OrderBy(r => r.AttendanceDate)
             .ThenBy(r => r.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new
             {
                 r.Id,
@@ -159,7 +198,7 @@ public sealed class AttendanceReviewService : IAttendanceReviewService
             })
             .ToListAsync(cancellationToken);
 
-        return rows
+        var items = rows
             .Select(r => new ReviewListItem
             {
                 RecordId = r.Id,
@@ -172,11 +211,17 @@ public sealed class AttendanceReviewService : IAttendanceReviewService
                 ActualCheckOut = r.ActualCheckOut,
                 WorkingHours = r.WorkingHours,
                 OvertimeMinutes = r.OvertimeMinutes,
-                Reason = r.OvertimeMinutes > 0 ? "Overtime"
-                    : r.TimeScheduleShiftId is null ? "UnscheduledWork"
-                    : r.ActualCheckIn is null || r.ActualCheckOut is null ? "IncompleteDay"
-                    : "Review",
+                Reason = ReasonOf(r.OvertimeMinutes, r.TimeScheduleShiftId, r.ActualCheckIn, r.ActualCheckOut).ToString(),
             })
             .ToList();
+
+        return new PagedResult<ReviewListItem> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
+
+    /// <summary>Why a record needs review. The filter above says the same thing as a query: keep the two in step.</summary>
+    private static ReviewReason ReasonOf(int overtimeMinutes, int? shiftId, DateTime? checkIn, DateTime? checkOut) =>
+        overtimeMinutes > 0 ? ReviewReason.Overtime
+        : shiftId is null ? ReviewReason.UnscheduledWork
+        : checkIn is null || checkOut is null ? ReviewReason.IncompleteDay
+        : ReviewReason.Review;
 }

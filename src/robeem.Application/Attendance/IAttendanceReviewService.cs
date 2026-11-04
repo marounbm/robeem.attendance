@@ -1,4 +1,5 @@
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Application.Attendance;
 
@@ -22,7 +23,9 @@ public interface IAttendanceReviewService
 
     /// <summary>
     /// Lists the current records waiting for review, with no exception open, oldest date first. A
-    /// manager gets their direct reports'; HR gets every employee's.
+    /// manager gets their direct reports'; HR gets every employee's. Narrowed by employee, attendance dates and reason, and paged in the
+    /// database: the total is counted with the same filters, the order is stable (date, then id) so pages never overlap, a page past the
+    /// end answers the last page, and the page size is clamped to 1..200 (0 means the default, 20).
     /// </summary>
-    Task<IReadOnlyList<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, CancellationToken cancellationToken);
+    Task<PagedResult<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, ReviewFilter filter, CancellationToken cancellationToken);
 }

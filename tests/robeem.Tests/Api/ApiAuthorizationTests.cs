@@ -272,6 +272,25 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheReviewQueue_PassesTheFilterAndThePageOn_AndRefusesAnUnknownReason()
+    {
+        var manager = As(12, AttendanceRoles.Manager);
+
+        var ok = await Send(HttpMethod.Get, "api/attendance/reviews/pending?employeeId=5&from=2026-04-01&to=2026-04-30&reason=overtime&page=3&pageSize=50", manager);
+        var refused = await Send(HttpMethod.Get, "api/attendance/reviews/pending?reason=Nope", manager);
+        await Send(HttpMethod.Get, "api/attendance/reviews/pending?page=-2", manager);
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal(new ReviewFilter(5, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), ReviewReason.Overtime, 3, 50), _reviews.Filters[0]);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("reason", await refused.Content.ReadAsStringAsync());
+
+        // The refused call never reached the service; a page before the first is page 1.
+        Assert.Equal(2, _reviews.Filters.Count);
+        Assert.Equal(1, _reviews.Filters[1].Page);
+    }
+
+    [Fact]
     public async Task AcceptingAnException_IsForApproversOnly_WithAnEmployeeIdentity()
     {
         var body = new { reason = "Covered the phones" };
@@ -489,16 +508,19 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 
         public List<(int ApproverId, bool IsHr)> Lists { get; } = [];
 
+        public List<ReviewFilter> Filters { get; } = [];
+
         public Task<ReviewResult> DecideAsync(int recordId, int decidedByEmployeeId, bool asHr, bool approved, string? reason, CancellationToken cancellationToken)
         {
             Decisions.Add((recordId, decidedByEmployeeId, approved, asHr, reason));
             return Task.FromResult(ReviewResult.Success(new AttendanceReviewDecision { Id = 1, Outcome = approved ? AttendanceReviewOutcome.Approved : AttendanceReviewOutcome.Rejected }, AttendanceRecordStatus.Approved));
         }
 
-        public Task<IReadOnlyList<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, CancellationToken cancellationToken)
+        public Task<PagedResult<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, ReviewFilter filter, CancellationToken cancellationToken)
         {
             Lists.Add((approverEmployeeId, isHr));
-            return Task.FromResult<IReadOnlyList<ReviewListItem>>([]);
+            Filters.Add(filter);
+            return Task.FromResult(new PagedResult<ReviewListItem> { Page = filter.Page, PageSize = filter.PageSize });
         }
     }
 

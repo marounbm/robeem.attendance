@@ -68,14 +68,15 @@ public sealed class ApprovalsWebTests
     [Fact]
     public async Task TheReviewsClient_ListsAndDecides()
     {
-        var list = new StubHttpHandler(HttpStatusCode.OK, """[{"recordId":3,"employeeName":"Ada Lovelace","reason":"Overtime","overtimeMinutes":83}]""");
+        var list = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"recordId":3,"employeeName":"Ada Lovelace","reason":"Overtime","overtimeMinutes":83}],"total":45,"page":2,"pageSize":20}""");
         var decide = new StubHttpHandler(HttpStatusCode.OK, """{"decisionId":1,"recordId":3,"outcome":"Approved","recordStatus":"Approved"}""");
 
-        var items = await new ReviewsApiClient(list.CreateClient()).ListPendingAsync(CancellationToken.None);
+        var page = await new ReviewsApiClient(list.CreateClient()).ListPendingAsync(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Overtime", 2, 20, CancellationToken.None);
         var result = await new ReviewsApiClient(decide.CreateClient()).DecideAsync(3, new DecideReviewRequest { Approved = true }, CancellationToken.None);
 
-        Assert.Equal("/api/attendance/reviews/pending", list.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Equal(83, Assert.Single(items).OvertimeMinutes);
+        Assert.Equal("/api/attendance/reviews/pending?page=2&pageSize=20&employeeId=7&from=2026-04-01&to=2026-04-30&reason=Overtime", list.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal((45, 2, 3), (page.Total, page.Page, page.PageCount));
+        Assert.Equal(83, Assert.Single(page.Items).OvertimeMinutes);
         Assert.Equal("/api/attendance/reviews/3/decision", decide.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal("Approved", result.Value!.Outcome);
     }
@@ -142,10 +143,51 @@ public sealed class ApprovalsWebTests
         var reviews = new FakeReviews();
         var controller = WithTempData(new ReviewsController(reviews, new FakeActor(roles)));
 
-        await controller.Decide(3, approved: false, "Not authorised.", CancellationToken.None);
+        await controller.Decide(3, approved: false, "Not authorised.", null, null, null, null, 1, 20, CancellationToken.None);
 
         Assert.Equal((3, false, "Not authorised.", asHr), Assert.Single(reviews.Decisions));
         Assert.Contains("Rejected", (string)controller.TempData["StatusMessage"]!);
+    }
+
+    [Fact]
+    public async Task TheReviewQueue_IsPagedOnTheServer_DropsUnknownNamesAndPageSizes_AndKeepsEveryFilterOnEveryLink()
+    {
+        var reviews = new FakeReviews { Total = 45 };
+        var controller = WithTempData(new ReviewsController(reviews, new FakeActor(["Manager"])));
+
+        var shown = Assert.IsType<ViewResult>(await controller.Index(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Overtime", 2, 10, CancellationToken.None));
+        var model = Assert.IsType<ReviewsQueueViewModel>(shown.Model);
+        await controller.Index(null, null, null, "Bogus", -1, 7, CancellationToken.None);
+
+        // Asked for page 2 of 10 with the reason, then (an unknown reason and size, a page before the first) page 1 of the default 20.
+        Assert.Equal([(7, "Overtime", 2, 10), ((int?)null, (string?)null, 1, 20)], reviews.Asks);
+        Assert.Equal((7, "Overtime", 2, 10, 45), (model.EmployeeId, model.Why, model.Page, model.PageSize, model.Total));
+        Assert.Equal("Ada Lovelace (E-1)", model.Employees.Single().Name);
+        Assert.Equal(
+            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["to"] = "2026-04-30", ["why"] = "Overtime", ["page"] = "3" },
+            model.Pager.For(3));
+        Assert.Equal(5, model.Pager.PageCount);
+    }
+
+    [Fact]
+    public async Task ADecision_ReturnsToTheQueueAsItWas_WithItsFiltersAndPage()
+    {
+        var controller = WithTempData(new ReviewsController(new FakeReviews(), new FakeActor(["Manager"])));
+
+        var back = Assert.IsType<RedirectToActionResult>(await controller.Decide(3, true, null, 7, new DateTime(2026, 4, 1), null, "Overtime", 2, 50, CancellationToken.None));
+
+        Assert.Equal("Index", back.ActionName);
+        Assert.Equal((7, "2026-04-01", "Overtime", 2, 50), (back.RouteValues!["employeeId"], back.RouteValues["from"], back.RouteValues["why"], back.RouteValues["page"], back.RouteValues["pageSize"]));
+    }
+
+    [Fact]
+    public void TheQueueReturnValues_CarryTheFiltersAndThePage_ForTheDecisionForm()
+    {
+        var model = new ReviewsQueueViewModel { Page = 3, PageSize = 10, EmployeeId = 7, Why = "IncompleteDay", From = new DateTime(2026, 4, 1) };
+
+        Assert.Equal(
+            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["why"] = "IncompleteDay", ["page"] = "3" },
+            model.ReturnValues);
     }
 
     [Fact]
@@ -441,8 +483,18 @@ public sealed class ApprovalsWebTests
     {
         public List<(int RecordId, bool Approved, string? Reason, bool AsHr)> Decisions { get; } = [];
 
-        public Task<IReadOnlyList<ReviewListItem>> ListPendingAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<ReviewListItem>>([]);
+        public List<(int? EmployeeId, string? Reason, int Page, int PageSize)> Asks { get; } = [];
+
+        public int Total { get; set; }
+
+        public Task<PagedResult<ReviewListItem>> ListPendingAsync(int? employeeId, DateTime? from, DateTime? to, string? reason, int page, int pageSize, CancellationToken cancellationToken)
+        {
+            Asks.Add((employeeId, reason, page, pageSize));
+            return Task.FromResult(new PagedResult<ReviewListItem> { Total = Total, Page = page, PageSize = pageSize });
+        }
+
+        public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<EmployeeOption>>([new EmployeeOption { Id = 7, Name = "Ada Lovelace (E-1)" }]);
 
         public Task<ApiCommandResult<ReviewDecisionResponse>> DecideAsync(int recordId, DecideReviewRequest request, CancellationToken cancellationToken)
         {

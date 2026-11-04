@@ -4,6 +4,7 @@ using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Application.Security;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Api.Controllers;
 
@@ -26,10 +27,16 @@ public sealed class AttendanceReviewsController : ControllerBase
         _user = user;
     }
 
-    /// <summary>The records waiting for the user's review: their direct reports', or every employee's for HR.</summary>
+    /// <summary>The records waiting for the user's review: their direct reports', or every employee's for HR. Oldest day first, a page at a time.</summary>
+    /// <param name="employeeId">Only this employee (within what the user may review).</param>
+    /// <param name="from">First attendance date, inclusive.</param>
+    /// <param name="to">Last attendance date, inclusive.</param>
+    /// <param name="reason">Only records waiting for this reason: Overtime, UnscheduledWork, IncompleteDay or Review.</param>
+    /// <param name="page">The 1-based page (default 1). A page past the end answers the last page.</param>
+    /// <param name="pageSize">Records per page (default 20, at most 200).</param>
     [HttpGet("pending")]
     [Authorize(Roles = AttendanceRoles.Approvers)]
-    public async Task<ActionResult<IReadOnlyList<ReviewListItem>>> ListPending(CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<ReviewListItem>>> ListPending(int? employeeId, DateTime? from, DateTime? to, string? reason, int page, int pageSize, CancellationToken cancellationToken)
     {
         // A manager's queue is their direct reports', so it needs to know who they are. HR's is everyone's,
         // and HR can look at it with no employee of their own (id 0 matches no employee).
@@ -39,7 +46,19 @@ public sealed class AttendanceReviewsController : ControllerBase
             return NoEmployeeIdentity();
         }
 
-        return Ok(await _reviews.ListPendingAsync(_user.EmployeeId ?? 0, isHr, cancellationToken));
+        ReviewReason? parsed = null;
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            if (!Enum.TryParse<ReviewReason>(reason.Trim(), ignoreCase: true, out var value) || !Enum.IsDefined(value))
+            {
+                ModelState.AddModelError(nameof(reason), $"The reason must be one of: {string.Join(", ", Enum.GetNames<ReviewReason>())}.");
+                return ValidationProblem(ModelState);
+            }
+
+            parsed = value;
+        }
+
+        return Ok(await _reviews.ListPendingAsync(_user.EmployeeId ?? 0, isHr, new ReviewFilter(employeeId, from, to, parsed, page <= 0 ? 1 : page, pageSize), cancellationToken));
     }
 
     /// <summary>A manager or HR user approves or rejects a record waiting for review.</summary>

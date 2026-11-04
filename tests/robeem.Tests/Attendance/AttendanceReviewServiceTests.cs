@@ -1,5 +1,6 @@
 using robeem.Application.Attendance;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
 
@@ -225,6 +226,75 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         Assert.Equal(["Overtime", "UnscheduledWork"], reasons);
     }
 
+    [Fact]
+    public async Task TheQueue_IsPagedInTheDatabase_PagesTogetherAreTheWholeQueueOnceInOrder()
+    {
+        AddQueue();
+
+        var whole = await PageIdsAsync(1, 20);
+        var first = await PageIdsAsync(1, 4);
+        var second = await PageIdsAsync(2, 4);
+
+        Assert.Equal(6, whole.Count);
+        Assert.Equal(whole, first.Concat(second));
+        Assert.Equal((4, 2), (first.Count, second.Count));
+
+        // Oldest day first, the id breaking ties.
+        var items = (await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, 1, 20))).Items;
+        Assert.Equal(items.OrderBy(i => i.AttendanceDate).ThenBy(i => i.RecordId).Select(i => i.RecordId), items.Select(i => i.RecordId));
+    }
+
+    [Fact]
+    public async Task APageBeyondTheEnd_AnswersTheLastPage_AndThePageSizeIsClamped()
+    {
+        AddQueue();
+
+        var beyond = await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, 99, 4));
+        var before = await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, -3, 4));
+
+        Assert.Equal((2, 6, 2), (beyond.Page, beyond.Total, beyond.Items.Count));
+        Assert.Equal(1, before.Page);
+        Assert.Equal(20, (await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, 1, 0))).PageSize);
+        Assert.Equal(20, (await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, 1, -5))).PageSize);
+        Assert.Equal(200, (await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, 1, 100000))).PageSize);
+    }
+
+    [Fact]
+    public async Task TheQueue_CanBeNarrowedByEmployee_Dates_AndReason_AndTheTotalFollowsTheFilter()
+    {
+        var other = AddQueue();
+
+        var byEmployee = await ListPageAsync(_managerId, false, new ReviewFilter(other, null, null, null, 1, 20));
+        var byDates = await ListPageAsync(_managerId, false, new ReviewFilter(null, Monday.AddDays(1), Monday.AddDays(3), null, 1, 20));
+        var both = await ListPageAsync(_managerId, false, new ReviewFilter(EmployeeId, Monday.AddDays(2), null, null, 1, 20));
+        var narrowedPage = await ListPageAsync(_managerId, false, new ReviewFilter(EmployeeId, null, null, null, 1, 1));
+
+        Assert.Equal(2, byEmployee.Total);
+        Assert.Equal([Monday, Monday.AddDays(4)], byEmployee.Items.Select(i => i.AttendanceDate));
+        Assert.All(byEmployee.Items, i => Assert.Equal(other, i.EmployeeId));
+        Assert.Equal(3, byDates.Total);
+        Assert.Equal(2, both.Total);
+        Assert.Equal((4, 1), (narrowedPage.Total, narrowedPage.Items.Count));
+
+        // An employee who is not the manager's report has nothing in the manager's queue.
+        Assert.Equal(0, (await ListPageAsync(_otherManagerId, false, new ReviewFilter(other, null, null, null, 1, 20))).Total);
+    }
+
+    [Theory]
+    [InlineData(ReviewReason.Overtime, 2)]
+    [InlineData(ReviewReason.UnscheduledWork, 2)]
+    [InlineData(ReviewReason.IncompleteDay, 1)]
+    [InlineData(ReviewReason.Review, 1)]
+    public async Task TheQueue_CanBeNarrowedToOneReason_AndEveryRecordShownHasThatReason(ReviewReason reason, int expected)
+    {
+        AddQueue();
+
+        var page = await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, reason, 1, 20));
+
+        Assert.Equal(expected, page.Total);
+        Assert.All(page.Items, i => Assert.Equal(reason.ToString(), i.Reason));
+    }
+
     private async Task WorkOvertimeAsync()
     {
         AssignSchedule(StandardDay);
@@ -269,11 +339,52 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         return await CreateService(db).DecideAsync(recordId, decidedBy, asHr, approved, reason, CancellationToken.None);
     }
 
-    private async Task<IReadOnlyList<ReviewListItem>> ListAsync(int approverId, bool isHr)
+    private async Task<IReadOnlyList<ReviewListItem>> ListAsync(int approverId, bool isHr) =>
+        (await ListPageAsync(approverId, isHr, new ReviewFilter(null, null, null, null, 1, 0))).Items;
+
+    private async Task<PagedResult<ReviewListItem>> ListPageAsync(int approverId, bool isHr, ReviewFilter filter)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await CreateService(db).ListPendingAsync(approverId, isHr, CancellationToken.None);
+        return await CreateService(db).ListPendingAsync(approverId, isHr, filter, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Six records waiting for review, of two employees who report to the manager: overtime, a day with no shift, a day with the check-out
+    /// missing and a plain one for the first; overtime and a day with no shift for the second. Returns the second employee's id.
+    /// </summary>
+    private int AddQueue()
+    {
+        AssignSchedule(StandardDay);
+        var other = AddProfile("R-2", "Hedy", "Lamarr");
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.Profiles.Single(p => p.Id == other).ManagerId = _managerId;
+        var shiftId = db.TimeScheduleShifts.First().Id;
+        var day = Monday.At(0, 0);
+
+        AttendanceRecord Pending(int employeeId, int offset, int overtime, int? shift, bool checkIn, bool checkOut) => new()
+        {
+            EmployeeId = employeeId,
+            AttendanceDate = day.AddDays(offset),
+            TimeScheduleShiftId = shift,
+            ActualCheckIn = checkIn ? day.AddDays(offset).AddHours(8) : null,
+            ActualCheckOut = checkOut ? day.AddDays(offset).AddHours(17) : null,
+            OvertimeMinutes = overtime,
+            Status = AttendanceRecordStatus.PendingReview,
+        };
+
+        db.AttendanceRecords.AddRange(
+            Pending(EmployeeId, 0, 30, shiftId, true, true),
+            Pending(EmployeeId, 1, 0, null, true, true),
+            Pending(EmployeeId, 2, 0, shiftId, true, false),
+            Pending(EmployeeId, 3, 0, shiftId, true, true),
+            Pending(other, 0, 45, shiftId, true, true),
+            Pending(other, 4, 0, null, true, true));
+        db.SaveChanges();
+        return other;
+    }
+
+    private async Task<List<int>> PageIdsAsync(int page, int pageSize) =>
+        (await ListPageAsync(_managerId, false, new ReviewFilter(null, null, null, null, page, pageSize))).Items.Select(i => i.RecordId).ToList();
 
     private async Task<IReadOnlyList<PayrollAttendanceDay>> ExtractAsync()
     {

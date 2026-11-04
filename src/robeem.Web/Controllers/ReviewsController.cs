@@ -24,13 +24,34 @@ public sealed class ReviewsController : Controller
         _actor = actor;
     }
 
+    /// <summary>The queue, a page at a time (the paging and the filters are done by robeem.Api). <paramref name="why"/> is the reason filter.</summary>
     [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken cancellationToken)
-        => View(new ReviewsQueueViewModel { Items = await _reviews.ListPendingAsync(cancellationToken) });
+    public async Task<IActionResult> Index(int? employeeId, DateTime? from, DateTime? to, string? why, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var chosenWhy = ReviewsQueueViewModel.Reasons.Contains(why ?? string.Empty) ? why : null;
+        var size = ReviewsQueueViewModel.PageSizes.Contains(pageSize) ? pageSize : ReviewsQueueViewModel.DefaultPageSize;
+        var result = await _reviews.ListPendingAsync(employeeId, from, to, chosenWhy, Math.Max(page, 1), size, cancellationToken);
+        return View(new ReviewsQueueViewModel
+        {
+            Items = result.Items,
+            Page = result.Page,
+            PageSize = size,
+            Total = result.Total,
+            Employees = await _reviews.ListEmployeeOptionsAsync(cancellationToken),
+            EmployeeId = employeeId,
+            From = from,
+            To = to,
+            Why = chosenWhy,
+        });
+    }
 
+    /// <summary>
+    /// Approves or rejects one record. <paramref name="reason"/> is the reason for the decision; the rest of the parameters are the
+    /// queue as the reviewer had it (filters and page), so it is shown again the same way.
+    /// </summary>
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> Decide(int recordId, bool approved, string? reason, CancellationToken cancellationToken)
+    public async Task<IActionResult> Decide(int recordId, bool approved, string? reason, int? employeeId, DateTime? from, DateTime? to, string? why, int page, int pageSize, CancellationToken cancellationToken)
     {
         // A user who is both manager and HR reviews as HR, who may review anyone.
         var result = await _reviews.DecideAsync(
@@ -47,6 +68,7 @@ public sealed class ReviewsController : Controller
             TempData["ErrorMessage"] = result.MessageText;
         }
 
-        return RedirectToAction(nameof(Index));
+        // Back to the queue as it was; a page that is now past the end is answered with the last one.
+        return RedirectToAction(nameof(Index), new { employeeId, from = from?.ToString("yyyy-MM-dd"), to = to?.ToString("yyyy-MM-dd"), why, page, pageSize });
     }
 }
