@@ -330,6 +330,8 @@ public sealed class AttendanceJobsTests
 
     private sealed class FakeNormalization(Log log, string tenant, int[] pending, bool throwOnNormalize) : INormalizationService
     {
+        public Task<int> RequeueResolvablePunchesAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+
         public Task<IReadOnlyList<int>> ListBatchesWithPendingTransactionsAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<int>>(pending);
 

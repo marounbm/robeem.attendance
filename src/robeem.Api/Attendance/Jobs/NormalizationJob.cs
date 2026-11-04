@@ -63,6 +63,9 @@ public sealed class NormalizationJob : IScheduledJob
         await using var scope = _tenantScopes.CreateScope(tenantId);
         var normalization = scope.ServiceProvider.GetRequiredService<INormalizationService>();
 
+        // First, punches that were flagged for an employee or device nobody knew, which is known now (a mapping was added, a device registered).
+        var requeued = await normalization.RequeueResolvablePunchesAsync(cancellationToken);
+
         int normalized = 0, failed = 0;
         foreach (var batchId in await normalization.ListBatchesWithPendingTransactionsAsync(cancellationToken))
         {
@@ -86,9 +89,9 @@ public sealed class NormalizationJob : IScheduledJob
             _logger.LogInformation("Processed {Days} attendance day(s) of tenant {TenantId}.", days, tenantId);
         }
 
-        var work = normalized + failed + days;
+        var work = requeued + normalized + failed + days;
         return work == 0
             ? JobRunResult.Idle
-            : new JobRunResult(work, $"{normalized} row(s) normalized, {failed} unusable; {days} day(s) calculated.");
+            : new JobRunResult(work, $"{normalized} row(s) normalized, {failed} unusable; {days} day(s) calculated" + (requeued > 0 ? $"; {requeued} flagged punch(es) taken up again." : "."));
     }
 }

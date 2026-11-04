@@ -34,6 +34,45 @@ public sealed class NormalizationService : INormalizationService
         _logger = logger;
     }
 
+    public async Task<int> RequeueResolvablePunchesAsync(CancellationToken cancellationToken)
+    {
+        // An unrecognized employee: the vendor's id is mapped now, on the device the punch was normalized with.
+        var employeeNowKnown = await _db.NormalizedAttendanceTransactions
+            .Include(n => n.RawTransaction)
+            .Where(n => n.ExceptionStatus == TransactionExceptionStatus.FlaggedUnrecognizedEmployee
+                && n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded
+                && n.DeviceId != null
+                && _db.ExternalEmployeeIdMappings.Any(m => m.DeviceId == n.DeviceId && m.ExternalEmployeeId == n.RawTransaction!.ExternalEmployeeId))
+            .ToListAsync(cancellationToken);
+
+        // An unrecognized device: registered since, or the integration's device for uploaded files is in force.
+        var deviceNowKnown = await _db.NormalizedAttendanceTransactions
+            .Include(n => n.RawTransaction)
+            .Where(n => n.ExceptionStatus == TransactionExceptionStatus.FlaggedUnrecognizedDevice
+                && n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded
+                && (_db.AttendanceDevices.Any(d => d.IntegrationId == n.IntegrationId && d.ExternalDeviceId == n.RawTransaction!.DeviceExternalId)
+                    || _db.AttendanceIntegrations.Any(i => i.Id == n.IntegrationId
+                        && i.DefaultDeviceId != null
+                        && !i.Connections.Any(c => c.IsDefault && c.Transport != AttendanceTransport.FileUpload))))
+            .ToListAsync(cancellationToken);
+
+        var resolvable = employeeNowKnown.Concat(deviceNowKnown).ToList();
+        foreach (var punch in resolvable)
+        {
+            punch.ProcessingStatus = NormalizedTransactionProcessingStatus.Excluded;
+            punch.RawTransaction!.ProcessingStatus = RawTransactionProcessingStatus.Pending;
+            punch.RawTransaction.ProcessingError = null;
+        }
+
+        if (resolvable.Count > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("{Count} flagged punch(es) can be resolved now and were queued to be normalized again.", resolvable.Count);
+        }
+
+        return resolvable.Count;
+    }
+
     public async Task<IReadOnlyList<int>> ListBatchesWithPendingTransactionsAsync(CancellationToken cancellationToken) =>
         await _db.RawAttendanceTransactions
             .Where(r => r.ProcessingStatus == RawTransactionProcessingStatus.Pending)

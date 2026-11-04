@@ -92,6 +92,69 @@ public sealed class NormalizationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task APunchFlaggedForAnUnmappedEmployee_IsTakenUpAgainOnceTheEmployeeIsMapped_AndTheOldPunchStaysAsHistory()
+    {
+        AddRaw("EXT-404", "DEV-1", "2026-10-04 09:00:00", "IN");
+        await NormalizeAsync();
+
+        // Nothing resolves yet, so nothing is queued.
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(0, await CreateService(db).RequeueResolvablePunchesAsync(CancellationToken.None));
+        }
+
+        // The mapping is fixed on the device.
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.ExternalEmployeeIdMappings.Add(new ExternalEmployeeIdMapping { DeviceId = _deviceId, ExternalEmployeeId = "EXT-404", EmployeeId = _employeeId });
+            db.SaveChanges();
+        }
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(1, await CreateService(db).RequeueResolvablePunchesAsync(CancellationToken.None));
+        }
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 0), result);
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var rows = check.NormalizedAttendanceTransactions.OrderBy(n => n.Id).ToList();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal((NormalizedTransactionProcessingStatus.Excluded, (int?)null, TransactionExceptionStatus.FlaggedUnrecognizedEmployee), (rows[0].ProcessingStatus, rows[0].EmployeeId, rows[0].ExceptionStatus));
+        Assert.Equal((NormalizedTransactionProcessingStatus.Pending, (int?)_employeeId, TransactionExceptionStatus.None), (rows[1].ProcessingStatus, rows[1].EmployeeId, rows[1].ExceptionStatus));
+        Assert.Equal(RawTransactionProcessingStatus.Normalized, check.RawAttendanceTransactions.Single().ProcessingStatus);
+
+        // And it is done once: the old row is history now, so a later run queues nothing.
+        Assert.Equal(0, await CreateService(check).RequeueResolvablePunchesAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task APunchFlaggedForAnUnknownDevice_IsTakenUpAgainOnceTheDeviceIsRegistered()
+    {
+        AddRaw("EXT-1", "DEV-9", "2026-10-04T08:58:00+03:00", "OUT");
+        await NormalizeAsync();
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(0, await CreateService(db).RequeueResolvablePunchesAsync(CancellationToken.None));
+            var late = new AttendanceDevice { IntegrationId = db.AttendanceIntegrations.Single().Id, ExternalDeviceId = "DEV-9", Name = "Late door", TimeZoneId = "Asia/Beirut" };
+            db.AddRange(late, new ExternalEmployeeIdMapping { Device = late, ExternalEmployeeId = "EXT-1", EmployeeId = _employeeId });
+            db.SaveChanges();
+        }
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Equal(1, await CreateService(db).RequeueResolvablePunchesAsync(CancellationToken.None));
+        }
+
+        await NormalizeAsync();
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        var live = check.NormalizedAttendanceTransactions.Single(n => n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded);
+        Assert.Equal((_employeeId, TransactionExceptionStatus.None), (live.EmployeeId, live.ExceptionStatus));
+        Assert.Equal("Late door", check.AttendanceDevices.Single(d => d.Id == live.DeviceId).Name);
+    }
+
+    [Fact]
     public async Task UnresolvableDevice_IsStillNormalized_AndFlagged_InUtc()
     {
         AddRaw("EXT-1", "DEV-9", "2026-10-04T08:58:00+03:00", "OUT");
