@@ -3,10 +3,13 @@ using robeem.Contracts.Attendance;
 
 namespace robeem.Web.Models;
 
-/// <summary>One page of the records waiting for review, and the filter that chose them.</summary>
-public sealed class ReviewsQueueViewModel
+/// <summary>One page of what waits for the approver's decision (corrections and reviews together), and the filter that chose it.</summary>
+public sealed class ApprovalsQueueViewModel
 {
     public const int DefaultPageSize = 20;
+
+    /// <summary>Gets the kinds of approval.</summary>
+    public static IReadOnlyList<string> Types { get; } = ["Correction", "Review"];
 
     /// <summary>Gets the reasons a record can wait for review, the first that applies.</summary>
     public static IReadOnlyList<string> Reasons { get; } = ["Overtime", "UnscheduledWork", "IncompleteDay", "Review"];
@@ -14,18 +17,18 @@ public sealed class ReviewsQueueViewModel
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];
 
-    /// <summary>Gets the records on the page.</summary>
-    public IReadOnlyList<ReviewListItem> Items { get; init; } = Array.Empty<ReviewListItem>();
+    /// <summary>Gets the approvals on the page.</summary>
+    public IReadOnlyList<ApprovalListItem> Items { get; init; } = Array.Empty<ApprovalListItem>();
 
     /// <summary>Gets the 1-based page shown.</summary>
     public int Page { get; init; } = 1;
 
     public int PageSize { get; init; } = DefaultPageSize;
 
-    /// <summary>Gets the number of records that match the filters, on every page together.</summary>
+    /// <summary>Gets the number of approvals that match the filters, on every page together.</summary>
     public int Total { get; init; }
 
-    /// <summary>Gets the one employee shown, or null for everyone the user may review.</summary>
+    /// <summary>Gets the one employee shown, or null for everyone the user may decide for.</summary>
     public int? EmployeeId { get; init; }
 
     /// <summary>Gets the employees the user can narrow the queue to.</summary>
@@ -35,8 +38,14 @@ public sealed class ReviewsQueueViewModel
 
     public DateTime? To { get; init; }
 
-    /// <summary>Gets the reason shown, or null for any.</summary>
+    /// <summary>Gets the kind shown, or null for both.</summary>
+    public string? Type { get; init; }
+
+    /// <summary>Gets the review reason shown, or null for any.</summary>
     public string? Why { get; init; }
+
+    /// <summary>Gets a value indicating whether any filter narrows the queue.</summary>
+    public bool IsFiltered => EmployeeId is not null || From is not null || To is not null || Type is not null || Why is not null;
 
     /// <summary>Gets what the pager needs: the page, and the filters that every page link keeps.</summary>
     public PagerModel Pager => new()
@@ -74,6 +83,11 @@ public sealed class ReviewsQueueViewModel
         if (To is { } to)
         {
             values["to"] = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (!string.IsNullOrEmpty(Type))
+        {
+            values["type"] = Type;
         }
 
         if (!string.IsNullOrEmpty(Why))

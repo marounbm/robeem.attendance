@@ -50,6 +50,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
         services.AddScoped<IPendingDayProcessor, PendingDayProcessor>();
         services.AddScoped<IJobRunLog, JobRunLog>();
+        services.AddScoped<IAttendanceApprovalService, AttendanceApprovalService>();
+        services.AddScoped<IAttendanceApprovalReconciler, AttendanceApprovalReconciler>();
         services.AddScoped<IAttendanceCorrectionService, AttendanceCorrectionService>();
         services.AddScoped<IAttendanceReviewService, AttendanceReviewService>();
         services.AddScoped<IAttendanceExceptionService, AttendanceExceptionService>();

@@ -239,6 +239,13 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         var record = db.AttendanceRecords.Single();
         db.AttendanceCorrections.Add(new AttendanceCorrection
         {
+            AttendanceApproval = new AttendanceApproval
+            {
+                Type = AttendanceApprovalType.Correction,
+                EmployeeId = EmployeeId,
+                AttendanceDate = Monday,
+                RequestedByEmployeeId = EmployeeId,
+            },
             AttendanceExceptionId = exception.Id,
             EmployeeId = EmployeeId,
             AttendanceDate = Monday,
@@ -248,14 +255,17 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
             Justification = "Forgot to punch.",
             RequestedByEmployeeId = EmployeeId,
         });
-        db.AttendanceReviewDecisions.Add(new AttendanceReviewDecision
+        db.AttendanceApprovals.Add(new AttendanceApproval
         {
+            Type = AttendanceApprovalType.Review,
             AttendanceRecordId = record.Id,
             EmployeeId = EmployeeId,
             AttendanceDate = Monday,
-            Outcome = AttendanceReviewOutcome.Rejected,
-            DecidedById = managerId,
-            DecidedByRole = AttendanceReviewerRole.Manager,
+            Status = AttendanceApprovalStatus.Rejected,
+            Workflow = ApprovalWorkflow.ManagerOrHr,
+            ManagerDecision = AttendanceCorrectionDecision.Rejected,
+            ManagerDecidedById = managerId,
+            ManagerDecidedAt = Monday,
             Reason = "Not enough evidence.",
         });
         db.SaveChanges();

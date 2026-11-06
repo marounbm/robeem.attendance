@@ -324,13 +324,13 @@ public sealed class ApiAuthenticationTests
     private sealed class OkCorrectionService : IAttendanceCorrectionService
     {
         public Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken) =>
-            Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = 1 }, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
+            Task.FromResult(CorrectionResult.Success(1, robeem.DataModel.AttendanceApprovalStatus.Pending, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
 
         public Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken) =>
-            Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = 1 }, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
+            Task.FromResult(CorrectionResult.Success(1, robeem.DataModel.AttendanceApprovalStatus.Pending, robeem.DataModel.AttendanceExceptionStatus.PendingCorrection));
 
         public Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken) =>
-            Task.FromResult(CorrectionResult.Success(new robeem.DataModel.AttendanceCorrection { Id = correctionId, Status = robeem.DataModel.AttendanceCorrectionStatus.Applied }, robeem.DataModel.AttendanceExceptionStatus.Closed));
+            Task.FromResult(CorrectionResult.Success(correctionId, robeem.DataModel.AttendanceApprovalStatus.Applied, robeem.DataModel.AttendanceExceptionStatus.Closed));
 
         public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);

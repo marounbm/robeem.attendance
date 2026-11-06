@@ -26,6 +26,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     private readonly FakePayroll _payroll = new();
     private readonly FakeExceptions _exceptions = new();
     private readonly FakeReviews _reviews = new();
+    private readonly FakeApprovals _approvals = new();
     private readonly TestApi _api;
 
     public ApiAuthorizationTests()
@@ -35,6 +36,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             services.AddSingleton<IAttendanceExceptionQuery>(_exceptions);
             services.AddSingleton<IAttendanceExceptionService>(_exceptions);
             services.AddSingleton<IAttendanceReviewService>(_reviews);
+            services.AddSingleton<IAttendanceApprovalService>(_approvals);
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
             services.AddSingleton<IAttendanceDayCorrectionService>(_days);
             services.AddSingleton<IPayrollAttendanceExtract>(_payroll);
@@ -340,6 +342,80 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Approvals_AreForApproversOnly_WithAnEmployeeIdentity()
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(7, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(7, AttendanceRoles.PayrollAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/approvals/5/decision", As(7, AttendanceRoles.Employee), new { approved = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(null, AttendanceRoles.Manager))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/approvals/5/decision", As(null, AttendanceRoles.Manager), new { approved = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get, "api/attendance/approvals/pending", null)).StatusCode);
+        Assert.Empty(_approvals.Decisions);
+        Assert.Empty(_approvals.Lists);
+    }
+
+    [Fact]
+    public async Task TheApprovalQueue_IsAskedForTheAuthenticatedUsersRoles_AndHrNeedsNoEmployee()
+    {
+        await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(12, AttendanceRoles.Manager));
+        await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(13, AttendanceRoles.HRAdministrator));
+        await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(null, AttendanceRoles.HRAdministrator));
+        await Send(HttpMethod.Get, "api/attendance/approvals/pending", As(14, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal([(12, true, false), (13, false, true), (0, false, true), (14, true, true)], _approvals.Lists);
+    }
+
+    [Fact]
+    public async Task TheApprovalQueue_PassesTheFilterAndThePageOn_AndRefusesAnUnknownTypeOrReason()
+    {
+        var manager = As(12, AttendanceRoles.Manager);
+
+        var ok = await Send(HttpMethod.Get, "api/attendance/approvals/pending?employeeId=5&from=2026-04-01&to=2026-04-30&type=review&reason=overtime&page=3&pageSize=50", manager);
+        var badType = await Send(HttpMethod.Get, "api/attendance/approvals/pending?type=Nope", manager);
+        var badReason = await Send(HttpMethod.Get, "api/attendance/approvals/pending?reason=Nope", manager);
+        await Send(HttpMethod.Get, "api/attendance/approvals/pending?page=-2", manager);
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal(new ApprovalFilter(5, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), AttendanceApprovalType.Review, ReviewReason.Overtime, 3, 50), _approvals.Filters[0]);
+        Assert.Equal(HttpStatusCode.BadRequest, badType.StatusCode);
+        Assert.Contains("type", await badType.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, badReason.StatusCode);
+        Assert.Contains("reason", await badReason.Content.ReadAsStringAsync());
+
+        // The refused calls never reached the service; a page before the first is page 1.
+        Assert.Equal(2, _approvals.Filters.Count);
+        Assert.Equal(1, _approvals.Filters[1].Page);
+    }
+
+    [Fact]
+    public async Task AnApprovalDecision_IsMadeAsTheUser_InTheirRole_WithTheReason_AndTheKindIsAnswered()
+    {
+        var first = await Send(HttpMethod.Post, "api/attendance/approvals/5/decision", As(12, AttendanceRoles.Manager), new { approved = false, reason = "Not authorised.", isHrDecision = true });
+        await Send(HttpMethod.Post, "api/attendance/approvals/6/decision", As(13, AttendanceRoles.HRAdministrator), new { approved = true });
+        await Send(HttpMethod.Post, "api/attendance/approvals/7/decision", As(14, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator), new { approved = true, isHrDecision = true });
+        await Send(HttpMethod.Post, "api/attendance/approvals/8/decision", As(14, AttendanceRoles.Manager, AttendanceRoles.HRAdministrator), new { approved = true });
+
+        Assert.Equal(
+            [(5, 12, false, false, "Not authorised."), (6, 13, true, true, null), (7, 14, true, true, null), (8, 14, true, false, null)],
+            _approvals.Decisions);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Contains("\"type\":\"Review\"", await first.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AnApprovalDecision_ThatIsRefused_ShowsItsMessages_AndAnUnknownOneIs404()
+    {
+        _approvals.Next = ApprovalResult.Invalid(ApprovalErrorKeys.Approval, "The correction is Applied, not waiting for a decision.");
+        var refused = await Send(HttpMethod.Post, "api/attendance/approvals/5/decision", As(12, AttendanceRoles.Manager), new { approved = true });
+        _approvals.Next = ApprovalResult.Missing();
+        var missing = await Send(HttpMethod.Post, "api/attendance/approvals/9999/decision", As(12, AttendanceRoles.Manager), new { approved = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("not waiting for a decision", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task AnEmployee_ProposesAsThemselves_NotAsTheBodySays()
     {
         var response = await Send(HttpMethod.Post, "api/attendance/corrections", As(7, AttendanceRoles.Employee), new { exceptionId = 3, proposedValue = "2026-10-05T12:00:00", justification = "Reader missed it", requestedByEmployeeId = 999 });
@@ -461,19 +537,19 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         public Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
         {
             TypeChanges.Add((exceptionId, newEventType, requestedByEmployeeId));
-            return Task.FromResult(CorrectionResult.Success(new AttendanceCorrection { Id = 2 }, AttendanceExceptionStatus.PendingCorrection));
+            return Task.FromResult(CorrectionResult.Success(2, AttendanceApprovalStatus.Pending, AttendanceExceptionStatus.PendingCorrection));
         }
 
         public Task<CorrectionResult> ProposeCorrectionAsync(int exceptionId, DateTime proposedValue, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
         {
             Proposals.Add(requestedByEmployeeId);
-            return Task.FromResult(CorrectionResult.Success(new AttendanceCorrection { Id = 1 }, AttendanceExceptionStatus.PendingCorrection));
+            return Task.FromResult(CorrectionResult.Success(1, AttendanceApprovalStatus.Pending, AttendanceExceptionStatus.PendingCorrection));
         }
 
         public Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken)
         {
             Decisions.Add((correctionId, decidedByUserId, approved, isHrDecision));
-            return Task.FromResult(CorrectionResult.Success(new AttendanceCorrection { Id = correctionId, Status = AttendanceCorrectionStatus.Applied }, AttendanceExceptionStatus.Closed));
+            return Task.FromResult(CorrectionResult.Success(correctionId, AttendanceApprovalStatus.Applied, AttendanceExceptionStatus.Closed));
         }
 
         public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken)
@@ -513,7 +589,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         public Task<ReviewResult> DecideAsync(int recordId, int decidedByEmployeeId, bool asHr, bool approved, string? reason, CancellationToken cancellationToken)
         {
             Decisions.Add((recordId, decidedByEmployeeId, approved, asHr, reason));
-            return Task.FromResult(ReviewResult.Success(new AttendanceReviewDecision { Id = 1, Outcome = approved ? AttendanceReviewOutcome.Approved : AttendanceReviewOutcome.Rejected }, AttendanceRecordStatus.Approved));
+            return Task.FromResult(ReviewResult.Success(1, approved ? AttendanceReviewOutcome.Approved : AttendanceReviewOutcome.Rejected, AttendanceRecordStatus.Approved));
         }
 
         public Task<PagedResult<ReviewListItem>> ListPendingAsync(int approverEmployeeId, bool isHr, ReviewFilter filter, CancellationToken cancellationToken)
@@ -521,6 +597,33 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             Lists.Add((approverEmployeeId, isHr));
             Filters.Add(filter);
             return Task.FromResult(new PagedResult<ReviewListItem> { Page = filter.Page, PageSize = filter.PageSize });
+        }
+    }
+
+    private sealed class FakeApprovals : IAttendanceApprovalService
+    {
+        public List<(int ApprovalId, int DecidedBy, bool Approved, bool AsHr, string? Reason)> Decisions { get; } = [];
+
+        public List<(int ApproverId, bool IsManager, bool IsHr)> Lists { get; } = [];
+
+        public List<ApprovalFilter> Filters { get; } = [];
+
+        /// <summary>Gets or sets what the next decision answers; by default a review that was approved.</summary>
+        public ApprovalResult? Next { get; set; }
+
+        public Task<ApprovalResult> DecideAsync(int approvalId, int decidedByEmployeeId, bool asHr, bool approved, string? reason, CancellationToken cancellationToken)
+        {
+            Decisions.Add((approvalId, decidedByEmployeeId, approved, asHr, reason));
+            return Task.FromResult(Next ?? ApprovalResult.Review(
+                new AttendanceApproval { Id = approvalId, Type = AttendanceApprovalType.Review, Status = approved ? AttendanceApprovalStatus.Approved : AttendanceApprovalStatus.Rejected },
+                approved ? AttendanceRecordStatus.Approved : AttendanceRecordStatus.Rejected));
+        }
+
+        public Task<PagedResult<ApprovalListItem>> ListPendingAsync(int approverEmployeeId, bool isManager, bool isHr, ApprovalFilter filter, CancellationToken cancellationToken)
+        {
+            Lists.Add((approverEmployeeId, isManager, isHr));
+            Filters.Add(filter);
+            return Task.FromResult(new PagedResult<ApprovalListItem> { Page = filter.Page, PageSize = filter.PageSize });
         }
     }
 

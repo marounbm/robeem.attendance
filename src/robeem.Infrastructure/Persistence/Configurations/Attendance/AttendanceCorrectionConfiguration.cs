@@ -11,26 +11,22 @@ public sealed class AttendanceCorrectionConfiguration : IEntityTypeConfiguration
         builder.Property(c => c.Kind).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.OriginalEventType).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.CorrectedEventType).HasConversion<string>().HasMaxLength(32);
-        builder.Property(c => c.ApprovalWorkflow).HasConversion<string>().HasMaxLength(32);
-        builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(32);
-        builder.Property(c => c.ManagerDecision).HasConversion<string>().HasMaxLength(32);
-        builder.Property(c => c.HrDecision).HasConversion<string>().HasMaxLength(32);
 
         // One correction at a time per exception. The service checks the exception's status first;
-        // this index is the backstop for two proposals racing. A rejected correction frees the
-        // exception for a new one.
+        // this index is the backstop for two proposals racing. A rejected or applied request clears IsPending, which
+        // frees the exception for a new one.
         builder.HasIndex(c => new { c.TenantId, c.AttendanceExceptionId })
             .IsUnique()
-            .HasFilter($"\"{nameof(AttendanceCorrection.Status)}\" IN ('{nameof(AttendanceCorrectionStatus.Pending)}', '{nameof(AttendanceCorrectionStatus.Approved)}')");
+            .HasFilter($"\"{nameof(AttendanceCorrection.IsPending)}\" = TRUE");
 
-        // The engine reads an employee's applied corrections around the day it processes; approvers list the pending ones.
+        // The engine reads an employee's applied corrections around the day it processes.
         builder.HasIndex(c => new { c.TenantId, c.EmployeeId, c.ProposedValue });
-        builder.HasIndex(c => new { c.TenantId, c.Status });
 
         // A correction that takes back an added punch names it; the engine finds the cancelled ones through this key.
         builder.HasOne(c => c.CancelsCorrection).WithMany().HasForeignKey(c => c.CancelsCorrectionId);
 
-        // A request is decided as a whole: its rows are found by what ties them.
-        builder.HasIndex(c => new { c.TenantId, c.RequestId });
+        // A request is decided as a whole: its rows are found through their approval.
+        builder.HasOne(c => c.AttendanceApproval).WithMany().HasForeignKey(c => c.AttendanceApprovalId);
+        builder.HasIndex(c => new { c.TenantId, c.AttendanceApprovalId });
     }
 }

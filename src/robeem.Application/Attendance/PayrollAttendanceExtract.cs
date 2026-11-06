@@ -73,9 +73,13 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
         var exceptionQuery = _db.AttendanceExceptions
             .AsNoTracking()
             .Where(e => e.Status != AttendanceExceptionStatus.Closed && e.AttendanceDate >= from && e.AttendanceDate <= to);
-        var decisionQuery = _db.AttendanceReviewDecisions
+        var decisionQuery = _db.AttendanceApprovals
             .AsNoTracking()
-            .Where(d => d.Outcome == AttendanceReviewOutcome.Approved && d.AttendanceDate >= from && d.AttendanceDate <= to);
+            .Where(d => d.Type == AttendanceApprovalType.Review
+                && d.Status == AttendanceApprovalStatus.Approved
+                && d.AttendanceRecordId != null
+                && d.AttendanceDate >= from
+                && d.AttendanceDate <= to);
         if (summaryEmployees is not null)
         {
             recordQuery = recordQuery.Where(r => summaryEmployees.Contains(r.EmployeeId));
@@ -95,7 +99,7 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
         // The records a reviewer approved. A decision belongs to one record version, so one given to a
         // version a recalculation retired never covers the current one.
         var approvedRecordIds = (await decisionQuery
-            .Select(d => d.AttendanceRecordId)
+            .Select(d => d.AttendanceRecordId!.Value)
             .ToListAsync(cancellationToken))
             .ToHashSet();
 

@@ -21,8 +21,7 @@ namespace robeem.Tests.Web;
 public sealed class ActorAccessFilterTests
 {
     [Theory]
-    [InlineData(typeof(CorrectionsController), "Index", new[] { "Employee" })]
-    [InlineData(typeof(ReviewsController), "Index", new[] { "Employee" })]
+    [InlineData(typeof(ApprovalsController), "Index", new[] { "Employee" })]
     [InlineData(typeof(PayrollController), "Index", new[] { "HRAdministrator" })]
     [InlineData(typeof(PoliciesController), "Index", new[] { "Manager" })]
     [InlineData(typeof(AuditController), "Index", new[] { "Employee", "Manager" })]
@@ -34,11 +33,9 @@ public sealed class ActorAccessFilterTests
     }
 
     [Theory]
-    [InlineData(typeof(CorrectionsController), "Index", "Manager")]
-    [InlineData(typeof(CorrectionsController), "Decide", "Manager")]
-    [InlineData(typeof(CorrectionsController), "Decide", "HRAdministrator")]
-    [InlineData(typeof(ReviewsController), "Index", "Manager")]
-    [InlineData(typeof(ReviewsController), "Decide", "HRAdministrator")]
+    [InlineData(typeof(ApprovalsController), "Index", "Manager")]
+    [InlineData(typeof(ApprovalsController), "Decide", "Manager")]
+    [InlineData(typeof(ApprovalsController), "Decide", "HRAdministrator")]
     [InlineData(typeof(RecordsController), "Index", "Employee")]
     [InlineData(typeof(RecordsController), "Day", "Manager")]
     [InlineData(typeof(ExceptionsController), "Index", "Employee")]
@@ -53,8 +50,7 @@ public sealed class ActorAccessFilterTests
     }
 
     [Theory]
-    [InlineData(typeof(CorrectionsController), "Index", "HRAdministrator")]
-    [InlineData(typeof(ReviewsController), "Index", "HRAdministrator")]
+    [InlineData(typeof(ApprovalsController), "Index", "HRAdministrator")]
     [InlineData(typeof(RecordsController), "Index", "HRAdministrator")]
     [InlineData(typeof(RecordsController), "Reprocess", "HRAdministrator")]
     [InlineData(typeof(ExceptionsController), "Index", "HRAdministrator")]
@@ -69,22 +65,9 @@ public sealed class ActorAccessFilterTests
     [Fact]
     public void WithoutAChoice_TheApiDecides()
     {
-        var context = Run(typeof(ReviewsController), "Decide", choice: null);
+        var context = Run(typeof(ApprovalsController), "Decide", choice: null);
 
         Assert.Null(context.Result);
-    }
-
-    [Fact]
-    public async Task ManagerAndHrWithNoEmployee_GetTheHrQueue_EvenWhenTheManagerTabIsAskedFor()
-    {
-        var corrections = new RecordingCorrections();
-        var controller = new CorrectionsController(corrections, new FakeActor(new ActingAs(null, "x", ["Manager", "HRAdministrator"])));
-
-        var result = await controller.Index(CorrectionApprover.Manager, CancellationToken.None);
-
-        var model = Assert.IsType<CorrectionsQueueViewModel>(Assert.IsType<ViewResult>(result).Model);
-        Assert.Equal(("HR", false), (model.Awaiting.ToString(), model.CanManager));
-        Assert.Equal([CorrectionApprover.HR], corrections.Lists);
     }
 
     [Fact]
@@ -92,7 +75,7 @@ public sealed class ActorAccessFilterTests
     {
         string[] Screens(int? employeeId, params string[] roles) =>
             NavigationMenu.For(new FakeActor(new ActingAs(employeeId, "x", roles))).SelectMany(s => s.Items).Select(i => i.Controller).ToArray();
-        string[] employeeScreens = ["Records", "Exceptions", "Corrections", "Reviews"];
+        string[] employeeScreens = ["Records", "Exceptions", "Approvals"];
 
         var managerWithNoEmployee = Screens(null, "Manager");
         var employeeWithNoEmployee = Screens(null, "Employee");
@@ -109,7 +92,7 @@ public sealed class ActorAccessFilterTests
     [Fact]
     public void AMenuScreenThatNeedsAnEmployee_IsOneWhoseControllerRequiresOne_AndTheOtherWayRound()
     {
-        var controllers = typeof(CorrectionsController).Assembly.GetTypes().Where(t => typeof(Controller).IsAssignableFrom(t) && !t.IsAbstract);
+        var controllers = typeof(ApprovalsController).Assembly.GetTypes().Where(t => typeof(Controller).IsAssignableFrom(t) && !t.IsAbstract);
 
         var requiring = controllers
             .Where(t => t.GetCustomAttributes(typeof(RequiresEmployeeAttribute), inherit: true).Length > 0
@@ -127,25 +110,12 @@ public sealed class ActorAccessFilterTests
         var managerOnly = new ActingAs(null, "Development user", ["Manager"]);
         var everyRole = new ActingAs(null, "Development user", [.. ActorProtocol.Roles]);
 
-        var turnedAway = Run(typeof(CorrectionsController), "Index", choice: null, managerOnly);
-        var hr = Run(typeof(CorrectionsController), "Index", choice: null, everyRole);
+        var turnedAway = Run(typeof(ApprovalsController), "Index", choice: null, managerOnly);
+        var hr = Run(typeof(ApprovalsController), "Index", choice: null, everyRole);
 
         var view = Assert.IsType<ViewResult>(turnedAway.Result);
         Assert.Contains("the Api's development user is not linked to an employee", (string)view.ViewData[AccessDeniedPage.ReasonKey]!);
         Assert.Null(hr.Result);
-    }
-
-    [Fact]
-    public async Task TheStandInUserWithNoEmployee_GetsTheHrQueue_EvenWhenTheManagerTabIsAskedFor()
-    {
-        var corrections = new RecordingCorrections();
-        var standIn = new ActingAs(null, "Development user", [.. ActorProtocol.Roles]);
-        var controller = new CorrectionsController(corrections, new FakeActor(null, standIn));
-
-        var result = await controller.Index(CorrectionApprover.Manager, CancellationToken.None);
-
-        Assert.Equal(CorrectionApprover.HR, Assert.IsType<CorrectionsQueueViewModel>(Assert.IsType<ViewResult>(result).Model).Awaiting);
-        Assert.Equal([CorrectionApprover.HR], corrections.Lists);
     }
 
     [Fact]
@@ -236,8 +206,8 @@ public sealed class ActorAccessFilterTests
         var handler = new StubHttpHandler(HttpStatusCode.Forbidden, """{"title":"Your account is not linked to an employee (no employee_id claim).","status":403}""", "application/problem+json");
         var bare = new StubHttpHandler(HttpStatusCode.Forbidden, """{"title":"Forbidden","status":403}""", "application/problem+json");
 
-        var denied = await Assert.ThrowsAsync<ApiAccessDeniedException>(() => new CorrectionsApiClient(handler.CreateClient()).ListPendingAsync(CorrectionApprover.Manager, CancellationToken.None));
-        var plain = await Assert.ThrowsAsync<ApiAccessDeniedException>(() => new CorrectionsApiClient(bare.CreateClient()).ListPendingAsync(CorrectionApprover.Manager, CancellationToken.None));
+        var denied = await Assert.ThrowsAsync<ApiAccessDeniedException>(() => new ApprovalsApiClient(handler.CreateClient()).ListPendingAsync(null, null, null, null, null, 1, 20, CancellationToken.None));
+        var plain = await Assert.ThrowsAsync<ApiAccessDeniedException>(() => new ApprovalsApiClient(bare.CreateClient()).ListPendingAsync(null, null, null, null, null, 1, 20, CancellationToken.None));
 
         Assert.Equal("robeem.Api refused the request (403): Your account is not linked to an employee (no employee_id claim).", denied.Message);
         Assert.Null(plain.Reason);
@@ -330,28 +300,5 @@ public sealed class ActorAccessFilterTests
             Calls++;
             return Fails ? throw new HttpRequestException("down") : Task.FromResult(Answer);
         }
-    }
-
-    private sealed class RecordingCorrections : ICorrectionsApiClient
-    {
-        public List<CorrectionApprover> Lists { get; } = [];
-
-        public Task<ApiCommandResult<robeem.Contracts.Common.CreatedResponse>> ProposeAsync(ProposeCorrectionRequest request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public Task<ApiCommandResult<robeem.Contracts.Common.CreatedResponse>> ProposeDayAsync(DayCorrectionRequest request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-
-        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover awaiting, CancellationToken cancellationToken)
-        {
-            Lists.Add(awaiting);
-            return Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
-        }
-
-        public Task<ApiCommandResult<CorrectionDecisionResponse>> DecideAsync(int correctionId, DecideCorrectionRequest request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
     }
 }

@@ -33,8 +33,7 @@ public static class NavigationMenu
     private static readonly NavSection Approvals = new(
         "Approvals",
         [
-            new NavItem("Corrections", "Corrections", "Index", "Decide the corrections employees proposed for missing punches.", Manager, Hr) { NeedsEmployee = true },
-            new NavItem("Reviews", "Reviews", "Index", "Approve or reject overtime, unscheduled work and incomplete days.", Manager, Hr) { NeedsEmployee = true },
+            new NavItem("Approvals", "Approvals", "Index", "Decide the corrections employees asked for, and approve or reject overtime, unscheduled work and incomplete days: one queue.", Manager, Hr) { NeedsEmployee = true },
         ]);
 
     // The machines: set one up from the vendor down, see them all, and map their employee ids. The integration is made for a device and has no screen.

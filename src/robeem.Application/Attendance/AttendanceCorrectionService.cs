@@ -8,18 +8,19 @@ namespace robeem.Application.Attendance;
 public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 {
     private const int JustificationMaxLength = 1000;
+    private const int ListPageSize = 200;
 
     private readonly IRobeemDbContext _db;
     private readonly IAttendancePolicyResolver _policies;
-    private readonly IAttendanceProcessingEngine _engine;
+    private readonly IAttendanceApprovalService _approvals;
     private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
 
-    public AttendanceCorrectionService(IRobeemDbContext db, IAttendancePolicyResolver policies, IAttendanceProcessingEngine engine, IAttendanceAuditTrail audit, TimeProvider clock)
+    public AttendanceCorrectionService(IRobeemDbContext db, IAttendancePolicyResolver policies, IAttendanceApprovalService approvals, IAttendanceAuditTrail audit, TimeProvider clock)
     {
         _db = db;
         _policies = policies;
-        _engine = engine;
+        _approvals = approvals;
         _audit = audit;
         _clock = clock;
     }
@@ -91,8 +92,11 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         }
 
         var policy = await _policies.ResolveAsync(exception.EmployeeId, cancellationToken);
+        var now = _clock.GetLocalNow().DateTime;
+        var approval = ApprovalRules.NewCorrectionApproval(exception.EmployeeId, exception.AttendanceDate, requestedByEmployeeId, now, policy.CorrectionApprovalWorkflow);
         var correction = new AttendanceCorrection
         {
+            AttendanceApproval = approval,
             AttendanceExceptionId = exception.Id,
             EmployeeId = exception.EmployeeId,
             AttendanceDate = exception.AttendanceDate,
@@ -101,10 +105,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             TimeZoneId = timeZoneId,
             Justification = trimmed,
             RequestedByEmployeeId = requestedByEmployeeId,
-            RequestedAt = _clock.GetLocalNow().DateTime,
-            ApprovalWorkflow = policy.CorrectionApprovalWorkflow,
-            Status = AttendanceCorrectionStatus.Pending,
+            RequestedAt = now,
         };
+        _db.AttendanceApprovals.Add(approval);
         _db.AttendanceCorrections.Add(correction);
         exception.Status = AttendanceExceptionStatus.PendingCorrection;
         _audit.Record(
@@ -115,7 +118,7 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             ActorOf(requestedByEmployeeId));
         await _db.SaveChangesAsync(cancellationToken);
 
-        return CorrectionResult.Success(correction, exception.Status);
+        return CorrectionResult.Success(correction.Id, approval.Status, exception.Status);
     }
 
     public async Task<CorrectionResult> ProposeTypeChangeAsync(int exceptionId, string newEventType, string justification, int requestedByEmployeeId, CancellationToken cancellationToken)
@@ -164,8 +167,11 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             .SingleAsync(n => n.Id == exception.RelatedNormalizedTransactionId, cancellationToken);
 
         var policy = await _policies.ResolveAsync(exception.EmployeeId, cancellationToken);
+        var now = _clock.GetLocalNow().DateTime;
+        var approval = ApprovalRules.NewCorrectionApproval(exception.EmployeeId, exception.AttendanceDate, requestedByEmployeeId, now, policy.CorrectionApprovalWorkflow);
         var correction = new AttendanceCorrection
         {
+            AttendanceApproval = approval,
             AttendanceExceptionId = exception.Id,
             EmployeeId = exception.EmployeeId,
             AttendanceDate = exception.AttendanceDate,
@@ -177,10 +183,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             TimeZoneId = punch.TimeZoneId,
             Justification = trimmed,
             RequestedByEmployeeId = requestedByEmployeeId,
-            RequestedAt = _clock.GetLocalNow().DateTime,
-            ApprovalWorkflow = policy.CorrectionApprovalWorkflow,
-            Status = AttendanceCorrectionStatus.Pending,
+            RequestedAt = now,
         };
+        _db.AttendanceApprovals.Add(approval);
         _db.AttendanceCorrections.Add(correction);
         exception.Status = AttendanceExceptionStatus.PendingCorrection;
         _audit.Record(
@@ -191,200 +196,49 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             actor);
         await _db.SaveChangesAsync(cancellationToken);
 
-        return CorrectionResult.Success(correction, exception.Status);
+        return CorrectionResult.Success(correction.Id, approval.Status, exception.Status);
     }
 
     public async Task<CorrectionResult> DecideCorrectionAsync(int correctionId, int decidedByUserId, bool approved, bool isHrDecision, CancellationToken cancellationToken)
     {
-        var correction = await _db.AttendanceCorrections.SingleOrDefaultAsync(c => c.Id == correctionId, cancellationToken);
-        if (correction is null)
+        // The decision is the approval's: a correction row is only one of the edits of its request.
+        var approvalId = await _db.AttendanceCorrections
+            .Where(c => c.Id == correctionId)
+            .Select(c => (int?)c.AttendanceApprovalId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (approvalId is null)
         {
             return CorrectionResult.Missing();
         }
 
-        // A request is decided as a whole: every edit of it is approved, applied or rejected together.
-        var group = await _db.AttendanceCorrections.Where(c => c.RequestId == correction.RequestId).OrderBy(c => c.Id).ToListAsync(cancellationToken);
-
-        // The exceptions waiting for it: those it names and, for a correction of a whole day, the day's that wait for a correction.
-        var linked = group.Where(c => c.AttendanceExceptionId != null).Select(c => c.AttendanceExceptionId!.Value).ToList();
-        var wholeDay = group.Any(c => c.AttendanceExceptionId == null);
-        var exceptions = await _db.AttendanceExceptions
-            .Where(e => linked.Contains(e.Id)
-                || (wholeDay && e.EmployeeId == correction.EmployeeId && e.AttendanceDate == correction.AttendanceDate && e.Status == AttendanceExceptionStatus.PendingCorrection))
-            .ToListAsync(cancellationToken);
-
-        if (correction.Status != AttendanceCorrectionStatus.Pending)
+        var result = await _approvals.DecideAsync(approvalId.Value, decidedByUserId, isHrDecision, approved, null, cancellationToken);
+        if (result.NotFound)
         {
-            return CorrectionResult.Invalid(nameof(correctionId), $"The correction is {correction.Status}, not waiting for a decision.");
+            return CorrectionResult.Missing();
         }
 
-        // The decider is the authenticated user, and the endpoint has checked that they hold the
-        // role they decide in; here only the correction's own rules remain.
-        if (!await _db.Profiles.AnyAsync(p => p.Id == decidedByUserId, cancellationToken))
-        {
-            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "The user does not exist.");
-        }
-
-        if (decidedByUserId == correction.RequestedByEmployeeId)
-        {
-            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "A correction can't be decided by the person who proposed it.");
-        }
-
-        // Who may take the manager's step: the employee's own manager. HR takes it only when the
-        // employee has no manager, or an inactive one, so that no correction can be left undecidable.
-        var employee = await _db.Profiles.AsNoTracking().Include(p => p.Manager).SingleAsync(p => p.Id == correction.EmployeeId, cancellationToken);
-        var awaitingManagerStep = correction.ApprovalWorkflow != CorrectionApprovalWorkflow.HR && correction.ManagerDecision is null;
-        var standsIn = isHrDecision && awaitingManagerStep && IsUnmanaged(employee);
-        var decidesAsHr = isHrDecision && !standsIn;
-
-        if (RoleProblem(correction, decidesAsHr) is { } problem)
-        {
-            return CorrectionResult.Invalid(nameof(DecideCorrectionRequest.IsHrDecision), problem);
-        }
-
-        if (!decidesAsHr && !standsIn && employee.ManagerId != decidedByUserId)
-        {
-            return CorrectionResult.Invalid(CorrectionErrorKeys.DecidedBy, "Only the employee's manager can decide this correction.");
-        }
-
-        var now = _clock.GetLocalNow().DateTime;
-        var decision = approved ? AttendanceCorrectionDecision.Approved : AttendanceCorrectionDecision.Rejected;
-        var actor = ActorOf(decidedByUserId);
-        var role = decidesAsHr ? "HR" : standsIn ? "HR, in place of the manager" : "Manager";
-        foreach (var row in group)
-        {
-            if (decidesAsHr)
-            {
-                (row.HrDecision, row.HrDecidedById, row.HrDecidedAt) = (decision, decidedByUserId, now);
-            }
-            else
-            {
-                (row.ManagerDecision, row.ManagerDecidedById, row.ManagerDecidedAt) = (decision, decidedByUserId, now);
-            }
-        }
-
-        if (!approved)
-        {
-            // Back to Open, so a new correction can be proposed (study §11.1).
-            group.ForEach(row => row.Status = AttendanceCorrectionStatus.Rejected);
-            exceptions.ForEach(e => e.Status = AttendanceExceptionStatus.Open);
-            _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
-            exceptions.ForEach(e => _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), e.Id, "PendingCorrection -> Open: the correction was rejected.", actor));
-            await _db.SaveChangesAsync(cancellationToken);
-            return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Open);
-        }
-
-        // Every approval the workflow asks for is in once the last role of the workflow has approved:
-        // the manager for Manager, HR for HR and for Both (the manager decides first).
-        var complete = correction.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager ? !decidesAsHr : decidesAsHr;
-        if (!complete)
-        {
-            _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is still {correction.Status}.", actor);
-            await _db.SaveChangesAsync(cancellationToken);
-            return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.PendingCorrection);
-        }
-
-        // Approve, apply, close the exceptions and recalculate the day as one unit: a day recalculated
-        // with the exceptions still open would never come out Approved, and a failure must not leave
-        // the correction applied to a day that was not recalculated. Whatever the edits did not settle
-        // is found again by the recalculation and opens as a new exception.
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        foreach (var row in group)
-        {
-            row.Status = AttendanceCorrectionStatus.Applied;
-            row.AppliedAt = now;
-        }
-
-        foreach (var exception in exceptions)
-        {
-            exception.Status = AttendanceExceptionStatus.Closed;
-            exception.ResolutionMethod = AttendanceExceptionResolutionMethod.Correction;
-            exception.ResolvedAt = now;
-            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Closed: the correction was applied.", actor);
-        }
-
-        _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceCorrection), correction.Id, $"{decision} by {role}; the correction is {correction.Status}.", actor);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        await _engine.ProcessEmployeeDayAsync(correction.EmployeeId, correction.AttendanceDate, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return CorrectionResult.Success(correction, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Closed);
+        return result.Succeeded
+            ? CorrectionResult.Success(correctionId, result.Status!.Value, result.ExceptionStatus!.Value)
+            : CorrectionResult.Invalid(result.Errors.ToDictionary(e => e.Key == ApprovalErrorKeys.Approval ? nameof(correctionId) : e.Key, e => e.Value));
     }
 
     public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover approver, int approverEmployeeId, CancellationToken cancellationToken)
     {
-        var pending = _db.AttendanceCorrections
-            .AsNoTracking()
-            .Where(c => c.Status == AttendanceCorrectionStatus.Pending);
-
-        // The manager is asked first; HR next, or alone when the policy asks for HR only. A manager
-        // sees their direct reports' corrections. HR also sees the manager-step corrections of
-        // employees with no manager (or an inactive one): nobody else can decide them.
-        pending = approver == CorrectionApprover.Manager
-            ? pending.Where(c => c.ManagerDecision == null
-                && (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Manager || c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both)
-                && c.Employee!.ManagerId == approverEmployeeId)
-            : pending.Where(c => c.ApprovalWorkflow == CorrectionApprovalWorkflow.HR
-                || (c.ApprovalWorkflow == CorrectionApprovalWorkflow.Both && c.ManagerDecision == AttendanceCorrectionDecision.Approved)
-                || (c.ManagerDecision == null
-                    && c.ApprovalWorkflow != CorrectionApprovalWorkflow.HR
-                    && (c.Employee!.ManagerId == null || c.Employee.Manager!.IsActive == false)));
-
-        var rows = await pending
-            .OrderBy(c => c.RequestedAt)
-            .ThenBy(c => c.Id)
-            .Select(c => new
+        // The manager is asked first; HR next, or alone when the policy asks for HR only. A manager sees their direct reports'
+        // corrections. HR also sees the manager-step corrections of employees with no manager (or an inactive one): nobody else can
+        // decide them. One item per request; the approval service does the reading, a page at a time, until the queue is read.
+        var isManager = approver == CorrectionApprover.Manager;
+        var items = new List<CorrectionListItem>();
+        for (var page = 1; ; page++)
+        {
+            var filter = new ApprovalFilter(null, null, null, AttendanceApprovalType.Correction, null, page, ListPageSize);
+            var result = await _approvals.ListPendingAsync(approverEmployeeId, isManager, !isManager, filter, cancellationToken);
+            items.AddRange(result.Items.Select(i => i.Correction!));
+            if (result.Items.Count == 0 || items.Count >= result.Total)
             {
-                c.Id,
-                c.RequestId,
-                c.AttendanceExceptionId,
-                c.EmployeeId,
-                c.Employee!.FirstName,
-                c.Employee.LastName,
-                c.AttendanceDate,
-                c.Kind,
-                c.OriginalEventType,
-                c.CorrectedEventType,
-                c.ProposedValue,
-                c.Justification,
-                c.RequestedAt,
-                c.ApprovalWorkflow,
-                c.ManagerDecision,
-            })
-            .ToListAsync(cancellationToken);
-
-        // One item per request: its edits are decided together, by the decision on any of them.
-        return rows
-            .GroupBy(r => r.RequestId)
-            .Select(g =>
-            {
-                var r = g.First();
-                return new CorrectionListItem
-                {
-                    Id = r.Id,
-                    ExceptionId = r.AttendanceExceptionId,
-                    EmployeeId = r.EmployeeId,
-                    EmployeeName = $"{r.FirstName} {r.LastName}",
-                    AttendanceDate = r.AttendanceDate,
-                    Kind = r.Kind.ToString(),
-                    OriginalEventType = r.OriginalEventType?.ToString(),
-                    CorrectedEventType = r.CorrectedEventType.ToString(),
-                    ProposedValue = r.ProposedValue,
-                    Edits = g.Select(e => new CorrectionEditItem
-                    {
-                        Kind = e.Kind.ToString(),
-                        OriginalEventType = e.OriginalEventType?.ToString(),
-                        CorrectedEventType = e.CorrectedEventType.ToString(),
-                        At = e.ProposedValue,
-                    }).ToList(),
-                    Justification = r.Justification,
-                    RequestedAt = r.RequestedAt,
-                    ApprovalWorkflow = r.ApprovalWorkflow.ToString(),
-                    ManagerDecision = r.ManagerDecision?.ToString(),
-                };
-            })
-            .ToList();
+                return items;
+            }
+        }
     }
 
     private static string ActorOf(int employeeId) => $"employee:{employeeId}";
@@ -404,19 +258,6 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
         return trimmed;
     }
-
-    /// <summary>An employee with no manager, or whose manager is inactive: HR decides for them.</summary>
-    private static bool IsUnmanaged(Profile employee) => employee.ManagerId is null || employee.Manager is not { IsActive: true };
-
-    /// <summary>Why this role can't decide the correction now, or null when it can.</summary>
-    private static string? RoleProblem(AttendanceCorrection correction, bool isHrDecision) => correction.ApprovalWorkflow switch
-    {
-        CorrectionApprovalWorkflow.Manager when isHrDecision => "This correction needs the manager's decision only.",
-        CorrectionApprovalWorkflow.HR when !isHrDecision => "This correction needs HR's decision only.",
-        CorrectionApprovalWorkflow.Both when isHrDecision && correction.ManagerDecision is null => "The manager decides first, then HR.",
-        CorrectionApprovalWorkflow.Both when !isHrDecision && correction.ManagerDecision is not null => "The manager has already decided.",
-        _ => null,
-    };
 
     /// <summary>
     /// The zone the proposed local time is in: that of the employee's punch nearest to it, as that
