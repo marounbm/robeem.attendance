@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using robeem.Api.Attendance.Jobs;
+using robeem.Api.Maintenance;
 
 namespace robeem.Tests.Api;
 
@@ -148,7 +149,7 @@ public sealed class ScheduledJobsHostedServiceTests
         public static async Task<Host> StartAsync(params FakeJob[] jobs)
         {
             var coordinator = new JobCoordinator(jobs, new FakeTenantRegistry("t"), new InMemoryRecorder(), TimeProvider.System, new FakeLifetime(), NullLogger<JobCoordinator>.Instance);
-            var service = new ScheduledJobsHostedService(coordinator, TimeProvider.System, NullLogger<ScheduledJobsHostedService>.Instance);
+            var service = new ScheduledJobsHostedService(coordinator, TimeProvider.System, new DatabaseReadiness(ready: true), NullLogger<ScheduledJobsHostedService>.Instance);
             await service.StartAsync(CancellationToken.None);
             return new Host(service);
         }

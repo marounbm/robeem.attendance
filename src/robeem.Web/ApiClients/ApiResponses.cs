@@ -19,11 +19,13 @@ internal static class ApiResponses
 
     /// <summary>
     /// Throws <see cref="TenantSelectionRequiredException"/> when the API rejected the request's
-    /// tenant, otherwise <see cref="HttpRequestException"/> for any non-success status.
+    /// tenant, <see cref="DatabaseUnavailableException"/> when the API is in maintenance mode, otherwise
+    /// <see cref="HttpRequestException"/> for any non-success status.
     /// </summary>
     public static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         await ThrowIfTenantRejectedAsync(response, cancellationToken);
+        await ThrowIfDatabaseUnavailableAsync(response, cancellationToken);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             throw new ApiAccessDeniedException(response.StatusCode, await ReadRefusalReasonAsync(response, cancellationToken));
@@ -48,6 +50,15 @@ internal static class ApiResponses
         if (code is TenancyProtocol.TenantRequiredCode or TenancyProtocol.UnknownTenantCode)
         {
             throw new TenantSelectionRequiredException(code);
+        }
+    }
+
+    public static async Task ThrowIfDatabaseUnavailableAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode == HttpStatusCode.ServiceUnavailable
+            && await ReadProblemCodeAsync(response, cancellationToken) == TenancyProtocol.DatabaseUnavailableCode)
+        {
+            throw new DatabaseUnavailableException();
         }
     }
 

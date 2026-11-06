@@ -1,0 +1,20 @@
+@{
+    ViewData["Title"] = "Maintenance";
+    var canRetry = HttpMethods.IsGet(Context.Request.Method);
+}
+
+<div class="alert alert-warning" role="alert">
+    <h1 class="h4 alert-heading">Maintenance mode</h1>
+    <p class="mb-2">The database is not reachable right now, so this page cannot be shown.</p>
+    <p class="mb-0">Nothing you have recorded is lost. Please try again in a few minutes; if it continues, tell your administrator.</p>
+</div>
+
+@if (canRetry)
+{
+    <a class="btn btn-primary" href="@(Context.Request.PathBase + Context.Request.Path + Context.Request.QueryString)">Try again</a>
+}
+else
+{
+    <p class="text-muted">Your last action was not saved. Go back, then repeat it once the application is available.</p>
+}
+<a class="btn btn-link" asp-controller="Home" asp-action="Index">Start page</a>

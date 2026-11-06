@@ -10,4 +10,10 @@ public interface ITenantsApiClient
 
     /// <summary>Gets the tenant the API resolves for this request, or <c>null</c> when it resolves none.</summary>
     Task<CurrentTenantResponse?> GetCurrentAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Asks the API whether the current tenant's database answers. Throws <see cref="DatabaseUnavailableException"/> when it does
+    /// not; does nothing when the API resolves no tenant (the screen that needs one sends the user to the picker).
+    /// </summary>
+    Task CheckDatabaseAsync(CancellationToken cancellationToken);
 }

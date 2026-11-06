@@ -37,4 +37,17 @@ public sealed class TenantsApiClient : ITenantsApiClient
             return null;
         }
     }
+
+    public async Task CheckDatabaseAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync($"{TenantsPath}/current/database", cancellationToken);
+        try
+        {
+            await ApiResponses.EnsureSuccessAsync(response, cancellationToken);
+        }
+        catch (TenantSelectionRequiredException)
+        {
+            // No tenant yet: there is no database to check.
+        }
+    }
 }

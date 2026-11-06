@@ -1,3 +1,4 @@
+using robeem.Api.Maintenance;
 using robeem.Application.Attendance;
 
 namespace robeem.Api.Attendance.Jobs;
@@ -13,12 +14,14 @@ public sealed class ScheduledJobsHostedService : BackgroundService
 {
     private readonly JobCoordinator _coordinator;
     private readonly TimeProvider _clock;
+    private readonly DatabaseReadiness _readiness;
     private readonly ILogger<ScheduledJobsHostedService> _logger;
 
-    public ScheduledJobsHostedService(JobCoordinator coordinator, TimeProvider clock, ILogger<ScheduledJobsHostedService> logger)
+    public ScheduledJobsHostedService(JobCoordinator coordinator, TimeProvider clock, DatabaseReadiness readiness, ILogger<ScheduledJobsHostedService> logger)
     {
         _coordinator = coordinator;
         _clock = clock;
+        _readiness = readiness;
         _logger = logger;
     }
 
@@ -26,6 +29,13 @@ public sealed class ScheduledJobsHostedService : BackgroundService
     {
         try
         {
+            // In maintenance mode (a database was not reachable at startup) nothing can be read or recorded yet.
+            if (!_readiness.IsReady)
+            {
+                _logger.LogWarning("The databases are not ready; the scheduled jobs wait for them.");
+                await _readiness.WaitUntilReadyAsync(stoppingToken);
+            }
+
             // First, what happened while the Api was down: interrupted runs, and missed cron times.
             await _coordinator.RecoverAsync(stoppingToken);
 

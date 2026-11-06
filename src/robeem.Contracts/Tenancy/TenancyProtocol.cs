@@ -23,4 +23,7 @@ public static class TenancyProtocol
 
     /// <summary>503: the prime tenant's Api could not give the attendance catalog.</summary>
     public const string CatalogUnavailableCode = "catalog_unavailable";
+
+    /// <summary>503: the tenant's database cannot be reached, so the application is in maintenance mode.</summary>
+    public const string DatabaseUnavailableCode = "database_unavailable";
 }
