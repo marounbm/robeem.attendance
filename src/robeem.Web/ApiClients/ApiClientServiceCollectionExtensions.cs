@@ -29,7 +29,7 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IStandInApiClient, StandInApiClient>(services);
         AddClient<IExceptionsApiClient, ExceptionsApiClient>(services);
         AddClient<ICorrectionsApiClient, CorrectionsApiClient>(services);
-        AddClient<IReviewsApiClient, ReviewsApiClient>(services);
+        AddClient<IApprovalsApiClient, ApprovalsApiClient>(services);
         AddClient<IIntegrationsApiClient, IntegrationsApiClient>(services);
         AddClient<IUploadsApiClient, UploadsApiClient>(services);
         AddClient<IJobsApiClient, JobsApiClient>(services);

@@ -1,4 +1,41 @@
 <Solution>
+  <Folder Name="/Docs/">
+    <File Path="CLAUDE.md" />
+    <File Path="README.md" />
+    <File Path="SETUP.md" />
+    <File Path="DEPLOYMENT_IIS.md" />
+    <File Path="DATABASE.md" />
+    <File Path="DATABASE_ERD.md" />
+    <File Path="TEST_COVERAGE.md" />
+    <File Path="ZKTECO_XLS_IMPORT_SETUP.md" />
+  </Folder>
+  <Folder Name="/Docs/Plans/">
+    <File Path="PROMPT_PLAN.md" />
+    <File Path="INTEGRATION_RESTRUCTURE_PLAN.md" />
+    <File Path="PRIME_TENANT_PLAN.md" />
+    <File Path="APPROVALS_PLAN.md" />
+  </Folder>
+  <Folder Name="/Docs/Notes/">
+    <File Path="DISCOVERY_NOTES.md" />
+    <File Path="ATTENDANCE_P1_NOTES.md" />
+    <File Path="ATTENDANCE_P2_NOTES.md" />
+    <File Path="ATTENDANCE_P3_NOTES.md" />
+    <File Path="ATTENDANCE_P4_NOTES.md" />
+    <File Path="ATTENDANCE_P5_NOTES.md" />
+    <File Path="ATTENDANCE_P6_NOTES.md" />
+    <File Path="ATTENDANCE_P7_NOTES.md" />
+    <File Path="ATTENDANCE_P8_NOTES.md" />
+    <File Path="ATTENDANCE_P9_NOTES.md" />
+    <File Path="ATTENDANCE_P10_NOTES.md" />
+    <File Path="ATTENDANCE_P11_NOTES.md" />
+    <File Path="ATTENDANCE_P12_NOTES.md" />
+    <File Path="ATTENDANCE_P13_NOTES.md" />
+    <File Path="ATTENDANCE_P15_NOTES.md" />
+    <File Path="ATTENDANCE_FOLLOWUP_NOTES.md" />
+    <File Path="ATTENDANCE_DBDRIVEN_NOTES.md" />
+    <File Path="ATTENDANCE_PRIME_NOTES.md" />
+    <File Path="ATTENDANCE_ZKTECO_XLS_NOTES.md" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/robeem.Analyzers/robeem.Analyzers.csproj" />
     <Project Path="src/robeem.Api/robeem.Api.csproj" />

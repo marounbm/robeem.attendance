@@ -8,13 +8,14 @@ namespace robeem.DataModel
     /// <summary>
     /// A proposed fix to an <see cref="AttendanceException"/> (study §11.2): the missing punch, at
     /// the time the employee says it happened. Additive (CLAUDE.md §1.7): it is a new row that
-    /// references the exception, with who asked, why, and who approved. Once <c>Applied</c>, the
-    /// processing engine reads it as a punch whose source is <c>Corrected</c>. The raw and
-    /// normalized punches are never touched.
+    /// references the exception, with who asked and why. Whether it is approved is its
+    /// <see cref="AttendanceApproval"/>'s: the edits of one request are the rows that point to the same approval, and are decided
+    /// together. Once that approval is <c>Applied</c>, the processing engine reads the row as a punch whose source is <c>Corrected</c>.
+    /// The raw and normalized punches are never touched.
     /// </summary>
     [Serializable]
     [Table(nameof(AttendanceCorrection), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class AttendanceCorrection : Entity, ITenantScoped, IWorkflowEntity
+    public class AttendanceCorrection : Entity, ITenantScoped
     {
         [Required]
         [MaxLength(ITenantScoped.TenantIdMaxLength)]
@@ -29,10 +30,20 @@ namespace robeem.DataModel
         public AttendanceException? AttendanceException { get; set; }
 
         /// <summary>
-        /// Gets or sets what ties the edits of one request together. A request is decided as a whole: its rows are approved, applied or rejected
+        /// Gets or sets the approval this edit belongs to. A request is decided as a whole: its rows are approved, applied or rejected
         /// at once. A correction proposed for one exception is a request of its own.
         /// </summary>
-        public Guid RequestId { get; set; } = Guid.NewGuid();
+        [Required]
+        public int AttendanceApprovalId { get; set; }
+
+        public AttendanceApproval? AttendanceApproval { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the approval is still waiting for a decision. Not a second source of truth for the status: it only
+        /// lets the database refuse two requests for one exception at the same time (a filtered unique index), and is cleared
+        /// together with the approval's status when the request is decided.
+        /// </summary>
+        public bool IsPending { get; set; } = true;
 
         /// <summary>Gets or sets the employee whose day is corrected; the exception's employee.</summary>
         [Required]
@@ -88,30 +99,6 @@ namespace robeem.DataModel
         public Profile? RequestedByEmployee { get; set; }
 
         public DateTime RequestedAt { get; set; } = DateTime.Now;
-
-        /// <summary>Gets or sets who must approve. Copied from the policy when the correction is proposed, so a later policy change does not alter a correction already under review.</summary>
-        public CorrectionApprovalWorkflow ApprovalWorkflow { get; set; } = CorrectionApprovalWorkflow.Manager;
-
-        public AttendanceCorrectionStatus Status { get; set; } = AttendanceCorrectionStatus.Pending;
-
-        public AttendanceCorrectionDecision? ManagerDecision { get; set; }
-
-        public int? ManagerDecidedById { get; set; }
-
-        public Profile? ManagerDecidedBy { get; set; }
-
-        public DateTime? ManagerDecidedAt { get; set; }
-
-        public AttendanceCorrectionDecision? HrDecision { get; set; }
-
-        public int? HrDecidedById { get; set; }
-
-        public Profile? HrDecidedBy { get; set; }
-
-        public DateTime? HrDecidedAt { get; set; }
-
-        /// <summary>Gets or sets when the correction was folded into the calculation.</summary>
-        public DateTime? AppliedAt { get; set; }
 
         #region not mapped
         [NotMapped]

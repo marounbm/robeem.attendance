@@ -283,14 +283,18 @@ public sealed class PayrollAttendanceExtractTests : AttendanceEngineTestBase
         var reviewer = new Profile { EmployeeNumber = "R-" + Guid.NewGuid().ToString("N")[..6], FirstName = "Rae", LastName = "Viewer", Title = "Rae Viewer" };
         db.Profiles.Add(reviewer);
         db.SaveChanges();
-        db.AttendanceReviewDecisions.Add(new AttendanceReviewDecision
+        var decision = outcome == AttendanceReviewOutcome.Approved ? AttendanceCorrectionDecision.Approved : AttendanceCorrectionDecision.Rejected;
+        db.AttendanceApprovals.Add(new AttendanceApproval
         {
+            Type = AttendanceApprovalType.Review,
             AttendanceRecordId = recordId,
             EmployeeId = EmployeeId,
             AttendanceDate = Monday,
-            Outcome = outcome,
-            DecidedById = reviewer.Id,
-            DecidedByRole = AttendanceReviewerRole.Manager,
+            Status = outcome == AttendanceReviewOutcome.Approved ? AttendanceApprovalStatus.Approved : AttendanceApprovalStatus.Rejected,
+            Workflow = ApprovalWorkflow.ManagerOrHr,
+            ManagerDecision = decision,
+            ManagerDecidedById = reviewer.Id,
+            ManagerDecidedAt = Monday,
             Reason = outcome == AttendanceReviewOutcome.Rejected ? "Not authorised." : null,
             OvertimeMinutes = 90,
         });

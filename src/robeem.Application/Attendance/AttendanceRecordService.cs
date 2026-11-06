@@ -134,11 +134,28 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             .Select(r => new { Record = r, ShiftTitle = r.TimeScheduleShift == null ? null : r.TimeScheduleShift.Title })
             .ToListAsync(cancellationToken);
 
-        var reviews = await _db.AttendanceReviewDecisions.AsNoTracking()
-            .Where(d => d.EmployeeId == employeeId && d.AttendanceDate == day)
+        // A review is decided in one step, by the manager or by HR: the step that was taken is the decision.
+        var reviews = (await _db.AttendanceApprovals.AsNoTracking()
+            .Where(a => a.Type == AttendanceApprovalType.Review
+                && a.EmployeeId == employeeId
+                && a.AttendanceDate == day
+                && (a.Status == AttendanceApprovalStatus.Approved || a.Status == AttendanceApprovalStatus.Rejected))
+            .Select(a => new
+            {
+                a.Id,
+                a.AttendanceRecordId,
+                a.Status,
+                ByHr = a.HrDecision != null,
+                DecidedAt = a.HrDecision != null ? a.HrDecidedAt : a.ManagerDecidedAt,
+                a.Reason,
+                a.OvertimeMinutes,
+                By = a.HrDecision != null
+                    ? a.HrDecidedBy!.FirstName + " " + a.HrDecidedBy.LastName
+                    : a.ManagerDecidedBy!.FirstName + " " + a.ManagerDecidedBy.LastName,
+            })
+            .ToListAsync(cancellationToken))
             .OrderBy(d => d.DecidedAt).ThenBy(d => d.Id)
-            .Select(d => new { d.AttendanceRecordId, d.Outcome, d.DecidedByRole, d.DecidedAt, d.Reason, d.OvertimeMinutes, By = d.DecidedBy!.FirstName + " " + d.DecidedBy.LastName })
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         var exceptions = await _db.AttendanceExceptions.AsNoTracking()
             .Where(e => e.EmployeeId == employeeId && e.AttendanceDate == day)
@@ -152,9 +169,10 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             .Select(c => new
             {
                 Correction = c,
+                Approval = c.AttendanceApproval!,
                 RequestedBy = c.RequestedByEmployee!.FirstName + " " + c.RequestedByEmployee.LastName,
-                ManagerBy = c.ManagerDecidedBy == null ? null : c.ManagerDecidedBy.FirstName + " " + c.ManagerDecidedBy.LastName,
-                HrBy = c.HrDecidedBy == null ? null : c.HrDecidedBy.FirstName + " " + c.HrDecidedBy.LastName,
+                ManagerBy = c.AttendanceApproval!.ManagerDecidedBy == null ? null : c.AttendanceApproval.ManagerDecidedBy.FirstName + " " + c.AttendanceApproval.ManagerDecidedBy.LastName,
+                HrBy = c.AttendanceApproval.HrDecidedBy == null ? null : c.AttendanceApproval.HrDecidedBy.FirstName + " " + c.AttendanceApproval.HrDecidedBy.LastName,
             })
             .ToListAsync(cancellationToken);
 
@@ -185,10 +203,10 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 .Select(r => Version(r.Record, r.ShiftTitle, reviews.Where(d => d.AttendanceRecordId == r.Record.Id)
                     .Select(d => new RecordReviewItem
                     {
-                        Outcome = d.Outcome.ToString(),
+                        Outcome = d.Status.ToString(),
                         DecidedByName = d.By,
-                        DecidedByRole = d.DecidedByRole.ToString(),
-                        DecidedAt = d.DecidedAt,
+                        DecidedByRole = d.ByHr ? "HR" : "Manager",
+                        DecidedAt = d.DecidedAt ?? default,
                         Reason = d.Reason,
                         OvertimeMinutes = d.OvertimeMinutes,
                     })
@@ -228,13 +246,13 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     Justification = x.Correction.Justification,
                     RequestedByName = x.RequestedBy,
                     RequestedAt = x.Correction.RequestedAt,
-                    ApprovalWorkflow = x.Correction.ApprovalWorkflow.ToString(),
-                    Status = x.Correction.Status.ToString(),
-                    ManagerDecision = x.Correction.ManagerDecision?.ToString(),
+                    ApprovalWorkflow = x.Approval.Workflow.ToString(),
+                    Status = x.Approval.Status.ToString(),
+                    ManagerDecision = x.Approval.ManagerDecision?.ToString(),
                     ManagerDecidedByName = x.ManagerBy,
-                    HrDecision = x.Correction.HrDecision?.ToString(),
+                    HrDecision = x.Approval.HrDecision?.ToString(),
                     HrDecidedByName = x.HrBy,
-                    AppliedAt = x.Correction.AppliedAt,
+                    AppliedAt = x.Approval.AppliedAt,
                 })
                 .ToList(),
             Punches = punches

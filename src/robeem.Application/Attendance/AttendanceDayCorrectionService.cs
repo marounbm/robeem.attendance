@@ -102,19 +102,20 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
 
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
         var now = _clock.GetLocalNow().DateTime;
-        var requestId = Guid.NewGuid();
+
+        // The request is one approval; its edits are the rows that point to it, decided together.
+        var approval = ApprovalRules.NewCorrectionApproval(employeeId, day, requestedByEmployeeId, now, policy.CorrectionApprovalWorkflow);
         foreach (var row in rows)
         {
-            row.RequestId = requestId;
+            row.AttendanceApproval = approval;
             row.EmployeeId = employeeId;
             row.AttendanceDate = day;
             row.Justification = justification;
             row.RequestedByEmployeeId = requestedByEmployeeId;
             row.RequestedAt = now;
-            row.ApprovalWorkflow = policy.CorrectionApprovalWorkflow;
-            row.Status = AttendanceCorrectionStatus.Pending;
         }
 
+        _db.AttendanceApprovals.Add(approval);
         _db.AttendanceCorrections.AddRange(rows);
 
         // The day's open exceptions wait for the decision together.
@@ -426,7 +427,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         var applied = await _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && ((c.NormalizedTransactionId != null && ids.Contains(c.NormalizedTransactionId.Value))
                     || (c.Kind == AttendanceCorrectionKind.SupplyPunch && c.ProposedValue >= day && c.ProposedValue < to)))
             .OrderBy(c => c.Id)
@@ -479,7 +480,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         var cancelledIds = await _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch
                 && c.CancelsCorrectionId != null
                 && suppliedIds.Contains(c.CancelsCorrectionId.Value))
@@ -513,7 +514,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             || await _db.AttendanceCorrections.AnyAsync(
                 c => c.EmployeeId == employeeId
                     && c.AttendanceDate == day
-                    && (c.Status == AttendanceCorrectionStatus.Pending || c.Status == AttendanceCorrectionStatus.Approved),
+                    && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Pending,
                 cancellationToken);
         var anyOpen = listed.Any(e => e.Status == nameof(AttendanceExceptionStatus.Open));
         var reason = pending ? "A correction of this day is already waiting for a decision."

@@ -112,8 +112,20 @@ public sealed class ReconciliationJob : IScheduledJob
         // And the job history, which only matters for a while.
         var history = await scope.ServiceProvider.GetRequiredService<IJobRunLog>().PruneAsync(_clock.GetLocalNow().DateTime.AddDays(-HistoryRetentionDays), cancellationToken);
 
+        // And the approvals: every record waiting for review has its pending review approval, and no approval waits for a record that doesn't.
+        var approvals = await scope.ServiceProvider.GetRequiredService<IAttendanceApprovalReconciler>().ReconcileAsync(cancellationToken);
+        if (approvals.Total > 0)
+        {
+            _logger.LogWarning(
+                "Approvals of tenant {TenantId} had drifted from their records: {Queued} queued, {SetAside} set aside.",
+                tenantId,
+                approvals.Queued,
+                approvals.SetAside);
+        }
+
         var summary = $"{reconciled} integration(s) reconciled, {records} record(s) re-pulled; {pruned} empty batch(es) and {history} old job run(s) removed."
+            + (approvals.Total == 0 ? string.Empty : $" {approvals.Queued} review approval(s) queued and {approvals.SetAside} set aside to match the records.")
             + (problems.Count == 0 ? string.Empty : " Problems: " + string.Join("; ", problems));
-        return new JobRunResult(reconciled + pruned, summary, problems.Count > 0);
+        return new JobRunResult(reconciled + pruned + approvals.Total, summary, problems.Count > 0);
     }
 }

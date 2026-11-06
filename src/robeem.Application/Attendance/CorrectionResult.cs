@@ -9,7 +9,7 @@ namespace robeem.Application.Attendance;
 /// </summary>
 public sealed class CorrectionResult
 {
-    private CorrectionResult(int? correctionId, AttendanceCorrectionStatus? status, AttendanceExceptionStatus? exceptionStatus, bool notFound, IReadOnlyDictionary<string, string> errors)
+    private CorrectionResult(int? correctionId, AttendanceApprovalStatus? status, AttendanceExceptionStatus? exceptionStatus, bool notFound, IReadOnlyDictionary<string, string> errors)
     {
         CorrectionId = correctionId;
         Status = status;
@@ -20,7 +20,8 @@ public sealed class CorrectionResult
 
     public int? CorrectionId { get; }
 
-    public AttendanceCorrectionStatus? Status { get; }
+    /// <summary>Gets the status of the correction's approval: Pending, Rejected or Applied.</summary>
+    public AttendanceApprovalStatus? Status { get; }
 
     public AttendanceExceptionStatus? ExceptionStatus { get; }
 
@@ -30,8 +31,8 @@ public sealed class CorrectionResult
 
     public bool Succeeded => !NotFound && Errors.Count == 0;
 
-    public static CorrectionResult Success(AttendanceCorrection correction, AttendanceExceptionStatus exceptionStatus) =>
-        new(correction.Id, correction.Status, exceptionStatus, false, new Dictionary<string, string>());
+    public static CorrectionResult Success(int correctionId, AttendanceApprovalStatus status, AttendanceExceptionStatus exceptionStatus) =>
+        new(correctionId, status, exceptionStatus, false, new Dictionary<string, string>());
 
     public static CorrectionResult Missing() => new(null, null, null, true, new Dictionary<string, string>());
 

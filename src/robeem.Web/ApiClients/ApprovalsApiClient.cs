@@ -6,18 +6,18 @@ using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
-public sealed class ReviewsApiClient : IReviewsApiClient
+public sealed class ApprovalsApiClient : IApprovalsApiClient
 {
-    private const string Path = "api/attendance/reviews";
+    private const string Path = "api/attendance/approvals";
 
     private readonly HttpClient _http;
 
-    public ReviewsApiClient(HttpClient http)
+    public ApprovalsApiClient(HttpClient http)
     {
         _http = http;
     }
 
-    public async Task<PagedResult<ReviewListItem>> ListPendingAsync(int? employeeId, DateTime? from, DateTime? to, string? reason, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<ApprovalListItem>> ListPendingAsync(int? employeeId, DateTime? from, DateTime? to, string? type, string? reason, int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = new Dictionary<string, string?>
         {
@@ -39,25 +39,30 @@ public sealed class ReviewsApiClient : IReviewsApiClient
             query["to"] = last.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
 
+        if (!string.IsNullOrWhiteSpace(type))
+        {
+            query["type"] = type;
+        }
+
         if (!string.IsNullOrWhiteSpace(reason))
         {
             query["reason"] = reason;
         }
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString($"{Path}/pending", query), cancellationToken);
-        return await ApiResponses.ReadAsync<PagedResult<ReviewListItem>>(response, cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<ApprovalListItem>>(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)
     {
-        // The same people, by the same scope, as the attendance days the records belong to.
+        // The same people, by the same scope, as the attendance days the approvals belong to.
         using var response = await _http.GetAsync("api/attendance/records/employee-options", cancellationToken);
         return await ApiResponses.ReadAsync<List<EmployeeOption>>(response, cancellationToken);
     }
 
-    public async Task<ApiCommandResult<ReviewDecisionResponse>> DecideAsync(int recordId, DecideReviewRequest request, CancellationToken cancellationToken)
+    public async Task<ApiCommandResult<ApprovalDecisionResponse>> DecideAsync(int approvalId, DecideApprovalRequest request, CancellationToken cancellationToken)
     {
-        using var response = await _http.PostAsJsonAsync($"{Path}/{recordId.ToString(CultureInfo.InvariantCulture)}/decision", request, cancellationToken);
-        return await ApiResponses.CommandAsync<ReviewDecisionResponse>(response, cancellationToken);
+        using var response = await _http.PostAsJsonAsync($"{Path}/{approvalId.ToString(CultureInfo.InvariantCulture)}/decision", request, cancellationToken);
+        return await ApiResponses.CommandAsync<ApprovalDecisionResponse>(response, cancellationToken);
     }
 }

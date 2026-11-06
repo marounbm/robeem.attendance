@@ -31,18 +31,21 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
 
         var proposed = await ProposeAsync(exceptionId, Monday.At(12, 0));
         Assert.True(proposed.Succeeded);
-        Assert.Equal((AttendanceCorrectionStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (proposed.Status, proposed.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (proposed.Status, proposed.ExceptionStatus));
 
         var decided = await DecideAsync(proposed.CorrectionId!.Value, _managerId, approved: true, isHr: false);
 
-        Assert.Equal((AttendanceCorrectionStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var correction = Assert.Single(db.AttendanceCorrections);
-        Assert.Equal((NormalizedEventType.BreakOut, Monday.At(12, 0), AttendanceCorrectionStatus.Applied), (correction.CorrectedEventType, correction.ProposedValue, correction.Status));
+        var approval = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+        Assert.Equal(approval.Id, correction.AttendanceApprovalId);
+        Assert.Equal((NormalizedEventType.BreakOut, Monday.At(12, 0), AttendanceApprovalStatus.Applied), (correction.CorrectedEventType, correction.ProposedValue, approval.Status));
         Assert.Equal((EmployeeId, "Because the reader missed it."), (correction.RequestedByEmployeeId, correction.Justification));
-        Assert.Equal((AttendanceCorrectionDecision.Approved, _managerId), (correction.ManagerDecision, correction.ManagerDecidedById));
-        Assert.Null(correction.HrDecision);
-        Assert.Equal(Monday.At(18, 0), correction.AppliedAt);
+        Assert.Equal((AttendanceCorrectionDecision.Approved, _managerId), (approval.ManagerDecision, approval.ManagerDecidedById));
+        Assert.Null(approval.HrDecision);
+        Assert.Equal(Monday.At(18, 0), approval.AppliedAt);
+        Assert.False(correction.IsPending);
 
         var exception = Assert.Single(db.AttendanceExceptions);
         Assert.Equal((AttendanceExceptionStatus.Closed, AttendanceExceptionResolutionMethod.Correction), (exception.Status, exception.ResolutionMethod));
@@ -132,11 +135,12 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
 
         var rejected = await DecideAsync(first.CorrectionId!.Value, _managerId, approved: false, isHr: false);
 
-        Assert.Equal((AttendanceCorrectionStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            var correction = Assert.Single(db.AttendanceCorrections);
-            Assert.Equal((AttendanceCorrectionDecision.Rejected, _managerId), (correction.ManagerDecision, correction.ManagerDecidedById));
+            var approval = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+            Assert.Equal((AttendanceApprovalStatus.Rejected, AttendanceCorrectionDecision.Rejected, _managerId), (approval.Status, approval.ManagerDecision, approval.ManagerDecidedById));
+            Assert.False(Assert.Single(db.AttendanceCorrections).IsPending);
             Assert.Equal(AttendanceExceptionStatus.Open, Assert.Single(db.AttendanceExceptions).Status);
 
             // Nothing was recalculated: still the one record, still waiting for review.
@@ -161,11 +165,11 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var afterManager = await DecideAsync(proposed.CorrectionId!.Value, _managerId, approved: true, isHr: false);
 
         Assert.True(afterManager.Succeeded);
-        Assert.Equal((AttendanceCorrectionStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (afterManager.Status, afterManager.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (afterManager.Status, afterManager.ExceptionStatus));
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            var pending = Assert.Single(db.AttendanceCorrections);
-            Assert.Equal((AttendanceCorrectionStatus.Pending, AttendanceCorrectionDecision.Approved), (pending.Status, pending.ManagerDecision));
+            var pending = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+            Assert.Equal((AttendanceApprovalStatus.Pending, AttendanceCorrectionDecision.Approved), (pending.Status, pending.ManagerDecision));
             Assert.Null(pending.HrDecision);
             Assert.Null(pending.AppliedAt);
 
@@ -181,9 +185,9 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
 
         var afterHr = await DecideAsync(proposed.CorrectionId!.Value, _hrId, approved: true, isHr: true);
 
-        Assert.Equal((AttendanceCorrectionStatus.Applied, AttendanceExceptionStatus.Closed), (afterHr.Status, afterHr.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Applied, AttendanceExceptionStatus.Closed), (afterHr.Status, afterHr.ExceptionStatus));
         using var check = Database.CreateContext(TestDatabase.TenantA);
-        var applied = Assert.Single(check.AttendanceCorrections);
+        var applied = Assert.Single(check.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
         Assert.Equal((AttendanceCorrectionDecision.Approved, _hrId), (applied.HrDecision, applied.HrDecidedById));
         Assert.Equal(AttendanceRecordStatus.Approved, check.AttendanceRecords.Single(r => r.IsCurrent).Status);
     }
@@ -200,7 +204,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         Assert.Contains(nameof(DecideCorrectionRequest.IsHrDecision), early.Errors.Keys);
 
         var rejected = await DecideAsync(id, _managerId, approved: false, isHr: false);
-        Assert.Equal((AttendanceCorrectionStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
     }
 
     [Fact]
@@ -213,7 +217,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         Assert.Empty(await ListPendingAsync(CorrectionApprover.Manager));
         Assert.Contains(nameof(DecideCorrectionRequest.IsHrDecision), (await DecideAsync(id, _managerId, approved: true, isHr: false)).Errors.Keys);
 
-        Assert.Equal(AttendanceCorrectionStatus.Applied, (await DecideAsync(id, _hrId, approved: true, isHr: true)).Status);
+        Assert.Equal(AttendanceApprovalStatus.Applied, (await DecideAsync(id, _hrId, approved: true, isHr: true)).Status);
     }
 
     [Fact]
@@ -226,7 +230,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
 
         Assert.Contains(nameof(DecideCorrectionRequest.IsHrDecision), result.Errors.Keys);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal(AttendanceCorrectionStatus.Pending, Assert.Single(db.AttendanceCorrections).Status);
+        Assert.Equal(AttendanceApprovalStatus.Pending, Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction)).Status);
     }
 
     [Fact]
@@ -303,7 +307,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var again = await DecideAsync(id, _managerId, approved: false, isHr: false);
         Assert.False(again.Succeeded);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal(AttendanceCorrectionStatus.Applied, Assert.Single(db.AttendanceCorrections).Status);
+        Assert.Equal(AttendanceApprovalStatus.Applied, Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction)).Status);
     }
 
     [Fact]
@@ -321,14 +325,14 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         // Another manager can not decide it ...
         var refused = await DecideAsync(id, otherManager, approved: true, isHr: false);
         Assert.Contains(CorrectionErrorKeys.DecidedBy, refused.Errors.Keys);
-        Assert.Equal(AttendanceCorrectionStatus.Pending, (await CorrectionAsync(id)).Status);
+        Assert.Equal(AttendanceApprovalStatus.Pending, (await ApprovalOfAsync(id)).Status);
         Assert.Empty(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
 
         // ... until the employee moves to them.
         SetManager(otherManager);
         Assert.Empty(await ListPendingAsync(CorrectionApprover.Manager, _managerId));
         Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.Manager, otherManager)).Id);
-        Assert.Equal(AttendanceCorrectionStatus.Applied, (await DecideAsync(id, otherManager, approved: true, isHr: false)).Status);
+        Assert.Equal(AttendanceApprovalStatus.Applied, (await DecideAsync(id, otherManager, approved: true, isHr: false)).Status);
     }
 
     [Fact]
@@ -344,10 +348,10 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var decided = await DecideAsync(id, _hrId, approved: true, isHr: true);
 
         // The manager's policy asked for the manager's decision only: HR's stands as that decision.
-        Assert.Equal((AttendanceCorrectionStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var correction = Assert.Single(db.AttendanceCorrections);
-        Assert.Equal((AttendanceCorrectionDecision.Approved, _hrId, null), (correction.ManagerDecision, correction.ManagerDecidedById, correction.HrDecision));
+        var approval = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+        Assert.Equal((AttendanceCorrectionDecision.Approved, _hrId, null), (approval.ManagerDecision, approval.ManagerDecidedById, approval.HrDecision));
         Assert.Contains("HR, in place of the manager", Assert.Single(await AuditAsync(AttendanceAuditActions.CorrectionDecided)).Details);
     }
 
@@ -361,7 +365,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var refused = await DecideAsync(id, _managerId, approved: true, isHr: false);
 
         Assert.Contains(CorrectionErrorKeys.DecidedBy, refused.Errors.Keys);
-        Assert.Equal(AttendanceCorrectionStatus.Pending, (await CorrectionAsync(id)).Status);
+        Assert.Equal(AttendanceApprovalStatus.Pending, (await ApprovalOfAsync(id)).Status);
     }
 
     [Fact]
@@ -372,7 +376,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         SetActive(_managerId, false);
 
         Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.HR)).Id);
-        Assert.Equal(AttendanceCorrectionStatus.Applied, (await DecideAsync(id, _hrId, approved: true, isHr: true)).Status);
+        Assert.Equal(AttendanceApprovalStatus.Applied, (await DecideAsync(id, _hrId, approved: true, isHr: true)).Status);
     }
 
     [Fact]
@@ -386,15 +390,15 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         var first = await DecideAsync(id, _hrId, approved: true, isHr: true);
 
         // The manager's step is in; the HR step still waits, in HR's queue.
-        Assert.Equal(AttendanceCorrectionStatus.Pending, first.Status);
+        Assert.Equal(AttendanceApprovalStatus.Pending, first.Status);
         Assert.Equal(id, Assert.Single(await ListPendingAsync(CorrectionApprover.HR)).Id);
 
         var second = await DecideAsync(id, _hrId, approved: true, isHr: true);
 
-        Assert.Equal(AttendanceCorrectionStatus.Applied, second.Status);
+        Assert.Equal(AttendanceApprovalStatus.Applied, second.Status);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var correction = Assert.Single(db.AttendanceCorrections);
-        Assert.Equal((_hrId, _hrId), (correction.ManagerDecidedById, correction.HrDecidedById));
+        var approval = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+        Assert.Equal((_hrId, _hrId), (approval.ManagerDecidedById, approval.HrDecidedById));
     }
 
     [Fact]
@@ -419,7 +423,7 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
 
         var decision = Assert.Single(await AuditAsync(AttendanceAuditActions.CorrectionDecided));
         Assert.Equal($"employee:{_managerId}", decision.Actor);
-        Assert.Equal((nameof(AttendanceCorrection), correctionId), (decision.EntityType, decision.EntityId));
+        Assert.Equal((nameof(AttendanceApproval), (await ApprovalOfAsync(correctionId)).Id), (decision.EntityType, decision.EntityId));
         Assert.Contains("Approved by Manager", decision.Details);
         Assert.Contains("Applied", decision.Details);
     }
@@ -508,10 +512,11 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
         Assert.DoesNotContain(await AuditAsync(AttendanceAuditActions.ExceptionStatusChanged), e => e.Details!.Contains("PendingCorrection"));
     }
 
-    private async Task<AttendanceCorrection> CorrectionAsync(int id)
+    // A correction is one edit of a request; the request's status and decisions are its approval's.
+    private async Task<AttendanceApproval> ApprovalOfAsync(int correctionId)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return db.AttendanceCorrections.Single(c => c.Id == id);
+        return await Task.FromResult(db.AttendanceCorrections.Where(c => c.Id == correctionId).Select(c => c.AttendanceApproval!).Single());
     }
 
     private async Task<IReadOnlyList<AuditLogEntry>> AuditAsync(string action)
@@ -576,5 +581,5 @@ public sealed class AttendanceCorrectionServiceTests : AttendanceEngineTestBase
     }
 
     private AttendanceCorrectionService CreateService(RobeemDbContext db) =>
-        new(db, new AttendancePolicyResolver(db), CreateEngine(db), CreateAudit(db), Clock);
+        new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);
 }

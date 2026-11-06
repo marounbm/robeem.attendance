@@ -41,10 +41,11 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         Assert.True(result.Succeeded);
         Assert.Equal((AttendanceReviewOutcome.Approved, AttendanceRecordStatus.Approved), (result.Outcome, result.RecordStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var decision = Assert.Single(db.AttendanceReviewDecisions);
+        var decision = Assert.Single(db.AttendanceApprovals);
         Assert.Equal(
-            (record.Id, EmployeeId, Monday, AttendanceReviewerRole.Manager, _managerId, 90),
-            (decision.AttendanceRecordId, decision.EmployeeId, decision.AttendanceDate, decision.DecidedByRole, decision.DecidedById, decision.OvertimeMinutes));
+            (AttendanceApprovalType.Review, AttendanceApprovalStatus.Approved, record.Id, EmployeeId, Monday, _managerId, 90),
+            (decision.Type, decision.Status, decision.AttendanceRecordId, decision.EmployeeId, decision.AttendanceDate, decision.ManagerDecidedById, decision.OvertimeMinutes));
+        Assert.Null(decision.HrDecision);
         Assert.Equal(AttendanceRecordStatus.Approved, db.AttendanceRecords.Single(r => r.Id == record.Id).Status);
         Assert.Equal(AttendanceRecordStatus.Approved, db.AttendanceDaySummaries.Single().Status);
 
@@ -71,7 +72,8 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
 
         Assert.Equal((AttendanceReviewOutcome.Rejected, AttendanceRecordStatus.Rejected), (rejected.Outcome, rejected.RecordStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal("Not authorised.", Assert.Single(db.AttendanceReviewDecisions).Reason);
+        var rejection = Assert.Single(db.AttendanceApprovals);
+        Assert.Equal((AttendanceApprovalStatus.Rejected, "Not authorised."), (rejection.Status, rejection.Reason));
         Assert.Equal(AttendanceRecordStatus.Rejected, db.AttendanceDaySummaries.Single().Status);
         Assert.Empty(await ExtractAsync());
     }
@@ -85,7 +87,9 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
 
         Assert.True(result.Succeeded);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal(AttendanceReviewerRole.HR, Assert.Single(db.AttendanceReviewDecisions).DecidedByRole);
+        var decision = Assert.Single(db.AttendanceApprovals);
+        Assert.Equal((AttendanceCorrectionDecision.Approved, _hrId), (decision.HrDecision, decision.HrDecidedById));
+        Assert.Null(decision.ManagerDecision);
     }
 
     [Fact]
@@ -99,7 +103,7 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         Assert.Contains(CorrectionErrorKeys.DecidedBy, (await DecideAsync(recordId, 9999, asHr: true, approved: true)).Errors.Keys);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Empty(db.AttendanceReviewDecisions);
+        Assert.Equal(AttendanceApprovalStatus.Pending, Assert.Single(db.AttendanceApprovals).Status);
         Assert.Equal(AttendanceRecordStatus.PendingReview, db.AttendanceRecords.Single(r => r.Id == recordId).Status);
         Assert.Empty(await AuditAsync());
     }
@@ -116,7 +120,7 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
 
         Assert.Contains("recordId", again.Errors.Keys);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Single(db.AttendanceReviewDecisions);
+        Assert.Equal(AttendanceApprovalStatus.Approved, Assert.Single(db.AttendanceApprovals).Status);
     }
 
     [Fact]
@@ -136,7 +140,7 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         Assert.Contains("exception", refused.Errors["recordId"]);
         Assert.Empty(await ListAsync(_managerId, isHr: false));
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Empty(db.AttendanceReviewDecisions);
+        Assert.All(db.AttendanceApprovals, a => Assert.Equal(AttendanceApprovalStatus.Pending, a.Status));
     }
 
     [Fact]
@@ -164,7 +168,7 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
 
         Assert.Contains("changed while it was being reviewed", result.Errors["recordId"]);
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Empty(db.AttendanceReviewDecisions);
+        Assert.Equal(AttendanceApprovalStatus.Pending, Assert.Single(db.AttendanceApprovals).Status);
         Assert.Empty(await AuditAsync());
         var current = db.AttendanceRecords.Single(r => r.IsCurrent);
         Assert.Equal((recordId, AttendanceRecordStatus.PendingReview), (current.Id, current.Status));
@@ -372,13 +376,28 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
             Status = AttendanceRecordStatus.PendingReview,
         };
 
-        db.AttendanceRecords.AddRange(
+        var records = new[]
+        {
             Pending(EmployeeId, 0, 30, shiftId, true, true),
             Pending(EmployeeId, 1, 0, null, true, true),
             Pending(EmployeeId, 2, 0, shiftId, true, false),
             Pending(EmployeeId, 3, 0, shiftId, true, true),
             Pending(other, 0, 45, shiftId, true, true),
-            Pending(other, 4, 0, null, true, true));
+            Pending(other, 4, 0, null, true, true),
+        };
+        db.AttendanceRecords.AddRange(records);
+        db.SaveChanges();
+
+        // Records written straight to the table skip the engine, which is what queues a pending review for each record it leaves for one.
+        db.AttendanceApprovals.AddRange(records.Select(r => new AttendanceApproval
+        {
+            Type = AttendanceApprovalType.Review,
+            EmployeeId = r.EmployeeId,
+            AttendanceDate = r.AttendanceDate,
+            Workflow = ApprovalWorkflow.ManagerOrHr,
+            AttendanceRecordId = r.Id,
+            OvertimeMinutes = r.OvertimeMinutes,
+        }));
         db.SaveChanges();
         return other;
     }
@@ -398,5 +417,5 @@ public sealed class AttendanceReviewServiceTests : AttendanceEngineTestBase
         return (await CreateAudit(db).ListAsync(AttendanceAuditActions.ReviewDecided, null, null, 1, 100, CancellationToken.None)).Items;
     }
 
-    private AttendanceReviewService CreateService(RobeemDbContext db) => new(db, CreateEngine(db), CreateAudit(db), Clock);
+    private AttendanceReviewService CreateService(RobeemDbContext db) => new(db, new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), Clock);
 }

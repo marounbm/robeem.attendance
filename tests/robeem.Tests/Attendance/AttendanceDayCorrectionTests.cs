@@ -86,8 +86,10 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         {
             var rows = db.AttendanceCorrections.OrderBy(c => c.Id).ToList();
             Assert.Equal([AttendanceCorrectionKind.IgnorePunch, AttendanceCorrectionKind.SupplyPunch], rows.Select(c => c.Kind));
-            Assert.Single(rows.Select(c => c.RequestId).Distinct());
-            Assert.All(rows, c => Assert.Equal((AttendanceCorrectionStatus.Pending, null), (c.Status, c.AttendanceExceptionId)));
+            Assert.Single(rows.Select(c => c.AttendanceApprovalId).Distinct());
+            Assert.All(rows, c => Assert.Null(c.AttendanceExceptionId));
+            var approval = Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+            Assert.Equal((AttendanceApprovalType.Correction, AttendanceApprovalStatus.Pending), (approval.Type, approval.Status));
 
             // The day's exceptions wait for the decision together.
             Assert.All(db.AttendanceExceptions, e => Assert.Equal(AttendanceExceptionStatus.PendingCorrection, e.Status));
@@ -101,11 +103,11 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
             Assert.Null(item.ExceptionId);
 
             var decided = await Corrections(db).DecideCorrectionAsync(item.Id, _managerId, approved: true, isHrDecision: false, CancellationToken.None);
-            Assert.Equal(AttendanceCorrectionStatus.Applied, decided.Status);
+            Assert.Equal(AttendanceApprovalStatus.Applied, decided.Status);
         }
 
         using var check = Database.CreateContext(TestDatabase.TenantA);
-        Assert.All(check.AttendanceCorrections, c => Assert.Equal(AttendanceCorrectionStatus.Applied, c.Status));
+        Assert.Equal(AttendanceApprovalStatus.Applied, Assert.Single(check.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction)).Status);
         Assert.All(check.AttendanceExceptions.Where(e => e.ExceptionType == AttendanceExceptionType.InvalidSequence), e => Assert.Equal(AttendanceExceptionStatus.Closed, e.Status));
 
         // In 08:00, out 13:00, in 14:00 (added), out 17:00: five hours and three hours; the ignored punch counts for nothing.
@@ -167,7 +169,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
 
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            Assert.All(db.AttendanceCorrections, c => Assert.Equal(AttendanceCorrectionStatus.Rejected, c.Status));
+            Assert.Equal(AttendanceApprovalStatus.Rejected, Assert.Single(db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction)).Status);
             Assert.All(db.AttendanceExceptions, e => Assert.Equal(AttendanceExceptionStatus.Open, e.Status));
         }
 
@@ -300,7 +302,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
             // Additive: the earlier correction is not edited, a new row points at it.
             var cancel = db.AttendanceCorrections.Single(c => c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch);
             Assert.Equal(addedId, cancel.CancelsCorrectionId);
-            Assert.Equal(AttendanceCorrectionStatus.Applied, db.AttendanceCorrections.Single(c => c.Id == addedId).Status);
+            Assert.Equal(AttendanceApprovalStatus.Applied, db.AttendanceCorrections.Where(c => c.Id == addedId).Select(c => c.AttendanceApproval!.Status).Single());
         }
 
         await DecideFirstAsync(approved: true);
@@ -511,6 +513,16 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var correction = new AttendanceCorrection
         {
+            AttendanceApproval = new AttendanceApproval
+            {
+                Type = AttendanceApprovalType.Correction,
+                EmployeeId = EmployeeId,
+                AttendanceDate = at.Date,
+                RequestedByEmployeeId = EmployeeId,
+                RequestedAt = at,
+                Status = AttendanceApprovalStatus.Applied,
+                AppliedAt = at,
+            },
             EmployeeId = EmployeeId,
             AttendanceDate = at.Date,
             Kind = AttendanceCorrectionKind.SupplyPunch,
@@ -519,8 +531,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
             TimeZoneId = db.NormalizedAttendanceTransactions.First().TimeZoneId,
             Justification = "Forgot",
             RequestedByEmployeeId = EmployeeId,
-            Status = AttendanceCorrectionStatus.Applied,
-            AppliedAt = at,
+            IsPending = false,
         };
         db.AttendanceCorrections.Add(correction);
         db.SaveChanges();
@@ -551,7 +562,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     private async Task DecideFirstAsync(bool approved)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var first = db.AttendanceCorrections.OrderBy(c => c.Id).First(c => c.Status == AttendanceCorrectionStatus.Pending);
+        var first = db.AttendanceCorrections.OrderBy(c => c.Id).First(c => c.AttendanceApproval!.Status == AttendanceApprovalStatus.Pending);
         await Corrections(db).DecideCorrectionAsync(first.Id, _managerId, approved, isHrDecision: false, CancellationToken.None);
     }
 
@@ -559,7 +570,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         new(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), CreateAudit(db), Clock);
 
     private AttendanceCorrectionService Corrections(RobeemDbContext db) =>
-        new(db, new AttendancePolicyResolver(db), CreateEngine(db), CreateAudit(db), Clock);
+        new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);
 
     private void AddPunches(string punches)
     {

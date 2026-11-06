@@ -268,7 +268,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var ignored = await _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && c.Kind == AttendanceCorrectionKind.IgnorePunch
                 && c.NormalizedTransactionId != null)
             .Select(c => c.NormalizedTransactionId!.Value)
@@ -284,7 +284,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var changes = await _db.AttendanceCorrections
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && c.Kind == AttendanceCorrectionKind.ChangePunchType
                 && c.NormalizedTransactionId != null)
             .OrderBy(c => c.Id)
@@ -310,7 +310,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
                 && c.Kind == AttendanceCorrectionKind.SupplyPunch
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && c.ProposedValue >= from
                 && c.ProposedValue < to)
             .Select(c => new { c.Id, c.CorrectedEventType, c.ProposedValue, c.TimeZoneId })
@@ -321,7 +321,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .AsNoTracking()
             .Where(c => c.EmployeeId == employeeId
                 && c.Kind == AttendanceCorrectionKind.CancelSuppliedPunch
-                && c.Status == AttendanceCorrectionStatus.Applied
+                && c.AttendanceApproval!.Status == AttendanceApprovalStatus.Applied
                 && c.CancelsCorrectionId != null)
             .Select(c => c.CancelsCorrectionId!.Value)
             .ToListAsync(cancellationToken);
@@ -351,6 +351,29 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == day)
             .ToListAsync(cancellationToken);
 
+        // A record left for review has a pending review approval, the one place an approver finds it. The approvals follow the records:
+        // queued when a record is left for review, set aside (Superseded) when its version is retired or the engine finds nothing left to review.
+        var existingIds = existing.Select(r => r.Id).ToList();
+        var pendingReviews = await _db.AttendanceApprovals
+            .Where(a => a.Type == AttendanceApprovalType.Review
+                && a.Status == AttendanceApprovalStatus.Pending
+                && existingIds.Contains(a.AttendanceRecordId!.Value))
+            .ToListAsync(cancellationToken);
+        var now = _clock.GetLocalNow().DateTime;
+
+        void SetAside(AttendanceRecord record) =>
+            pendingReviews.Where(a => a.AttendanceRecordId == record.Id).ToList().ForEach(a => a.Status = AttendanceApprovalStatus.Superseded);
+
+        void Queue(AttendanceRecord record)
+        {
+            if (!pendingReviews.Any(a => a.AttendanceRecordId == record.Id))
+            {
+                var queued = ApprovalRules.NewReviewApproval(record, now);
+                _db.AttendanceApprovals.Add(queued);
+                pendingReviews.Add(queued);
+            }
+        }
+
         var current = new List<AttendanceRecord>();
         int written = 0, unchanged = 0;
         foreach (var (shift, calculation) in calculated)
@@ -373,6 +396,12 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                     // Nothing is left to review: the exception that held the day was accepted. A reviewer's own decision (approved or
                     // rejected) is never changed here.
                     previous.Status = AttendanceRecordStatus.Approved;
+                    SetAside(previous);
+                }
+
+                if (previous.Status == AttendanceRecordStatus.PendingReview)
+                {
+                    Queue(previous);
                 }
 
                 current.Add(previous);
@@ -386,9 +415,15 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             {
                 previous.IsCurrent = false;
                 previous.SupersededByRecord = candidate;
+                SetAside(previous);
             }
 
             _db.AttendanceRecords.Add(candidate);
+            if (candidate.Status == AttendanceRecordStatus.PendingReview)
+            {
+                Queue(candidate);
+            }
+
             current.Add(candidate);
             written++;
         }
@@ -397,7 +432,11 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         // longer exists) are retired without a successor.
         var keys = calculated.Select(c => c.Shift?.TimeScheduleShiftId).ToHashSet();
         var stale = existing.Where(r => r.IsCurrent && !keys.Contains(r.TimeScheduleShiftId)).ToList();
-        stale.ForEach(r => r.IsCurrent = false);
+        stale.ForEach(r =>
+        {
+            r.IsCurrent = false;
+            SetAside(r);
+        });
 
         return (current, new DayProcessingResult(written, unchanged, stale.Count));
     }

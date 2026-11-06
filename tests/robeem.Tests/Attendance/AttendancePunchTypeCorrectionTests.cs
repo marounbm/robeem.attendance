@@ -105,11 +105,11 @@ public sealed class AttendancePunchTypeCorrectionTests : AttendanceEngineTestBas
 
         var proposed = await ProposeAsync(exceptionId, "CheckIn");
         Assert.True(proposed.Succeeded);
-        Assert.Equal((AttendanceCorrectionStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (proposed.Status, proposed.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Pending, AttendanceExceptionStatus.PendingCorrection), (proposed.Status, proposed.ExceptionStatus));
 
         var decided = await DecideAsync(proposed.CorrectionId!.Value, _managerId, approved: true);
 
-        Assert.Equal((AttendanceCorrectionStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Applied, AttendanceExceptionStatus.Closed), (decided.Status, decided.ExceptionStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var correction = Assert.Single(db.AttendanceCorrections);
         Assert.Equal(
@@ -157,7 +157,7 @@ public sealed class AttendancePunchTypeCorrectionTests : AttendanceEngineTestBas
 
         var rejected = await DecideAsync(proposed.CorrectionId!.Value, _managerId, approved: false);
 
-        Assert.Equal((AttendanceCorrectionStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
+        Assert.Equal((AttendanceApprovalStatus.Rejected, AttendanceExceptionStatus.Open), (rejected.Status, rejected.ExceptionStatus));
         using var db = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(1, db.AttendanceRecords.Count());
         Assert.Equal(AttendanceExceptionStatus.Open, db.AttendanceExceptions.Single(e => e.Id == exceptionId).Status);
@@ -283,7 +283,7 @@ public sealed class AttendancePunchTypeCorrectionTests : AttendanceEngineTestBas
     }
 
     private AttendanceCorrectionService CreateService(RobeemDbContext db) =>
-        new(db, new AttendancePolicyResolver(db), CreateEngine(db), CreateAudit(db), Clock);
+        new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);
 
     private void AddPunches(string punches)
     {

@@ -33,16 +33,4 @@ public sealed class CorrectionsApiClient : ICorrectionsApiClient
         using var response = await _http.PostAsJsonAsync($"{Path}/day", request, cancellationToken);
         return await ApiResponses.CommandAsync<CreatedResponse>(response, cancellationToken);
     }
-
-    public async Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover awaiting, CancellationToken cancellationToken)
-    {
-        using var response = await _http.GetAsync($"{Path}/pending?awaiting={awaiting}", cancellationToken);
-        return await ApiResponses.ReadAsync<List<CorrectionListItem>>(response, cancellationToken);
-    }
-
-    public async Task<ApiCommandResult<CorrectionDecisionResponse>> DecideAsync(int correctionId, DecideCorrectionRequest request, CancellationToken cancellationToken)
-    {
-        using var response = await _http.PostAsJsonAsync($"{Path}/{correctionId.ToString(CultureInfo.InvariantCulture)}/decision", request, cancellationToken);
-        return await ApiResponses.CommandAsync<CorrectionDecisionResponse>(response, cancellationToken);
-    }
 }

@@ -1,0 +1,166 @@
+@model ApprovalsQueueViewModel
+@{
+    ViewData["Title"] = "Approvals";
+}
+
+<h1 class="h3 mb-1">Approvals</h1>
+<p class="text-muted">
+    Everything waiting for your decision, oldest day first. A <strong>correction</strong> is a change an employee asked for on their own day (a
+    punch added, given another type or deleted): approve it and the day is recalculated; reject it and they can ask again. A <strong>review</strong>
+    is a day the system does not approve by itself: overtime that needs pre-approval, work on a day with no shift, or a day still incomplete.
+    An approval of a review covers exactly what you see: if the day changes afterwards, it needs a new review. A review with an open exception is
+    not shown until the exception is settled.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="type">Type</label>
+        <select id="type" name="type" class="form-select">
+            <option value="">Corrections and reviews</option>
+            @foreach (var kind in ApprovalsQueueViewModel.Types)
+            {
+                <option value="@kind" selected="@(kind == Model.Type)">@kind</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="employeeId">Employee</label>
+        <select id="employeeId" name="employeeId" class="form-select">
+            <option value="">All employees</option>
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.EmployeeId)">@employee.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="why">Why (reviews)</label>
+        <select id="why" name="why" class="form-select">
+            <option value="">Any reason</option>
+            @foreach (var reason in ApprovalsQueueViewModel.Reasons)
+            {
+                <option value="@reason" selected="@(reason == Model.Why)">@DisplayFormats.Words(reason)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select">
+            @foreach (var size in ApprovalsQueueViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+        <a asp-action="Index" class="btn btn-link">Clear</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Items.Count == 0)
+    {
+        <div class="card-body text-muted">@(Model.IsFiltered ? "Nothing matches." : "Nothing is waiting for your decision.")</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Employee</th>
+                        <th scope="col">Day</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">What</th>
+                        <th scope="col"><span class="visually-hidden">Decide</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td>@item.EmployeeName</td>
+                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td>
+                                @if (item.Review is null)
+                                {
+                                    <span class="badge text-bg-info">Correction</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-warning">Review</span>
+                                    <div class="small text-muted mt-1">@DisplayFormats.Words(item.Review.Reason)</div>
+                                }
+                            </td>
+                            <td>
+                                @if (item.Correction is { } correction)
+                                {
+                                    <partial name="_CorrectionEdits" model="correction" />
+                                    <div class="small mt-1">@correction.Justification</div>
+                                    <div class="small text-muted">
+                                        Asked @DisplayFormats.DateTime(item.RequestedAt) · decided by @correction.ApprovalWorkflow
+                                        @if (correction.ManagerDecision is not null)
+                                        {
+                                            <span>· Manager: @correction.ManagerDecision</span>
+                                        }
+                                    </div>
+                                }
+                                else if (item.Review is { } review)
+                                {
+                                    <div class="text-nowrap">
+                                        @if (review.ScheduledStart is not null)
+                                        {
+                                            <span>Scheduled @($"{DisplayFormats.Time(review.ScheduledStart)}–{DisplayFormats.Time(review.ScheduledEnd)}")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">No shift</span>
+                                        }
+                                    </div>
+                                    <div class="text-nowrap">
+                                        Worked @DisplayFormats.Hours(review.WorkingHours)
+                                        <span class="small text-muted">@DisplayFormats.Time(review.ActualCheckIn)–@DisplayFormats.Time(review.ActualCheckOut)</span>
+                                    </div>
+                                    @if (review.OvertimeMinutes > 0)
+                                    {
+                                        <div class="small text-muted">Overtime @DisplayFormats.Minutes(review.OvertimeMinutes)</div>
+                                    }
+                                }
+                            </td>
+                            <td class="text-end">
+                                <form method="post" asp-action="Decide" class="d-flex gap-1 justify-content-end">
+                                    <input type="hidden" name="id" value="@item.Id" />
+                                    <input type="hidden" name="awaiting" value="@item.AwaitingStep" />
+                                    @foreach (var (name, value) in Model.ReturnValues)
+                                    {
+                                        <input type="hidden" name="@name" value="@value" />
+                                    }
+                                    @if (item.Review is not null)
+                                    {
+                                        <input type="text" name="reason" maxlength="1000" class="form-control form-control-sm w-auto"
+                                               placeholder="Reason (required to reject)" aria-label="Reason" />
+                                    }
+                                    <button type="submit" name="approved" value="true" class="btn btn-sm btn-success">Approve</button>
+                                    <button type="submit" name="approved" value="false" class="btn btn-sm btn-outline-danger">Reject</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<partial name="_Pager" model="Model.Pager" />

@@ -14,6 +14,7 @@ public sealed class ReviewResult
         Errors = errors;
     }
 
+    /// <summary>Gets the id of the review approval that was decided.</summary>
     public int? DecisionId { get; }
 
     public AttendanceReviewOutcome? Outcome { get; }
@@ -26,8 +27,8 @@ public sealed class ReviewResult
 
     public bool Succeeded => !NotFound && Errors.Count == 0;
 
-    public static ReviewResult Success(AttendanceReviewDecision decision, AttendanceRecordStatus recordStatus) =>
-        new(decision.Id, decision.Outcome, recordStatus, false, new Dictionary<string, string>());
+    public static ReviewResult Success(int approvalId, AttendanceReviewOutcome outcome, AttendanceRecordStatus recordStatus) =>
+        new(approvalId, outcome, recordStatus, false, new Dictionary<string, string>());
 
     public static ReviewResult Missing() => new(null, null, null, true, new Dictionary<string, string>());
 

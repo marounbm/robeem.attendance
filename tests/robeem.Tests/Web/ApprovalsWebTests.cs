@@ -52,119 +52,100 @@ public sealed class ApprovalsWebTests
     }
 
     [Fact]
-    public async Task TheCorrectionsClient_AsksForTheQueueOfARole_AndPostsTheDecision()
+    public async Task TheApprovalsClient_ListsEveryFilterAsAQuery_AndPostsTheDecision()
     {
-        var queue = new StubHttpHandler(HttpStatusCode.OK, "[]");
-        var decision = new StubHttpHandler(HttpStatusCode.OK, """{"correctionId":5,"status":"Applied","exceptionStatus":"Closed"}""");
+        var list = new StubHttpHandler(
+            HttpStatusCode.OK,
+            """{"items":[{"id":3,"type":"Review","employeeName":"Ada Lovelace","awaitingStep":"Manager","review":{"recordId":8,"reason":"Overtime","overtimeMinutes":83}},{"id":4,"type":"Correction","employeeName":"Ada Lovelace","awaitingStep":"HR","correction":{"id":9,"edits":[{"kind":"SupplyPunch","correctedEventType":"CheckIn"}]}}],"total":45,"page":2,"pageSize":20}""");
+        var decide = new StubHttpHandler(HttpStatusCode.OK, """{"approvalId":4,"type":"Correction","status":"Applied","exceptionStatus":"Closed"}""");
 
-        await new CorrectionsApiClient(queue.CreateClient()).ListPendingAsync(CorrectionApprover.HR, CancellationToken.None);
-        var result = await new CorrectionsApiClient(decision.CreateClient()).DecideAsync(5, new DecideCorrectionRequest { Approved = true, IsHrDecision = true }, CancellationToken.None);
+        var page = await new ApprovalsApiClient(list.CreateClient()).ListPendingAsync(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Review", "Overtime", 2, 20, CancellationToken.None);
+        var result = await new ApprovalsApiClient(decide.CreateClient()).DecideAsync(4, new DecideApprovalRequest { Approved = true, IsHrDecision = true }, CancellationToken.None);
 
-        Assert.Equal("/api/attendance/corrections/pending?awaiting=HR", queue.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Equal("/api/attendance/corrections/5/decision", decision.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Equal("Applied", result.Value!.Status);
-    }
-
-    [Fact]
-    public async Task TheReviewsClient_ListsAndDecides()
-    {
-        var list = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"recordId":3,"employeeName":"Ada Lovelace","reason":"Overtime","overtimeMinutes":83}],"total":45,"page":2,"pageSize":20}""");
-        var decide = new StubHttpHandler(HttpStatusCode.OK, """{"decisionId":1,"recordId":3,"outcome":"Approved","recordStatus":"Approved"}""");
-
-        var page = await new ReviewsApiClient(list.CreateClient()).ListPendingAsync(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Overtime", 2, 20, CancellationToken.None);
-        var result = await new ReviewsApiClient(decide.CreateClient()).DecideAsync(3, new DecideReviewRequest { Approved = true }, CancellationToken.None);
-
-        Assert.Equal("/api/attendance/reviews/pending?page=2&pageSize=20&employeeId=7&from=2026-04-01&to=2026-04-30&reason=Overtime", list.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal("/api/attendance/approvals/pending?page=2&pageSize=20&employeeId=7&from=2026-04-01&to=2026-04-30&type=Review&reason=Overtime", list.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal((45, 2, 3), (page.Total, page.Page, page.PageCount));
-        Assert.Equal(83, Assert.Single(page.Items).OvertimeMinutes);
-        Assert.Equal("/api/attendance/reviews/3/decision", decide.Requests.Single().RequestUri!.PathAndQuery);
-        Assert.Equal("Approved", result.Value!.Outcome);
+        Assert.Equal(["Review", "Correction"], page.Items.Select(i => i.Type));
+        Assert.Equal(83, page.Items[0].Review!.OvertimeMinutes);
+        Assert.Equal("SupplyPunch", Assert.Single(page.Items[1].Correction!.Edits).Kind);
+        Assert.Equal("/api/attendance/approvals/4/decision", decide.Requests.Single().RequestUri!.PathAndQuery);
+        Assert.Equal(("Correction", "Applied"), (result.Value!.Type, result.Value.Status));
     }
 
     [Fact]
     public async Task AForbiddenAction_IsThrown_NotShownAsAMessage()
     {
-        var client = new ReviewsApiClient(new StubHttpHandler(HttpStatusCode.Forbidden).CreateClient());
+        var client = new ApprovalsApiClient(new StubHttpHandler(HttpStatusCode.Forbidden).CreateClient());
 
-        await Assert.ThrowsAsync<ApiAccessDeniedException>(() => client.DecideAsync(3, new DecideReviewRequest(), CancellationToken.None));
+        await Assert.ThrowsAsync<ApiAccessDeniedException>(() => client.DecideAsync(3, new DecideApprovalRequest(), CancellationToken.None));
     }
 
     [Theory]
-    [InlineData(new[] { "Manager" }, null, "Manager")]
-    [InlineData(new[] { "HRAdministrator" }, null, "HR")]
-    [InlineData(new[] { "Manager", "HRAdministrator" }, "HR", "HR")]
-    [InlineData(new[] { "Manager" }, "HR", "Manager")]
-    [InlineData(new[] { "Manager", "HRAdministrator" }, null, "Manager")]
-    public async Task TheCorrectionsQueue_OpensOnATheActorMayUse(string[] roles, string? asked, string expected)
+    [InlineData("HR", true)]
+    [InlineData("Manager", false)]
+    [InlineData(null, false)]
+    public async Task ADecision_IsSentInTheStepTheRowAskedFor(string? awaiting, bool asHr)
     {
-        var corrections = new FakeCorrections();
-        var controller = new CorrectionsController(corrections, new FakeActor(roles));
+        var approvals = new FakeApprovals();
+        var controller = WithTempData(new ApprovalsController(approvals));
 
-        var result = await controller.Index(asked is null ? null : Enum.Parse<CorrectionApprover>(asked), CancellationToken.None);
+        await controller.Decide(5, approved: true, awaiting, null, null, null, null, null, null, 1, 20, CancellationToken.None);
 
-        var model = Assert.IsType<CorrectionsQueueViewModel>(Assert.IsType<ViewResult>(result).Model);
-        Assert.Equal(expected, model.Awaiting.ToString());
-        Assert.Equal([Enum.Parse<CorrectionApprover>(expected)], corrections.Lists);
+        Assert.Equal((5, true, null, asHr), Assert.Single(approvals.Decisions));
     }
 
     [Fact]
-    public async Task ADecision_ForTheHrTab_IsSentAsAnHrDecision_AndTheResultIsExplained()
+    public async Task ADecision_IsExplained_ByWhatWasDecidedAndHowFarItGot()
     {
-        var corrections = new FakeCorrections { Status = "Pending" };
-        var controller = WithTempData(new CorrectionsController(corrections, new FakeActor(["HRAdministrator"])));
+        var approvals = new FakeApprovals();
+        var controller = WithTempData(new ApprovalsController(approvals));
 
-        await controller.Decide(5, approved: true, CorrectionApprover.HR, CancellationToken.None);
-        corrections.Status = "Applied";
-        await controller.Decide(6, approved: true, CorrectionApprover.Manager, CancellationToken.None);
+        approvals.Answer = new ApprovalDecisionResponse { Type = "Correction", Status = "Applied" };
+        await controller.Decide(5, true, "Manager", null, null, null, null, null, null, 1, 20, CancellationToken.None);
+        Assert.Contains("Approved: the edits were made", (string)controller.TempData["StatusMessage"]!);
 
-        Assert.Equal([(5, true, true), (6, true, false)], corrections.Decisions);
-        Assert.Contains("Approved: the punch was added", (string)controller.TempData["StatusMessage"]!);
+        approvals.Answer = new ApprovalDecisionResponse { Type = "Correction", Status = "Pending" };
+        await controller.Decide(5, true, "Manager", null, null, null, null, null, null, 1, 20, CancellationToken.None);
+        Assert.Contains("still waits for its next approver", (string)controller.TempData["StatusMessage"]!);
+
+        approvals.Answer = new ApprovalDecisionResponse { Type = "Correction", Status = "Rejected" };
+        await controller.Decide(5, false, "Manager", null, null, null, null, null, null, 1, 20, CancellationToken.None);
+        Assert.Contains("Rejected: the employee can propose again", (string)controller.TempData["StatusMessage"]!);
+
+        approvals.Answer = new ApprovalDecisionResponse { Type = "Review", Status = "Rejected" };
+        await controller.Decide(6, false, "Manager", "Not authorised.", null, null, null, null, null, 1, 20, CancellationToken.None);
+        Assert.Contains("Rejected. The reason is on record", (string)controller.TempData["StatusMessage"]!);
+        Assert.Equal((6, false, "Not authorised."), (approvals.Decisions[^1].Id, approvals.Decisions[^1].Approved, approvals.Decisions[^1].Reason));
     }
 
     [Fact]
     public async Task ARefusedDecision_ShowsTheApisMessages()
     {
-        var corrections = new FakeCorrections { Refusal = ["Only the employee's manager can decide this correction."] };
-        var controller = WithTempData(new CorrectionsController(corrections, new FakeActor(["Manager"])));
+        var approvals = new FakeApprovals { Refusal = ["Only the employee's manager can decide this correction."] };
+        var controller = WithTempData(new ApprovalsController(approvals));
 
-        var result = await controller.Decide(5, true, CorrectionApprover.Manager, CancellationToken.None);
+        var result = await controller.Decide(5, true, "Manager", null, null, null, null, null, null, 1, 20, CancellationToken.None);
 
         Assert.Equal("Only the employee's manager can decide this correction.", controller.TempData["ErrorMessage"]);
         Assert.Null(controller.TempData["StatusMessage"]);
         Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
     }
 
-    [Theory]
-    [InlineData(new[] { "Manager" }, false)]
-    [InlineData(new[] { "HRAdministrator" }, true)]
-    [InlineData(new[] { "Manager", "HRAdministrator" }, true)]
-    public async Task AReview_IsDecidedAsHr_WhenTheActorIsHr(string[] roles, bool asHr)
-    {
-        var reviews = new FakeReviews();
-        var controller = WithTempData(new ReviewsController(reviews, new FakeActor(roles)));
-
-        await controller.Decide(3, approved: false, "Not authorised.", null, null, null, null, 1, 20, CancellationToken.None);
-
-        Assert.Equal((3, false, "Not authorised.", asHr), Assert.Single(reviews.Decisions));
-        Assert.Contains("Rejected", (string)controller.TempData["StatusMessage"]!);
-    }
-
     [Fact]
-    public async Task TheReviewQueue_IsPagedOnTheServer_DropsUnknownNamesAndPageSizes_AndKeepsEveryFilterOnEveryLink()
+    public async Task TheQueue_IsPagedOnTheServer_DropsUnknownNamesAndPageSizes_AndKeepsEveryFilterOnEveryLink()
     {
-        var reviews = new FakeReviews { Total = 45 };
-        var controller = WithTempData(new ReviewsController(reviews, new FakeActor(["Manager"])));
+        var approvals = new FakeApprovals { Total = 45 };
+        var controller = WithTempData(new ApprovalsController(approvals));
 
-        var shown = Assert.IsType<ViewResult>(await controller.Index(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Overtime", 2, 10, CancellationToken.None));
-        var model = Assert.IsType<ReviewsQueueViewModel>(shown.Model);
-        await controller.Index(null, null, null, "Bogus", -1, 7, CancellationToken.None);
+        var shown = Assert.IsType<ViewResult>(await controller.Index(7, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), "Review", "Overtime", 2, 10, CancellationToken.None));
+        var model = Assert.IsType<ApprovalsQueueViewModel>(shown.Model);
+        await controller.Index(null, null, null, "Bogus", "Bogus", -1, 7, CancellationToken.None);
 
-        // Asked for page 2 of 10 with the reason, then (an unknown reason and size, a page before the first) page 1 of the default 20.
-        Assert.Equal([(7, "Overtime", 2, 10), ((int?)null, (string?)null, 1, 20)], reviews.Asks);
-        Assert.Equal((7, "Overtime", 2, 10, 45), (model.EmployeeId, model.Why, model.Page, model.PageSize, model.Total));
+        // Asked for page 2 of 10 with the kind and the reason, then (unknown names, an unknown size, a page before the first) page 1 of the default 20.
+        Assert.Equal([(7, "Review", "Overtime", 2, 10), ((int?)null, (string?)null, (string?)null, 1, 20)], approvals.Asks);
+        Assert.Equal((7, "Review", "Overtime", 2, 10, 45), (model.EmployeeId, model.Type, model.Why, model.Page, model.PageSize, model.Total));
         Assert.Equal("Ada Lovelace (E-1)", model.Employees.Single().Name);
         Assert.Equal(
-            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["to"] = "2026-04-30", ["why"] = "Overtime", ["page"] = "3" },
+            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["to"] = "2026-04-30", ["type"] = "Review", ["why"] = "Overtime", ["page"] = "3" },
             model.Pager.For(3));
         Assert.Equal(5, model.Pager.PageCount);
     }
@@ -172,22 +153,26 @@ public sealed class ApprovalsWebTests
     [Fact]
     public async Task ADecision_ReturnsToTheQueueAsItWas_WithItsFiltersAndPage()
     {
-        var controller = WithTempData(new ReviewsController(new FakeReviews(), new FakeActor(["Manager"])));
+        var controller = WithTempData(new ApprovalsController(new FakeApprovals()));
 
-        var back = Assert.IsType<RedirectToActionResult>(await controller.Decide(3, true, null, 7, new DateTime(2026, 4, 1), null, "Overtime", 2, 50, CancellationToken.None));
+        var back = Assert.IsType<RedirectToActionResult>(await controller.Decide(3, true, "Manager", null, 7, new DateTime(2026, 4, 1), null, "Correction", "Overtime", 2, 50, CancellationToken.None));
 
         Assert.Equal("Index", back.ActionName);
-        Assert.Equal((7, "2026-04-01", "Overtime", 2, 50), (back.RouteValues!["employeeId"], back.RouteValues["from"], back.RouteValues["why"], back.RouteValues["page"], back.RouteValues["pageSize"]));
+        Assert.Equal(
+            (7, "2026-04-01", "Correction", "Overtime", 2, 50),
+            (back.RouteValues!["employeeId"], back.RouteValues["from"], back.RouteValues["type"], back.RouteValues["why"], back.RouteValues["page"], back.RouteValues["pageSize"]));
     }
 
     [Fact]
     public void TheQueueReturnValues_CarryTheFiltersAndThePage_ForTheDecisionForm()
     {
-        var model = new ReviewsQueueViewModel { Page = 3, PageSize = 10, EmployeeId = 7, Why = "IncompleteDay", From = new DateTime(2026, 4, 1) };
+        var model = new ApprovalsQueueViewModel { Page = 3, PageSize = 10, EmployeeId = 7, Type = "Review", Why = "IncompleteDay", From = new DateTime(2026, 4, 1) };
 
         Assert.Equal(
-            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["why"] = "IncompleteDay", ["page"] = "3" },
+            new Dictionary<string, string?> { ["pageSize"] = "10", ["employeeId"] = "7", ["from"] = "2026-04-01", ["type"] = "Review", ["why"] = "IncompleteDay", ["page"] = "3" },
             model.ReturnValues);
+        Assert.True(model.IsFiltered);
+        Assert.False(new ApprovalsQueueViewModel().IsFiltered);
     }
 
     [Fact]
@@ -436,13 +421,7 @@ public sealed class ApprovalsWebTests
 
     private sealed class FakeCorrections : ICorrectionsApiClient
     {
-        public string Status { get; set; } = "Applied";
-
         public IReadOnlyList<string>? Refusal { get; set; }
-
-        public List<CorrectionApprover> Lists { get; } = [];
-
-        public List<(int Id, bool Approved, bool AsHr)> Decisions { get; } = [];
 
         public List<(int ExceptionId, DateTime Time, string Justification)> Proposals { get; } = [];
 
@@ -463,43 +442,35 @@ public sealed class ApprovalsWebTests
             Proposals.Add((request.ExceptionId, request.ProposedValue, request.Justification));
             return Task.FromResult(Refusal is null ? ApiCommandResult<CreatedResponse>.Ok(new CreatedResponse { Id = 1 }) : ApiCommandResult<CreatedResponse>.Refused(Refusal));
         }
-
-        public Task<IReadOnlyList<CorrectionListItem>> ListPendingAsync(CorrectionApprover awaiting, CancellationToken cancellationToken)
-        {
-            Lists.Add(awaiting);
-            return Task.FromResult<IReadOnlyList<CorrectionListItem>>([]);
-        }
-
-        public Task<ApiCommandResult<CorrectionDecisionResponse>> DecideAsync(int correctionId, DecideCorrectionRequest request, CancellationToken cancellationToken)
-        {
-            Decisions.Add((correctionId, request.Approved, request.IsHrDecision));
-            return Task.FromResult(Refusal is null
-                ? ApiCommandResult<CorrectionDecisionResponse>.Ok(new CorrectionDecisionResponse { CorrectionId = correctionId, Status = Status })
-                : ApiCommandResult<CorrectionDecisionResponse>.Refused(Refusal));
-        }
     }
 
-    private sealed class FakeReviews : IReviewsApiClient
+    private sealed class FakeApprovals : IApprovalsApiClient
     {
-        public List<(int RecordId, bool Approved, string? Reason, bool AsHr)> Decisions { get; } = [];
+        public IReadOnlyList<string>? Refusal { get; set; }
 
-        public List<(int? EmployeeId, string? Reason, int Page, int PageSize)> Asks { get; } = [];
+        public ApprovalDecisionResponse Answer { get; set; } = new() { Type = "Correction", Status = "Applied" };
+
+        public List<(int Id, bool Approved, string? Reason, bool AsHr)> Decisions { get; } = [];
+
+        public List<(int? EmployeeId, string? Type, string? Reason, int Page, int PageSize)> Asks { get; } = [];
 
         public int Total { get; set; }
 
-        public Task<PagedResult<ReviewListItem>> ListPendingAsync(int? employeeId, DateTime? from, DateTime? to, string? reason, int page, int pageSize, CancellationToken cancellationToken)
+        public Task<PagedResult<ApprovalListItem>> ListPendingAsync(int? employeeId, DateTime? from, DateTime? to, string? type, string? reason, int page, int pageSize, CancellationToken cancellationToken)
         {
-            Asks.Add((employeeId, reason, page, pageSize));
-            return Task.FromResult(new PagedResult<ReviewListItem> { Total = Total, Page = page, PageSize = pageSize });
+            Asks.Add((employeeId, type, reason, page, pageSize));
+            return Task.FromResult(new PagedResult<ApprovalListItem> { Total = Total, Page = page, PageSize = pageSize });
         }
 
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<EmployeeOption>>([new EmployeeOption { Id = 7, Name = "Ada Lovelace (E-1)" }]);
 
-        public Task<ApiCommandResult<ReviewDecisionResponse>> DecideAsync(int recordId, DecideReviewRequest request, CancellationToken cancellationToken)
+        public Task<ApiCommandResult<ApprovalDecisionResponse>> DecideAsync(int approvalId, DecideApprovalRequest request, CancellationToken cancellationToken)
         {
-            Decisions.Add((recordId, request.Approved, request.Reason, request.IsHrDecision));
-            return Task.FromResult(ApiCommandResult<ReviewDecisionResponse>.Ok(new ReviewDecisionResponse { RecordId = recordId }));
+            Decisions.Add((approvalId, request.Approved, request.Reason, request.IsHrDecision));
+            return Task.FromResult(Refusal is null
+                ? ApiCommandResult<ApprovalDecisionResponse>.Ok(Answer)
+                : ApiCommandResult<ApprovalDecisionResponse>.Refused(Refusal));
         }
     }
 
