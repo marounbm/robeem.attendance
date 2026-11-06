@@ -370,6 +370,19 @@ public sealed class ApprovalsWebTests
         Assert.Equal(expected, DisplayFormats.Words(name));
     }
 
+    [Theory]
+    [InlineData("PendingReview", 3, "Open exceptions", "info", true)]
+    [InlineData("PendingReview", 0, "Pending review", "warning", false)]
+    [InlineData("Approved", 0, "Approved", "success", false)]
+    [InlineData("Rejected", 2, "Rejected", "danger", false)]
+    [InlineData("Calculated", 1, "Calculated", "secondary", false)]
+    public void ADayThatWaitsForItsExceptions_IsNotCalledPendingReview_BecauseApprovalsDoesNotListIt(string status, int exceptions, string label, string badge, bool hasHint)
+    {
+        Assert.Equal(label, DisplayFormats.DayStatus(status, exceptions));
+        Assert.Equal(badge, DisplayFormats.DayStatusBadge(status, exceptions));
+        Assert.Equal(hasHint, DisplayFormats.DayStatusHint(status, exceptions) is not null);
+    }
+
     private static DayCorrectionView SampleDay() => new()
     {
         Date = new DateTime(2026, 10, 5),

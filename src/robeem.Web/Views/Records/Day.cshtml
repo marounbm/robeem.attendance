@@ -41,7 +41,7 @@ else
             <div><div class="small text-muted">Overtime</div><div class="fs-5">@DisplayFormats.Hours(day.TotalOvertimeHours)</div></div>
             <div><div class="small text-muted">Break</div><div class="fs-5">@DisplayFormats.Hours(day.TotalBreakHours)</div></div>
             <div><div class="small text-muted">Open exceptions</div><div class="fs-5">@day.ExceptionCount</div></div>
-            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.Badge(day.Status)">@DisplayFormats.Words(day.Status)</span></div></div>
+            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.DayStatusBadge(day.Status, day.ExceptionCount)" title="@DisplayFormats.DayStatusHint(day.Status, day.ExceptionCount)">@DisplayFormats.DayStatus(day.Status, day.ExceptionCount)</span></div></div>
         </div>
     </div>
 

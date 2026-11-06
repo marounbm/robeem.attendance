@@ -10,6 +10,8 @@
 <p class="text-muted">
     One line per employee and day, newest first: the hours worked out from the punches and the schedule. You see your own
     days; a manager also sees their reports'; HR sees everyone's. Open a day to see how it was calculated.
+    A day with an open exception shows as <strong>Open exceptions</strong>: its punches have to be corrected first (<em>Exceptions</em>), and only
+    then does it come to <em>Approvals</em> if it still needs a decision. <strong>Pending review</strong> is a day that does.
 </p>
 
 <partial name="_StatusMessage" />
@@ -94,7 +96,7 @@
                             <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
-                            <td><span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span></td>
+                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount)</span></td>
                             <td class="text-end">
                                 <a class="btn btn-sm btn-outline-primary" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
                                    asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">Open</a>
