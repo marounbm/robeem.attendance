@@ -9,7 +9,14 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h3 mb-0">Correct <span class="text-muted">@DisplayFormats.Date(day.Date)</span></h1>
-    <a asp-action="Index" class="btn btn-outline-secondary">Back to exceptions</a>
+    @if (Model.Form.FromDay)
+    {
+        <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-outline-secondary">Back to the day</a>
+    }
+    else
+    {
+        <a asp-action="Index" class="btn btn-outline-secondary">Back to exceptions</a>
+    }
 </div>
 
 <partial name="_StatusMessage" />
@@ -54,6 +61,7 @@
     <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
     <div id="completeness-alert" class="alert alert-danger" role="alert" hidden></div>
     <input type="hidden" name="Date" value="@day.Date.ToString("yyyy-MM-dd")" />
+    <input type="hidden" name="FromDay" value="@(Model.Form.FromDay ? "true" : "false")" />
 
     <div class="card mb-3">
         <div class="card-header">The day's punches</div>
@@ -212,7 +220,14 @@
         </div>
 
         <button type="submit" class="btn btn-primary">Send for approval</button>
-        <a asp-action="Index" class="btn btn-link">Cancel</a>
+        @if (Model.Form.FromDay)
+        {
+            <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-link">Cancel</a>
+        }
+        else
+        {
+            <a asp-action="Index" class="btn btn-link">Cancel</a>
+        }
     }
 </form>
 

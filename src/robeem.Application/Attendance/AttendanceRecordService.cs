@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
@@ -87,11 +88,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
         // A page past the end (a filter that narrowed the list since the link was made) is answered with the last page.
         var page = Math.Clamp(filter.Page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
 
-        var rows = await days
-            .OrderByDescending(d => d.AttendanceDate)
-            .ThenBy(d => d.Employee!.LastName)
-            .ThenBy(d => d.Employee!.FirstName)
-            .ThenBy(d => d.EmployeeId)
+        var rows = await Sorted(days, filter.Sort, filter.Descending)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(d => new RecordDayListItem
@@ -105,6 +102,11 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 TotalBreakHours = d.TotalBreakHours,
                 ShiftCount = d.ShiftCount,
                 ExceptionCount = d.ExceptionCount,
+                HasPendingApproval = _db.AttendanceApprovals.Any(a =>
+                    a.Type == AttendanceApprovalType.Correction
+                    && a.Status == AttendanceApprovalStatus.Pending
+                    && a.EmployeeId == d.EmployeeId
+                    && a.AttendanceDate == d.AttendanceDate),
                 Status = d.Status.ToString(),
             })
             .ToListAsync(cancellationToken);
@@ -233,6 +235,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     SuggestedEventTypes = AttendanceExceptionRules.Suggested(x.e.SuggestedEventTypes),
                     CanPropose = AttendanceExceptionRules.CanPropose(x.e.ExceptionType, x.e.Status, x.e.EmployeeId, viewer.EmployeeId, x.e.SuggestedEventTypes),
                     CanCorrect = AttendanceExceptionRules.CanCorrect(x.e.Status, x.e.EmployeeId, viewer.EmployeeId),
+                    CanAccept = AttendanceExceptionRules.CanAccept(x.e.ExceptionType, x.e.Status, x.e.EmployeeId, employee.ManagerId, viewer),
                 })
                 .ToList(),
             Corrections = corrections
@@ -296,6 +299,39 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             ExceptionsRaised = result.ExceptionsRaised,
             ExceptionsResolved = result.ExceptionsResolved,
         };
+    }
+
+    /// <summary>
+    /// The days in the order asked for. Whatever the column, ties are broken by date, then employee name, then id, always the same way round,
+    /// so a page never overlaps the next and the order is the same on every request.
+    /// </summary>
+    private static IQueryable<AttendanceDaySummary> Sorted(IQueryable<AttendanceDaySummary> days, RecordSortField sort, bool descending)
+    {
+        IOrderedQueryable<AttendanceDaySummary> By<TKey>(Expression<Func<AttendanceDaySummary, TKey>> key) =>
+            descending ? days.OrderByDescending(key) : days.OrderBy(key);
+
+        var ordered = sort switch
+        {
+            RecordSortField.Employee => By(d => d.Employee!.LastName).ThenBy(d => d.Employee!.FirstName),
+            RecordSortField.Worked => By(d => d.TotalWorkingHours),
+            RecordSortField.Overtime => By(d => d.TotalOvertimeHours),
+            RecordSortField.Break => By(d => d.TotalBreakHours),
+            RecordSortField.Exceptions => By(d => d.ExceptionCount),
+            RecordSortField.Status => By(d => d.Status),
+            _ => By(d => d.AttendanceDate),
+        };
+
+        if (sort != RecordSortField.Date)
+        {
+            ordered = ordered.ThenBy(d => d.AttendanceDate);
+        }
+
+        if (sort != RecordSortField.Employee)
+        {
+            ordered = ordered.ThenBy(d => d.Employee!.LastName).ThenBy(d => d.Employee!.FirstName);
+        }
+
+        return ordered.ThenBy(d => d.EmployeeId);
     }
 
     private static bool CanSee(ExceptionViewer viewer, Profile employee) =>

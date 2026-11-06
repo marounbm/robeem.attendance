@@ -1,6 +1,7 @@
 @model RecordDayViewModel
 @{
     var day = Model.Day;
+    var hasPendingApproval = day.Corrections.Any(c => c.Status == "Pending");
     ViewData["Title"] = $"{day.EmployeeName} - {DisplayFormats.Date(day.AttendanceDate)}";
 
     // The source of a punch the calculation used: only a punch that was not vendor-labeled is worth a word.
@@ -41,7 +42,7 @@ else
             <div><div class="small text-muted">Overtime</div><div class="fs-5">@DisplayFormats.Hours(day.TotalOvertimeHours)</div></div>
             <div><div class="small text-muted">Break</div><div class="fs-5">@DisplayFormats.Hours(day.TotalBreakHours)</div></div>
             <div><div class="small text-muted">Open exceptions</div><div class="fs-5">@day.ExceptionCount</div></div>
-            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.DayStatusBadge(day.Status, day.ExceptionCount)" title="@DisplayFormats.DayStatusHint(day.Status, day.ExceptionCount)">@DisplayFormats.DayStatus(day.Status, day.ExceptionCount)</span></div></div>
+            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.DayStatusBadge(day.Status, day.ExceptionCount, hasPendingApproval)" title="@DisplayFormats.DayStatusHint(day.Status, day.ExceptionCount, hasPendingApproval)">@DisplayFormats.DayStatus(day.Status, day.ExceptionCount, hasPendingApproval)</span></div></div>
         </div>
     </div>
 
@@ -121,7 +122,23 @@ else
     </div>
 }
 
-<h2 class="h5">Exceptions</h2>
+@{
+    var dayDate = day.AttendanceDate.ToString("yyyy-MM-dd");
+    var canCorrect = !day.Exceptions.Any(e => e.Status == "PendingCorrection") && day.Exceptions.Any(e => e.CanCorrect);
+    var waiting = day.Exceptions.Any(e => e.Status == "PendingCorrection");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h5 mb-0">Exceptions</h2>
+    @if (canCorrect)
+    {
+        <a class="btn btn-sm btn-primary" asp-controller="Exceptions" asp-action="Correct" asp-route-date="@dayDate" asp-route-fromDay="true">Correct this day</a>
+    }
+    else if (waiting)
+    {
+        <span class="small text-muted">A correction is waiting for approval. <a asp-controller="Approvals" asp-action="Index">Approvals</a></span>
+    }
+</div>
 <div class="card mb-4">
     @if (day.Exceptions.Count == 0)
     {
@@ -154,6 +171,22 @@ else
                     @if (e.ResolutionMethod is not null)
                     {
                         <div class="small text-muted">Settled: @DisplayFormats.Words(e.ResolutionMethod).ToLowerInvariant()@(e.ResolvedAt is { } at ? $" on {DisplayFormats.DateTime(at)}" : string.Empty)@(string.IsNullOrWhiteSpace(e.ResolutionNote) ? string.Empty : ": " + e.ResolutionNote)</div>
+                    }
+
+                    @if (e.CanAccept)
+                    {
+                        <form method="post" asp-controller="Exceptions" asp-action="Accept" class="row g-2 align-items-end mt-1">
+                            <input type="hidden" name="exceptionId" value="@e.Id" />
+                            <input type="hidden" name="dayEmployeeId" value="@day.EmployeeId" />
+                            <input type="hidden" name="dayDate" value="@dayDate" />
+                            <div class="col-md-7">
+                                <label class="form-label small mb-0" for="accept-why-@e.Id">Accept this as it is: why?</label>
+                                <input id="accept-why-@e.Id" type="text" name="reason" maxlength="1000" class="form-control form-control-sm" required />
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">Accept exception</button>
+                            </div>
+                        </form>
                     }
                 </li>
             }

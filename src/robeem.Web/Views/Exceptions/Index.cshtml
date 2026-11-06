@@ -1,12 +1,14 @@
 @model ExceptionsIndexViewModel
 @{
-    ViewData["Title"] = "Exceptions";
+    ViewData["Title"] = "Attendance";
     var days = Model.Days;
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h3 mb-0">Exceptions</h1>
+    <h1 class="h3 mb-0">Attendance</h1>
 </div>
+
+<partial name="_AttendanceTabs" model="@("Exceptions")" />
 
 <p class="text-muted">
     The days that have a problem a person has to settle: a missing punch, punches in the wrong order, or a break outside the rules. You see your

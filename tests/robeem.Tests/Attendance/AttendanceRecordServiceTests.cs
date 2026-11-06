@@ -1,6 +1,7 @@
 using robeem.Application.Attendance;
 using robeem.DataModel;
 using robeem.Infrastructure.Persistence;
+using RecordSortField = robeem.Contracts.Attendance.RecordSortField;
 
 namespace robeem.Tests.Attendance;
 
@@ -43,7 +44,7 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         var otherEmployee = await ListAsync(Everything with { EmployeeId = otherId }, hr);
         var taken = await ListAsync(Everything with { PageSize = 1 }, hr);
 
-        Assert.Equal([Monday.AddDays(7), Monday], all.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday, Monday.AddDays(7)], all.Select(d => d.AttendanceDate));
         Assert.Equal([Monday], firstWeek.Select(d => d.AttendanceDate));
         Assert.Equal([Monday.AddDays(7)], secondWeek.Select(d => d.AttendanceDate));
         Assert.Equal([Monday.AddDays(7)], withExceptions.Select(d => d.AttendanceDate));
@@ -54,7 +55,7 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task TheList_IsPagedOnTheServer_NewestFirst_WithTheTotalOfTheWholeList()
+    public async Task TheList_IsPagedOnTheServer_OldestFirst_WithTheTotalOfTheWholeList()
     {
         await ProcessFullDayAsync();
         for (var week = 1; week <= 2; week++)
@@ -70,16 +71,107 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         var filtered = await PageAsync(Everything with { To = Monday, PageSize = 2 }, hr);
 
         Assert.Equal((3, 1, 2, 2), (first.Total, first.Page, first.PageSize, first.PageCount));
-        Assert.Equal([Monday.AddDays(14), Monday.AddDays(7)], first.Items.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday, Monday.AddDays(7)], first.Items.Select(d => d.AttendanceDate));
         Assert.Equal(2, second.Page);
-        Assert.Equal([Monday], second.Items.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(14)], second.Items.Select(d => d.AttendanceDate));
 
         // A page past the end is answered with the last page, never an empty one.
         Assert.Equal(2, pastTheEnd.Page);
-        Assert.Equal([Monday], pastTheEnd.Items.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(14)], pastTheEnd.Items.Select(d => d.AttendanceDate));
 
         // The total follows the filters, not the whole table.
         Assert.Equal((1, 1), (filtered.Total, filtered.PageCount));
+    }
+
+    [Fact]
+    public async Task TheList_CanBeSortedByEveryColumn_InBothDirections_BeforeItIsCutIntoPages()
+    {
+        var (managerId, otherId) = AddPeople();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            AttendanceDaySummary Day(int employee, int dayOffset, int worked, int overtime, int breakMinutes, int exceptions, AttendanceRecordStatus status) => new()
+            {
+                EmployeeId = employee,
+                AttendanceDate = Monday.AddDays(dayOffset),
+                TotalWorkingHours = TimeSpan.FromHours(worked),
+                TotalOvertimeHours = TimeSpan.FromHours(overtime),
+                TotalBreakHours = TimeSpan.FromMinutes(breakMinutes),
+                ExceptionCount = exceptions,
+                ShiftCount = 1,
+                Status = status,
+            };
+
+            // Ada Lovelace, Alan Turing, Grace Hopper; (worked h, overtime h, break min, exceptions, status).
+            db.AttendanceDaySummaries.AddRange(
+                Day(EmployeeId, 0, 8, 0, 60, 0, AttendanceRecordStatus.Approved),
+                Day(otherId, 0, 6, 2, 30, 2, AttendanceRecordStatus.Calculated),
+                Day(managerId, 0, 6, 0, 120, 1, AttendanceRecordStatus.PendingReview),
+                Day(otherId, 1, 7, 1, 60, 0, AttendanceRecordStatus.Approved));
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        async Task<string[]> Names(RecordSortField sort, bool descending, int page = 1, int pageSize = 100) =>
+            (await ListAsync(Everything with { Sort = sort, Descending = descending, Page = page, PageSize = pageSize }, hr))
+                .Select(d => $"{d.EmployeeName.Split(' ')[0]}{d.AttendanceDate:dd}").ToArray();
+
+        // Ties are always broken the same way, whatever the direction: by date, then surname (Hopper, Lovelace, Turing).
+        Assert.Equal(["Grace05", "Ada05", "Alan05", "Alan06"], await Names(RecordSortField.Employee, false));
+        Assert.Equal(["Alan05", "Alan06", "Ada05", "Grace05"], await Names(RecordSortField.Employee, true));
+        Assert.Equal(["Grace05", "Ada05", "Alan05", "Alan06"], await Names(RecordSortField.Date, false));
+        Assert.Equal(["Alan06", "Grace05", "Ada05", "Alan05"], await Names(RecordSortField.Date, true));
+        Assert.Equal(["Grace05", "Alan05", "Alan06", "Ada05"], await Names(RecordSortField.Worked, false));
+        Assert.Equal(["Ada05", "Alan06", "Grace05", "Alan05"], await Names(RecordSortField.Worked, true));
+        Assert.Equal(["Grace05", "Ada05", "Alan06", "Alan05"], await Names(RecordSortField.Overtime, false));
+        Assert.Equal(["Alan05", "Alan06", "Grace05", "Ada05"], await Names(RecordSortField.Overtime, true));
+        Assert.Equal(["Alan05", "Ada05", "Alan06", "Grace05"], await Names(RecordSortField.Break, false));
+        Assert.Equal(["Grace05", "Ada05", "Alan06", "Alan05"], await Names(RecordSortField.Break, true));
+        Assert.Equal(["Ada05", "Alan06", "Grace05", "Alan05"], await Names(RecordSortField.Exceptions, false));
+        Assert.Equal(["Alan05", "Grace05", "Ada05", "Alan06"], await Names(RecordSortField.Exceptions, true));
+        Assert.Equal(["Ada05", "Alan06", "Alan05", "Grace05"], await Names(RecordSortField.Status, false));
+        Assert.Equal(["Grace05", "Alan05", "Ada05", "Alan06"], await Names(RecordSortField.Status, true));
+
+        // The sort applies to the whole list, then it is cut: pages of one follow the same order, once each.
+        var pages = new List<string>();
+        for (var page = 1; page <= 4; page++)
+        {
+            pages.AddRange(await Names(RecordSortField.Worked, true, page, 1));
+        }
+
+        Assert.Equal(await Names(RecordSortField.Worked, true), pages);
+    }
+
+    [Fact]
+    public async Task ADayWhoseCorrectionWaitsForTheApprover_IsFlagged_ForTheEmployeeTheirManagerAndHr()
+    {
+        var (managerId, _) = AddPeople();
+        AddPunch(NormalizedEventType.CheckOut, Monday.AddHours(17));
+        AssignSchedule(StandardDay);
+        await ProcessAsync(Monday);
+        var viewers = new[]
+        {
+            new ExceptionViewer(900, false, false, true),
+            new ExceptionViewer(EmployeeId, true, false, false),
+            new ExceptionViewer(managerId, false, true, false),
+        };
+
+        var before = await ListAsync(Everything, viewers[0]);
+        AddCorrectionAndReview(managerId);
+
+        Assert.False(Assert.Single(before).HasPendingApproval);
+        foreach (var viewer in viewers)
+        {
+            Assert.True(Assert.Single(await ListAsync(Everything, viewer)).HasPendingApproval);
+        }
+
+        // Once the approver decides, the day is no longer waiting.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceApprovals.Single(a => a.Type == AttendanceApprovalType.Correction).Status = AttendanceApprovalStatus.Rejected;
+            db.SaveChanges();
+        }
+
+        Assert.False(Assert.Single(await ListAsync(Everything, viewers[0])).HasPendingApproval);
     }
 
     [Fact]

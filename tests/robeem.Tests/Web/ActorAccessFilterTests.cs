@@ -75,7 +75,7 @@ public sealed class ActorAccessFilterTests
     {
         string[] Screens(int? employeeId, params string[] roles) =>
             NavigationMenu.For(new FakeActor(new ActingAs(employeeId, "x", roles))).SelectMany(s => s.Items).Select(i => i.Controller).ToArray();
-        string[] employeeScreens = ["Records", "Exceptions", "Approvals"];
+        string[] employeeScreens = ["Records", "Approvals"];
 
         var managerWithNoEmployee = Screens(null, "Manager");
         var employeeWithNoEmployee = Screens(null, "Employee");

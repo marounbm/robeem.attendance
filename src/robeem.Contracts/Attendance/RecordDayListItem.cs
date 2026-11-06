@@ -23,6 +23,9 @@ public sealed class RecordDayListItem
     /// <summary>Gets the number of exceptions that day that are not closed yet.</summary>
     public int ExceptionCount { get; init; }
 
+    /// <summary>Gets a value indicating whether a correction the employee sent for this day is waiting for an approver's decision.</summary>
+    public bool HasPendingApproval { get; init; }
+
     /// <summary>Gets the day's status: Calculated, PendingReview, Approved or Rejected.</summary>
     public string Status { get; init; } = string.Empty;
 }

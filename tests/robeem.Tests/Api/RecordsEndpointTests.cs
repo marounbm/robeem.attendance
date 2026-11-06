@@ -72,6 +72,23 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheListRunsOldestFirstUnlessASortIsAsked_AndRefusesAnUnknownColumn()
+    {
+        await _api.Send(HttpMethod.Get, "api/attendance/records", Hr);
+        var byDefault = _records.Filter!;
+        await _api.Send(HttpMethod.Get, "api/attendance/records?sort=worked&descending=true", Hr);
+        var sorted = _records.Filter!;
+        var refused = await _api.Send(HttpMethod.Get, "api/attendance/records?sort=salary", Hr);
+        var number = await _api.Send(HttpMethod.Get, "api/attendance/records?sort=99", Hr);
+
+        Assert.Equal((RecordSortField.Date, false), (byDefault.Sort, byDefault.Descending));
+        Assert.Equal((RecordSortField.Worked, true), (sorted.Sort, sorted.Descending));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("sort", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, number.StatusCode);
+    }
+
+    [Fact]
     public async Task TheEmployeeOptions_AreForTheSameViewersAsTheList_ScopedToWhoIsAsking()
     {
         var employee = await _api.Send(HttpMethod.Get, "api/attendance/records/employee-options", TestApi.As(12, AttendanceRoles.Employee));

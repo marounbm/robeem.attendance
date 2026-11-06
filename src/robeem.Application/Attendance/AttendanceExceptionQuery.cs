@@ -106,10 +106,7 @@ public sealed class AttendanceExceptionQuery : IAttendanceExceptionQuery
                 SuggestedEventTypes = AttendanceExceptionRules.Suggested(r.SuggestedEventTypes),
                 CanPropose = AttendanceExceptionRules.CanPropose(r.ExceptionType, r.Status, r.EmployeeId, viewerId, r.SuggestedEventTypes),
                 CanCorrect = AttendanceExceptionRules.CanCorrect(r.Status, r.EmployeeId, viewerId),
-                CanAccept = r.ExceptionType is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
-                    && r.Status == AttendanceExceptionStatus.Open
-                    && r.EmployeeId != viewerId
-                    && (viewer.IsHr || (viewer.IsManager && r.ManagerId == viewerId)),
+                CanAccept = AttendanceExceptionRules.CanAccept(r.ExceptionType, r.Status, r.EmployeeId, r.ManagerId, viewer),
                 ResolutionNote = r.ResolutionNote,
             })
             .ToList();

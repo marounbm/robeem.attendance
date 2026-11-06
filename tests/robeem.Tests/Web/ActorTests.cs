@@ -206,7 +206,7 @@ public sealed class ActorTests
         var employee = NavigationMenu.For(new FakeActor(["Employee"]));
         var hr = NavigationMenu.For(new FakeActor(["HRAdministrator"]));
 
-        Assert.Equal(NavigationMenu.Sections.Sum(s => s.Items.Count), everyone.Sum(s => s.Items.Count));
+        Assert.Equal(NavigationMenu.Sections.Sum(s => s.Items.Count(i => i.TabOf is null)), everyone.Sum(s => s.Items.Count));
         Assert.DoesNotContain(employee.SelectMany(s => s.Items), i => i.Roles.Length > 0 && !i.Roles.Contains("Employee"));
         Assert.Contains(hr.SelectMany(s => s.Items), i => i.Controller == "Employees");
     }

@@ -21,14 +21,14 @@ public sealed class RecordsWebTests
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[],"total":0,"page":1,"pageSize":25}""");
         var client = new RecordsApiClient(handler.CreateClient());
 
-        await client.ListAsync(null, null, null, null, false, 1, 25, CancellationToken.None);
-        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, false, 1, 25, RecordSortField.Date, false, CancellationToken.None);
+        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, RecordSortField.Worked, true, CancellationToken.None);
 
         var day = new StubHttpHandler(HttpStatusCode.OK, """{"employeeId":7,"employeeName":"Ada Lovelace","processed":true,"versions":[{"id":3,"version":2,"isCurrent":true,"workingHours":"08:00:00"}]}""");
         var detail = await new RecordsApiClient(day.CreateClient()).GetDayAsync(7, new DateTime(2026, 10, 5, 9, 0, 0), CancellationToken.None);
 
         Assert.Equal(
-            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true"],
+            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true&sort=Worked&descending=true"],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
         Assert.Equal("/api/attendance/records/7/2026-10-05", day.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal(TimeSpan.FromHours(8), Assert.Single(detail!.Versions).WorkingHours);
@@ -40,7 +40,7 @@ public sealed class RecordsWebTests
         var page = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"employeeId":7,"employeeName":"Ada Lovelace"}],"total":61,"page":2,"pageSize":25}""");
         var options = new StubHttpHandler(HttpStatusCode.OK, """[{"id":7,"name":"Ada Lovelace (E-1)"}]""");
 
-        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, CancellationToken.None);
+        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, RecordSortField.Date, false, CancellationToken.None);
         var employees = await new RecordsApiClient(options.CreateClient()).ListEmployeeOptionsAsync(CancellationToken.None);
 
         Assert.Equal((61, 2, 25, 3), (result.Total, result.Page, result.PageSize, result.PageCount));
@@ -69,9 +69,9 @@ public sealed class RecordsWebTests
         var records = new FakeRecords();
         var controller = Controller(records, ["Employee"]);
 
-        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, null, 0, 0, CancellationToken.None)).Model!;
+        var any = (RecordsIndexViewModel)((ViewResult)await controller.Index("Bogus", null, null, false, null, 0, 0, null, null, CancellationToken.None)).Model!;
         var askedForAny = records.Status;
-        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, 12, 1, 25, CancellationToken.None)).Model!;
+        var pending = (RecordsIndexViewModel)((ViewResult)await controller.Index("PendingReview", new DateTime(2026, 10, 1), null, true, 12, 1, 25, null, null, CancellationToken.None)).Model!;
 
         Assert.Equal(("Any", null), (any.Status, askedForAny));
         Assert.Equal("PendingReview", pending.Status);
@@ -85,14 +85,14 @@ public sealed class RecordsWebTests
         var records = new FakeRecords { Total = 61, ServerPage = 2 };
         var controller = Controller(records, ["HRAdministrator"]);
 
-        var model = (RecordsIndexViewModel)((ViewResult)await controller.Index(null, null, null, false, 12, 9, 7, CancellationToken.None)).Model!;
+        var model = (RecordsIndexViewModel)((ViewResult)await controller.Index(null, null, null, false, 12, 9, 7, null, null, CancellationToken.None)).Model!;
 
         // 7 is not a size on offer, and page 9 was past the end: the server's page is the one shown.
         Assert.Equal((9, RecordsIndexViewModel.DefaultPageSize), (records.PageAsked, records.PageSizeAsked));
         Assert.Equal((2, RecordsIndexViewModel.DefaultPageSize, 61, 12), (model.Page, model.PageSize, model.Total, model.EmployeeId));
         Assert.Equal("Ada Lovelace (E-1)", Assert.Single(model.Employees).Name);
 
-        await controller.Index(null, null, null, false, null, -4, 100, CancellationToken.None);
+        await controller.Index(null, null, null, false, null, -4, 100, null, null, CancellationToken.None);
         Assert.Equal((1, 100), (records.PageAsked, records.PageSizeAsked));
     }
 
@@ -125,6 +125,52 @@ public sealed class RecordsWebTests
                 ["page"] = "7",
             },
             pager.For(7));
+    }
+
+    [Theory]
+    [InlineData(null, null, RecordSortField.Date, false)]
+    [InlineData("worked", "desc", RecordSortField.Worked, true)]
+    [InlineData("STATUS", "asc", RecordSortField.Status, false)]
+    [InlineData("nonsense", "desc", RecordSortField.Date, true)]
+    [InlineData("99", "sideways", RecordSortField.Date, false)]
+    public async Task TheSort_IsOldestFirstByDefault_AndAnUnknownColumnFallsBackToTheDate(string? sort, string? dir, RecordSortField expected, bool descending)
+    {
+        var records = new FakeRecords();
+
+        var model = (RecordsIndexViewModel)((ViewResult)await Controller(records, ["HRAdministrator"]).Index(null, null, null, false, null, 1, 20, sort, dir, CancellationToken.None)).Model!;
+
+        Assert.Equal((expected, descending), (records.SortAsked, records.DescendingAsked));
+        Assert.Equal((expected, descending), (model.Sort, model.Descending));
+    }
+
+    [Fact]
+    public void AColumnHeading_SortsAscendingFirst_ThenTurnsRound_KeepsTheFilters_AndStartsAtTheFirstPage()
+    {
+        var model = new RecordsIndexViewModel
+        {
+            Page = 4,
+            PageSize = 50,
+            Total = 400,
+            EmployeeId = 2,
+            Status = "Approved",
+            Sort = RecordSortField.Worked,
+            Descending = false,
+        };
+
+        var again = model.SortLink(RecordSortField.Worked);
+        var other = model.SortLink(RecordSortField.Overtime);
+        var date = new RecordsIndexViewModel().SortLink(RecordSortField.Date);
+
+        Assert.Equal(("worked", "desc"), (again["sort"], again["dir"]));
+        Assert.Equal(("overtime", "asc"), (other["sort"], other["dir"]));
+        Assert.Equal("desc", date["dir"]);
+        Assert.Equal(("2", "Approved", "50"), (other["employeeId"], other["status"], other["pageSize"]));
+        Assert.DoesNotContain("page", other.Keys);
+        Assert.Equal(("ascending", "none"), (model.AriaSort(RecordSortField.Worked), model.AriaSort(RecordSortField.Date)));
+
+        // Every page link keeps the sort, and the default sort adds nothing to the address.
+        Assert.Equal(("worked", "asc"), (model.Pager.For(5)["sort"], model.Pager.For(5)["dir"]));
+        Assert.DoesNotContain("sort", new RecordsIndexViewModel().Pager.For(2).Keys);
     }
 
     [Fact]
@@ -168,6 +214,19 @@ public sealed class RecordsWebTests
         Assert.Contains("Records", Controllers("Manager"));
         Assert.Contains("Records", Controllers("HRAdministrator"));
         Assert.DoesNotContain("Records", Controllers("PayrollAdministrator", "IntegrationAdministrator"));
+    }
+
+    [Fact]
+    public void AttendanceAndApprovals_ShareOneMenu_AndExceptionsIsATabOfAttendanceNotAnEntry()
+    {
+        var actor = new FakeActor(["Employee", "Manager", "HRAdministrator"]);
+
+        var sections = NavigationMenu.For(actor);
+        var section = Assert.Single(sections, s => s.Items.Any(i => i.Controller == "Records"));
+
+        Assert.Contains(section.Items, i => i.Controller == "Approvals");
+        Assert.DoesNotContain(sections.SelectMany(s => s.Items), i => i.Controller == "Exceptions");
+        Assert.Equal("Records", NavigationMenu.Find("Exceptions")!.TabOf);
     }
 
     private static RecordsController Controller(FakeRecords records, string[] roles) =>
@@ -218,12 +277,17 @@ public sealed class RecordsWebTests
 
         public int PageSizeAsked { get; private set; }
 
+        public RecordSortField SortAsked { get; private set; }
+
+        public bool DescendingAsked { get; private set; }
+
         public int Total { get; set; }
 
         public int ServerPage { get; set; } = 1;
 
-        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
+        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken)
         {
+            (SortAsked, DescendingAsked) = (sort, descending);
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             (PageAsked, PageSizeAsked) = (page, pageSize);
             return Task.FromResult(new PagedResult<RecordDayListItem> { Total = Total, Page = ServerPage, PageSize = pageSize });

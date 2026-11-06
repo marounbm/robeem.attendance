@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using robeem.Contracts.Attendance;
 using robeem.Contracts.HR.Employees;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
@@ -77,7 +78,7 @@ public sealed class EmployeesController : Controller
 
         // Fetch recent attendance records (last 30 days)
         var from = DateTime.Today.AddDays(-30);
-        var recentRecords = (await _records.ListAsync(from, DateTime.Today, id, null, false, 1, 31, cancellationToken)).Items;
+        var recentRecords = (await _records.ListAsync(from, DateTime.Today, id, null, false, 1, 31, RecordSortField.Date, true, cancellationToken)).Items;
 
         return View(new EmployeeFormViewModel
         {

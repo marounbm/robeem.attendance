@@ -23,7 +23,7 @@ public sealed class RecordsApiClient : IRecordsApiClient
         return await ApiResponses.ReadAsync<List<EmployeeOption>>(response, cancellationToken);
     }
 
-    public async Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken)
     {
         var query = new Dictionary<string, string?>
         {
@@ -53,6 +53,16 @@ public sealed class RecordsApiClient : IRecordsApiClient
         if (onlyWithExceptions)
         {
             query["onlyWithExceptions"] = "true";
+        }
+
+        if (sort != RecordSortField.Date)
+        {
+            query["sort"] = sort.ToString();
+        }
+
+        if (descending)
+        {
+            query["descending"] = "true";
         }
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(Path, query), cancellationToken);

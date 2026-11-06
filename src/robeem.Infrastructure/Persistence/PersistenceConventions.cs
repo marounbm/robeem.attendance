@@ -9,6 +9,9 @@ internal static class PersistenceConventions
     private static readonly ValueConverter<DateTimeOffset, DateTimeOffset> UtcDateTimeOffsetConverter =
         new(v => v.ToUniversalTime(), v => v);
 
+    private static readonly ValueConverter<TimeSpan, long> TimeSpanTicksConverter =
+        new(v => v.Ticks, v => TimeSpan.FromTicks(v));
+
     /// <summary>Gets the namespace of the catalog context's own configurations and migrations, which the tenant context must not load.</summary>
     public static string CatalogNamespace => typeof(Catalog.CatalogDbContext).Namespace!;
 
@@ -37,6 +40,20 @@ internal static class PersistenceConventions
             foreach (var property in dateTimeProperties)
             {
                 property.SetColumnType("timestamp without time zone");
+            }
+        }
+
+        // PostgreSQL has a native `interval`, which sorts. SQLite has no such type and refuses to ORDER BY a TimeSpan, so there (the tests) store
+        // it as ticks, which sort the same way; the list of days is sortable by the hours worked.
+        if (!isNpgsql)
+        {
+            var timeSpanProperties = modelBuilder.Model.GetEntityTypes()
+                .SelectMany(t => t.GetProperties())
+                .Where(p => p.ClrType == typeof(TimeSpan) || p.ClrType == typeof(TimeSpan?));
+
+            foreach (var property in timeSpanProperties)
+            {
+                property.SetValueConverter(TimeSpanTicksConverter);
             }
         }
 

@@ -181,14 +181,40 @@ public sealed class ApprovalsWebTests
         var corrections = new FakeCorrections { Day = SampleDay() };
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
-        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), CancellationToken.None)).Model);
+        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), false, CancellationToken.None)).Model);
 
         Assert.Equal(new DateTime(2026, 10, 5), model.Form.Date);
+        Assert.False(model.Form.FromDay);
         Assert.Equal([10, 12], model.Form.Punches.Select(p => p.TransactionId));
         Assert.All(model.Form.Punches, p => Assert.True(string.IsNullOrEmpty(p.Action)));
 
         corrections.Day = null;
-        Assert.IsType<NotFoundResult>(await controller.Correct(new DateTime(2026, 10, 9), CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.Correct(new DateTime(2026, 10, 9), false, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACorrectionStartedFromTheDay_ReturnsToTheDay_WhenSent()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay() };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+
+        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), true, CancellationToken.None)).Model);
+        var result = await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), FromDay = true }, CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.True(opened.Form.FromDay);
+        Assert.Equal(("Day", "Records", 1, "2026-10-05"), (redirect.ActionName, redirect.ControllerName, redirect.RouteValues!["employeeId"], redirect.RouteValues["date"]));
+    }
+
+    [Fact]
+    public async Task AcceptingFromTheDay_ReturnsToTheDay()
+    {
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), new FakeCorrections(), new FakeActor(["Manager"])));
+
+        var result = await controller.Accept(9, "Covered the phones", CancellationToken.None, 4, new DateTime(2026, 10, 5));
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(("Day", "Records", 4, "2026-10-05"), (redirect.ActionName, redirect.ControllerName, redirect.RouteValues!["employeeId"], redirect.RouteValues["date"]));
     }
 
     [Fact]
@@ -381,6 +407,17 @@ public sealed class ApprovalsWebTests
         Assert.Equal(label, DisplayFormats.DayStatus(status, exceptions));
         Assert.Equal(badge, DisplayFormats.DayStatusBadge(status, exceptions));
         Assert.Equal(hasHint, DisplayFormats.DayStatusHint(status, exceptions) is not null);
+    }
+
+    [Theory]
+    [InlineData("PendingReview", 3)]
+    [InlineData("Approved", 0)]
+    [InlineData("Calculated", 1)]
+    public void ADayWithACorrectionWaitingForTheApprover_IsPendingApproval_WhateverElseIsOpenOnIt(string status, int exceptions)
+    {
+        Assert.Equal("Pending approval", DisplayFormats.DayStatus(status, exceptions, pendingApproval: true));
+        Assert.Equal("warning", DisplayFormats.DayStatusBadge(status, exceptions, pendingApproval: true));
+        Assert.Contains("approver's decision", DisplayFormats.DayStatusHint(status, exceptions, pendingApproval: true));
     }
 
     private static DayCorrectionView SampleDay() => new()

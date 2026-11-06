@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using robeem.Contracts.Attendance;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
@@ -24,11 +25,15 @@ public sealed class RecordsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, bool onlyWithExceptions, int? employeeId, int page, int pageSize, string? sort, string? dir, CancellationToken cancellationToken)
     {
         var chosen = RecordsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status! : "Any";
         var size = RecordsIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : RecordsIndexViewModel.DefaultPageSize;
-        var result = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, Math.Max(page, 1), size, cancellationToken);
+
+        // Oldest first unless a known column and direction are asked for.
+        var field = Enum.TryParse<RecordSortField>(sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : RecordSortField.Date;
+        var descending = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+        var result = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
         return View(new RecordsIndexViewModel
         {
             Items = result.Items,
@@ -41,6 +46,8 @@ public sealed class RecordsController : Controller
             From = from,
             To = to,
             OnlyWithExceptions = onlyWithExceptions,
+            Sort = field,
+            Descending = descending,
         });
     }
 

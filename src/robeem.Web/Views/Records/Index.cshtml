@@ -1,22 +1,41 @@
 @model RecordsIndexViewModel
 @{
     ViewData["Title"] = "Attendance";
+
+
+    // The column headings sort the whole list (on the server, before it is cut into pages) by that column; pressing one again turns the order round.
+    (string Title, RecordSortField Field, string Class)[] columns =
+    [
+        ("Date", RecordSortField.Date, string.Empty),
+        ("Employee", RecordSortField.Employee, string.Empty),
+        ("Worked", RecordSortField.Worked, "text-end"),
+        ("Overtime", RecordSortField.Overtime, "text-end"),
+        ("Break", RecordSortField.Break, "text-end"),
+        ("Exceptions", RecordSortField.Exceptions, "text-end"),
+        ("Status", RecordSortField.Status, string.Empty),
+    ];
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h3 mb-0">Attendance</h1>
 </div>
 
+<partial name="_AttendanceTabs" model="@("Days")" />
+
 <p class="text-muted">
-    One line per employee and day, newest first: the hours worked out from the punches and the schedule. You see your own
+    One line per employee and day, oldest first unless you sort by another column (press a column heading; press it again to turn the order round):
+    the hours worked out from the punches and the schedule. You see your own
     days; a manager also sees their reports'; HR sees everyone's. Open a day to see how it was calculated.
-    A day with an open exception shows as <strong>Open exceptions</strong>: its punches have to be corrected first (<em>Exceptions</em>), and only
+    A day with an open exception shows as <strong>Open exceptions</strong>: press <strong>Resolve</strong> to correct its punches (or accept a break exception) from the day itself, and only
     then does it come to <em>Approvals</em> if it still needs a decision. <strong>Pending review</strong> is a day that does.
 </p>
 
 <partial name="_StatusMessage" />
 
 <form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    @* Filtering keeps the sort; the page starts again at the first. *@
+    <input type="hidden" name="sort" value="@RecordsIndexViewModel.SortName(Model.Sort)" />
+    <input type="hidden" name="dir" value="@(Model.Descending ? "desc" : "asc")" />
     <div class="col-auto">
         <label class="form-label small mb-0" for="employeeId">Employee</label>
         <select id="employeeId" name="employeeId" class="form-select">
@@ -76,13 +95,12 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th scope="col">Date</th>
-                        <th scope="col">Employee</th>
-                        <th scope="col" class="text-end">Worked</th>
-                        <th scope="col" class="text-end">Overtime</th>
-                        <th scope="col" class="text-end">Break</th>
-                        <th scope="col" class="text-end">Exceptions</th>
-                        <th scope="col">Status</th>
+                        @foreach (var column in columns)
+                        {
+                            <th scope="col" class="@column.Class" aria-sort="@Model.AriaSort(column.Field)">
+                                <a asp-action="Index" asp-all-route-data="Model.SortLink(column.Field)" class="text-reset text-decoration-none">@column.Title@(Model.Sort != column.Field ? string.Empty : Model.Descending ? " ▼" : " ▲")</a>
+                            </th>
+                        }
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
@@ -90,16 +108,16 @@
                     @foreach (var item in Model.Items)
                     {
                         <tr>
-                            <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                            <td class="text-nowrap">@item.AttendanceDate.ToString("yyyy-MM-dd")</td>
                             <td>@item.EmployeeName <span class="small text-muted">@item.EmployeeNumber</span></td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalWorkingHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
-                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount)</span></td>
+                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span></td>
                             <td class="text-end">
-                                <a class="btn btn-sm btn-outline-primary" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
-                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">Open</a>
+                                <a class="btn btn-sm @(item.ExceptionCount > 0 ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
+                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@(item.ExceptionCount > 0 ? "Resolve" : "Open")</a>
                             </td>
                         </tr>
                     }

@@ -48,15 +48,24 @@ public static class DisplayFormats
     /// The label of a day's status. The engine calls a day <c>PendingReview</c> both when a person must review it and when it is only
     /// waiting for its open exceptions to be settled; only the first is in the approvers' queue, so the second is named for what it waits for.
     /// </summary>
-    public static string DayStatus(string? status, int exceptionCount) => WaitsForExceptions(status, exceptionCount) ? "Open exceptions" : Words(status);
+    /// <remarks>
+    /// A day whose correction the employee has sent is <c>Pending approval</c> for everyone who sees it (the employee, their manager and HR),
+    /// whatever else is open on it, until the approver decides.
+    /// </remarks>
+    public static string DayStatus(string? status, int exceptionCount, bool pendingApproval = false) =>
+        pendingApproval ? "Pending approval" : WaitsForExceptions(status, exceptionCount) ? "Open exceptions" : Words(status);
 
     /// <summary>The Bootstrap badge colour of a day's status; see <see cref="DayStatus"/>.</summary>
-    public static string DayStatusBadge(string? status, int exceptionCount) => WaitsForExceptions(status, exceptionCount) ? "info" : Badge(status);
+    public static string DayStatusBadge(string? status, int exceptionCount, bool pendingApproval = false) =>
+        pendingApproval ? "warning" : WaitsForExceptions(status, exceptionCount) ? "info" : Badge(status);
 
     /// <summary>Explains a day's status when the name alone would mislead; null when it needs no explanation.</summary>
-    public static string? DayStatusHint(string? status, int exceptionCount) => WaitsForExceptions(status, exceptionCount)
-        ? "Not ready for review: its open exceptions come first. Once they are corrected, the day appears in Approvals if it still needs a decision."
-        : null;
+    public static string? DayStatusHint(string? status, int exceptionCount, bool pendingApproval = false) =>
+        pendingApproval
+            ? "A correction was sent for this day and waits for the approver's decision (see Approvals)."
+            : WaitsForExceptions(status, exceptionCount)
+                ? "Not ready for review: its open exceptions come first. Once they are corrected, the day appears in Approvals if it still needs a decision."
+                : null;
 
     /// <summary>The Bootstrap badge colour of a status name.</summary>
     public static string Badge(string? status) => status switch

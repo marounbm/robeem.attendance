@@ -34,11 +34,13 @@ public sealed class AttendanceRecordsController : ControllerBase
     /// <param name="employeeId">Only this employee (within what the user may see).</param>
     /// <param name="status">Only days with this status: Calculated, PendingReview, Approved or Rejected.</param>
     /// <param name="onlyWithExceptions">Only days with an exception that is not closed.</param>
-    /// <param name="page">The 1-based page, newest days first (default 1). A page past the end answers the last page.</param>
+    /// <param name="page">The 1-based page (default 1). A page past the end answers the last page.</param>
     /// <param name="pageSize">Days per page (default 20, at most 200).</param>
+    /// <param name="sort">The column to sort by: Date (default), Employee, Worked, Overtime, Break, Exceptions or Status.</param>
+    /// <param name="descending">Sort from the highest to the lowest (for a date, newest first). The default is oldest first.</param>
     [HttpGet]
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
-    public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, string? sort, bool descending, CancellationToken cancellationToken)
     {
         if (AttendanceViewers.For(_user) is not { } viewer)
         {
@@ -57,7 +59,15 @@ public sealed class AttendanceRecordsController : ControllerBase
             parsed = value;
         }
 
-        return Ok(await _records.ListDaysAsync(new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, page <= 0 ? 1 : page, pageSize <= 0 ? DefaultPageSize : pageSize), viewer, cancellationToken));
+        var field = RecordSortField.Date;
+        if (!string.IsNullOrWhiteSpace(sort) && (!Enum.TryParse(sort, ignoreCase: true, out field) || !Enum.IsDefined(field)))
+        {
+            ModelState.AddModelError(nameof(sort), $"The sort must be one of: {string.Join(", ", Enum.GetNames<RecordSortField>())}.");
+            return ValidationProblem(ModelState);
+        }
+
+        var filter = new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, page <= 0 ? 1 : page, pageSize <= 0 ? DefaultPageSize : pageSize, field, descending);
+        return Ok(await _records.ListDaysAsync(filter, viewer, cancellationToken));
     }
 
     /// <summary>The employees whose days the user may see, to filter the list by one of them.</summary>

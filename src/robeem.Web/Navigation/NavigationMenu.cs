@@ -23,16 +23,12 @@ public static class NavigationMenu
             new NavItem("Time schedules", "TimeSchedules", "Index", "Define the shifts, the weekly pattern and the teams that every day is calculated against.", Hr),
         ]);
 
+    // Attendance is one screen with two tabs: the calculated days, and the exceptions to settle. The Exceptions tab is not a menu entry of its own.
     private static readonly NavSection MyWork = new(
         "My work",
         [
-            new NavItem("Attendance", "Records", "Index", "Calculated days: hours worked, overtime, status and how each was worked out.", Employee, Manager, Hr) { NeedsEmployee = true },
-            new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr) { NeedsEmployee = true },
-        ]);
-
-    private static readonly NavSection Approvals = new(
-        "Approvals",
-        [
+            new NavItem("Attendance", "Records", "Index", "Calculated days: hours worked, overtime, status and how each was worked out, and the exceptions to settle.", Employee, Manager, Hr) { NeedsEmployee = true },
+            new NavItem("Exceptions", "Exceptions", "Index", "Missing punches and other problems to settle: propose the missing time.", Employee, Manager, Hr) { NeedsEmployee = true, TabOf = "Records" },
             new NavItem("Approvals", "Approvals", "Index", "Decide the corrections employees asked for, and approve or reject overtime, unscheduled work and incomplete days: one queue.", Manager, Hr) { NeedsEmployee = true },
         ]);
 
@@ -82,15 +78,15 @@ public static class NavigationMenu
             new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr),
         ]);
 
-    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, Approvals, DevicesSection, Transactions, Catalog, PayrollSection, Settings, SystemSection];
+    public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, DevicesSection, Transactions, Catalog, PayrollSection, Settings, SystemSection];
 
     /// <summary>
     /// The sections the actor may open, each with only the items it may open; empty sections are dropped.
-    /// The menu and the start page both read this, so a screen the actor cannot open is shown nowhere.
+    /// The menu and the start page both read this, so a screen the actor cannot open is shown nowhere. A tab of another screen is not listed.
     /// </summary>
     public static IReadOnlyList<NavSection> For(ICurrentActor actor, bool? isPrimeTenant = null) =>
         Sections
-            .Select(group => group with { Items = group.Items.Where(item => AccessTo(actor, item, isPrimeTenant) == NavAccess.Allowed).ToList() })
+            .Select(group => group with { Items = group.Items.Where(item => item.TabOf is null && AccessTo(actor, item, isPrimeTenant) == NavAccess.Allowed).ToList() })
             .Where(group => group.Items.Count > 0)
             .ToList();
 

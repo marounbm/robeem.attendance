@@ -12,6 +12,9 @@ public sealed class DayCorrectionForm
 
     public string? Justification { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the page was opened from the day's own page, which is where it returns to.</summary>
+    public bool FromDay { get; set; }
+
     /// <summary>Gets or sets the choice for each punch of the day that can be edited.</summary>
     public List<PunchChoice> Punches { get; set; } = [];
 
@@ -36,6 +39,7 @@ public sealed class DayCorrectionForm
         {
             Date = day.Date,
             Justification = Justification,
+            FromDay = FromDay,
             Punches = For(day).Punches
                 .Select(p => new PunchChoice { TransactionId = p.TransactionId, CorrectionId = p.CorrectionId, Action = chosen.GetValueOrDefault((p.TransactionId, p.CorrectionId)) })
                 .ToList(),

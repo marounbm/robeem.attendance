@@ -19,6 +19,16 @@ internal static class AttendanceExceptionRules
     public static bool CanCorrect(AttendanceExceptionStatus status, int employeeId, int viewerId) =>
         employeeId == viewerId && status == AttendanceExceptionStatus.Open;
 
+    /// <summary>
+    /// Whether the viewer can accept the exception as it is: a break exception that is still open, decided by HR or by the employee's
+    /// manager, never by the employee.
+    /// </summary>
+    public static bool CanAccept(AttendanceExceptionType type, AttendanceExceptionStatus status, int employeeId, int? managerId, ExceptionViewer viewer) =>
+        type is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
+        && status == AttendanceExceptionStatus.Open
+        && employeeId != viewer.EmployeeId
+        && (viewer.IsHr || (viewer.IsManager && managerId == viewer.EmployeeId));
+
     /// <summary>Splits the stored list of suggested event types.</summary>
     public static IReadOnlyList<string> Suggested(string suggestedEventTypes) =>
         suggestedEventTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

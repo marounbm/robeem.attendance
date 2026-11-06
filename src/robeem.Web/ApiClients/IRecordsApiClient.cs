@@ -7,9 +7,11 @@ namespace robeem.Web.ApiClients;
 public interface IRecordsApiClient
 {
     /// <param name="status">Calculated, PendingReview, Approved or Rejected; null for any.</param>
-    /// <param name="page">The 1-based page of days, newest first.</param>
+    /// <param name="page">The 1-based page of days.</param>
     /// <param name="pageSize">Days per page.</param>
-    Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, CancellationToken cancellationToken);
+    /// <param name="sort">The column the whole list is sorted by, before it is cut into pages.</param>
+    /// <param name="descending">Whether the sort runs from the highest to the lowest.</param>
+    Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken);
 
     /// <summary>Lists the employees whose days the user may see, to filter the list by one of them.</summary>
     Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);

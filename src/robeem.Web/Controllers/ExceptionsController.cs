@@ -47,14 +47,16 @@ public sealed class ExceptionsController : Controller
     /// </summary>
     [HttpGet]
     [RequiresEmployee]
-    public async Task<IActionResult> Correct(DateTime date, CancellationToken cancellationToken)
+    public async Task<IActionResult> Correct(DateTime date, bool fromDay, CancellationToken cancellationToken)
     {
         if (await _corrections.GetDayAsync(date, cancellationToken) is not { } day)
         {
             return NotFound();
         }
 
-        return View(new DayCorrectionViewModel { Day = day, Form = DayCorrectionForm.For(day) });
+        var form = DayCorrectionForm.For(day);
+        form.FromDay = fromDay;
+        return View(new DayCorrectionViewModel { Day = day, Form = form });
     }
 
     /// <summary>Sends the edits of the day for approval, all together, with one reason.</summary>
@@ -68,7 +70,9 @@ public sealed class ExceptionsController : Controller
         if (result.Succeeded)
         {
             TempData["StatusMessage"] = "Your corrections were sent. They now wait for the approver's decision, all together.";
-            return RedirectToAction(nameof(Index));
+            return form.FromDay && _actor.Effective?.EmployeeId is { } employeeId
+                ? RedirectToDay(employeeId, form.Date)
+                : RedirectToAction(nameof(Index));
         }
 
         // Back to the page with what was typed, and why it was refused.
@@ -88,7 +92,7 @@ public sealed class ExceptionsController : Controller
     /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> Accept(int exceptionId, string? reason, CancellationToken cancellationToken)
+    public async Task<IActionResult> Accept(int exceptionId, string? reason, CancellationToken cancellationToken, int? dayEmployeeId = null, DateTime? dayDate = null)
     {
         var result = await _exceptions.AcceptAsync(
             exceptionId,
@@ -98,6 +102,13 @@ public sealed class ExceptionsController : Controller
         TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
             ? "The exception was accepted. The day was calculated again."
             : result.MessageText;
-        return RedirectToAction(nameof(Index));
+
+        // Accepted from a day's own page: back to that day.
+        return dayEmployeeId is { } employeeId && dayDate is { } date
+            ? RedirectToDay(employeeId, date)
+            : RedirectToAction(nameof(Index));
     }
+
+    private RedirectToActionResult RedirectToDay(int employeeId, DateTime date) =>
+        RedirectToAction("Day", "Records", new { employeeId, date = date.ToString("yyyy-MM-dd") });
 }

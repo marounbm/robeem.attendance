@@ -1,0 +1,13 @@
+@* The two tabs of the Attendance screen. The model is the active tab: "Days" or "Exceptions". *@
+@model string
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link @(Model == "Days" ? "active" : string.Empty)" aria-current="@(Model == "Days" ? "page" : null)"
+           asp-controller="Records" asp-action="Index">Days</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(Model == "Exceptions" ? "active" : string.Empty)" aria-current="@(Model == "Exceptions" ? "page" : null)"
+           asp-controller="Exceptions" asp-action="Index">Exceptions</a>
+    </li>
+</ul>
