@@ -39,6 +39,27 @@ public sealed class UploadsController : Controller
         });
     }
 
+    /// <summary>Deletes a failed or repeated upload and its punches that were never processed; the Api refuses anything else and says why.</summary>
+    [HttpPost]
+    public async Task<IActionResult> Delete(int id, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var result = await _uploads.DeleteUploadAsync(id, cancellationToken);
+        if (result.NotFound)
+        {
+            TempData["ErrorMessage"] = "That upload no longer exists.";
+        }
+        else if (result.Succeeded)
+        {
+            TempData["StatusMessage"] = "The upload and its unprocessed punches were deleted.";
+        }
+        else
+        {
+            TempData["ErrorMessage"] = result.MessageText;
+        }
+
+        return RedirectToAction(nameof(Index), new { page, pageSize });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Upload(int integrationId, IFormFile? file, CancellationToken cancellationToken)
     {

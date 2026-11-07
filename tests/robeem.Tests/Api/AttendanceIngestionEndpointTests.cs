@@ -20,11 +20,16 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
     private const string Csv = "transaction_id,employee_id,timestamp,type\r\nT1,E-1,2026-10-05 08:00:00,IN\r\n";
 
     private readonly FakeIngestion _ingestion = new();
+    private readonly FakeUploadDeletion _deletion = new();
     private readonly TestApi _api;
 
     public AttendanceIngestionEndpointTests()
     {
-        _api = TestApi.Start(services => services.AddSingleton<IIngestionService>(_ingestion));
+        _api = TestApi.Start(services =>
+        {
+            services.AddSingleton<IIngestionService>(_ingestion);
+            services.AddSingleton<IUploadDeletionService>(_deletion);
+        });
     }
 
     public async ValueTask DisposeAsync() => await _api.DisposeAsync();
@@ -63,6 +68,38 @@ public sealed class AttendanceIngestionEndpointTests : IAsyncDisposable
         await _api.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "api/attendance/ingestion/uploads?integrationId=7&page=3&pageSize=10") { Headers = { { "X-Test-User", As(AttendanceRoles.HRAdministrator) } } });
         Assert.Equal((7, 3, 10), _ingestion.HistoryAsked);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnUpload_IsDeletedByAnHrAdministrator_As204_ARefusalIs400WithTheReason_AndAMissingOneIs404()
+    {
+        var hr = As(AttendanceRoles.HRAdministrator);
+
+        var deleted = await _api.Send(HttpMethod.Delete, "api/attendance/ingestion/uploads/9", hr);
+
+        _deletion.Result = new UploadDeletionResult(UploadDeletionOutcome.NotAllowed, "Some of the file's punches were already processed.");
+        var refused = await _api.Send(HttpMethod.Delete, "api/attendance/ingestion/uploads/9", hr);
+
+        _deletion.Result = new UploadDeletionResult(UploadDeletionOutcome.NotFound);
+        var missing = await _api.Send(HttpMethod.Delete, "api/attendance/ingestion/uploads/9", hr);
+
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("already processed", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal([9, 9, 9], _deletion.Asked);
+    }
+
+    [Theory]
+    [InlineData(AttendanceRoles.Employee)]
+    [InlineData(AttendanceRoles.Manager)]
+    [InlineData(AttendanceRoles.IntegrationAdministrator)]
+    [InlineData(AttendanceRoles.PayrollAdministrator)]
+    public async Task AnyoneButAnHrAdministrator_CannotDeleteAnUpload(string role)
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await _api.Send(HttpMethod.Delete, "api/attendance/ingestion/uploads/9", As(role))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _api.Send(HttpMethod.Delete, "api/attendance/ingestion/uploads/9", null)).StatusCode);
+        Assert.Empty(_deletion.Asked);
     }
 
     [Fact]

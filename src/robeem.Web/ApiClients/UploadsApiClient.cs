@@ -27,6 +27,12 @@ public sealed class UploadsApiClient : IUploadsApiClient
         return await ApiResponses.ReadAsync<PagedResult<UploadedFileItem>>(response, cancellationToken);
     }
 
+    public async Task<ApiSaveResult> DeleteUploadAsync(int uploadId, CancellationToken cancellationToken)
+    {
+        using var response = await _http.DeleteAsync($"{Path}/uploads/{uploadId.ToString(CultureInfo.InvariantCulture)}", cancellationToken);
+        return await ApiResponses.SaveAsync<UploadedFileItem>(response, uploadId, cancellationToken);
+    }
+
     public async Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)
     {
         using var content = new MultipartFormDataContent { { new StreamContent(file), "file", fileName } };

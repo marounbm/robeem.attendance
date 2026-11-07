@@ -69,6 +69,67 @@ public sealed class RawAttendanceTransactionTests : IDisposable
     }
 
     [Fact]
+    public void Delete_OfANeverProcessedRow_IsAllowedOnlyWhenItsBatchWasNamed_ForOneSaveOnly()
+    {
+        InsertRaw();
+
+        // Not named: refused. The permission of a refused save is gone too.
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var raw = db.RawAttendanceTransactions.Single();
+            db.AllowUnprocessedUploadDeletion(raw.ImportBatchId + 1000);
+            db.RawAttendanceTransactions.Remove(raw);
+            Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+        }
+
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var raw = db.RawAttendanceTransactions.Single();
+            db.AllowUnprocessedUploadDeletion(raw.ImportBatchId);
+            db.RawAttendanceTransactions.Remove(raw);
+            db.SaveChanges();
+            Assert.Empty(db.RawAttendanceTransactions);
+        }
+    }
+
+    [Fact]
+    public void ThePermission_IsForgottenAfterTheSave_SoALaterDeleteIsRefusedAgain()
+    {
+        InsertRaw();
+        InsertRaw();
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var rows = db.RawAttendanceTransactions.OrderBy(r => r.Id).ToList();
+        db.AllowUnprocessedUploadDeletion(rows[0].ImportBatchId);
+        db.RawAttendanceTransactions.Remove(rows[0]);
+        db.SaveChanges();
+
+        db.RawAttendanceTransactions.Remove(rows[1]);
+        Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+    }
+
+    [Theory]
+    [InlineData(RawTransactionProcessingStatus.Normalized)]
+    [InlineData(RawTransactionProcessingStatus.Skipped)]
+    public void Delete_OfAProcessedRow_IsRefused_EvenWhenItsBatchWasNamed(RawTransactionProcessingStatus status)
+    {
+        InsertRaw();
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.RawAttendanceTransactions.Single().ProcessingStatus = status;
+            db.SaveChanges();
+        }
+
+        using var delete = _database.CreateContext(TestDatabase.TenantA);
+        var raw = delete.RawAttendanceTransactions.Single();
+        delete.AllowUnprocessedUploadDeletion(raw.ImportBatchId);
+        delete.RawAttendanceTransactions.Remove(raw);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => delete.SaveChanges());
+        Assert.Equal("RawAttendanceTransaction is immutable.", ex.Message);
+    }
+
+    [Fact]
     public void Update_OfBookkeepingColumns_IsAllowed()
     {
         InsertRaw();

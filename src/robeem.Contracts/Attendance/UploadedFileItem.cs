@@ -32,4 +32,10 @@ public sealed class UploadedFileItem
 
     /// <summary>Gets a value indicating whether an earlier upload of this tenant had exactly the same bytes.</summary>
     public bool RepeatsAnEarlierUpload { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the file may be deleted with its punches: it failed or repeats an earlier upload, and none of its punches
+    /// was processed. The Api decides again when the deletion is asked for.
+    /// </summary>
+    public bool CanDelete { get; init; }
 }

@@ -122,6 +122,7 @@ else
                         <th scope="col" class="text-end">Rows</th>
                         <th scope="col">Status</th>
                         <th scope="col">By</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -142,6 +143,16 @@ else
                             <td class="text-end">@upload.RecordsIngested@(upload.RecordsFailed > 0 ? $" ({upload.RecordsFailed} unusable)" : string.Empty)</td>
                             <td><span class="badge text-bg-@DisplayFormats.Badge(upload.Status)">@DisplayFormats.Words(upload.Status)</span></td>
                             <td>@(upload.UploadedByName.Length == 0 ? "—" : upload.UploadedByName)</td>
+                            <td class="text-end">
+                                @* Offered only for a file that failed or repeats an earlier one and whose punches were never processed. *@
+                                @if (upload.CanDelete)
+                                {
+                                    <form method="post" asp-action="Delete" asp-route-id="@upload.Id" asp-route-page="@Model.Page" asp-route-pageSize="@Model.PageSize" class="d-inline"
+                                          onsubmit="return confirm('Delete this upload and its @upload.RecordsIngested punch(es), which were never processed? This can\'t be undone.');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                    </form>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>

@@ -66,6 +66,12 @@ public interface IRobeemDbContext
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     string CurrentTenantId { get; }
 
+    /// <summary>
+    /// Lets the next save delete the never-processed raw rows of this batch and the uploaded-file record that points at it, which are otherwise
+    /// immutable and insert-only. A row that was normalized, skipped or retained is still refused. Valid for one save, then forgotten.
+    /// </summary>
+    void AllowUnprocessedUploadDeletion(int batchId);
+
     void AddRange(params object[] entities);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

@@ -104,6 +104,7 @@ public sealed class IngestionService : IIngestionService
                 UploadedByName = f.UploadedBy == null ? string.Empty : f.UploadedBy.Title,
                 f.BatchId,
                 Status = f.Batch!.Status,
+                BatchType = f.Batch.BatchType,
                 f.Batch.RecordsIngested,
                 f.Batch.RecordsFailed,
             })
@@ -118,6 +119,7 @@ public sealed class IngestionService : IIngestionService
                 .ToListAsync(cancellationToken))
             .ToDictionary(g => g.Sha256, g => g.FirstId, StringComparer.Ordinal);
 
+        var processed = await UploadDeletionRules.BatchesWithProcessedPunchesAsync(_db, files.Select(f => f.BatchId).ToList(), cancellationToken);
         var items = files
             .Select(f => new UploadedFileItem
             {
@@ -134,6 +136,7 @@ public sealed class IngestionService : IIngestionService
                 RecordsIngested = f.RecordsIngested,
                 RecordsFailed = f.RecordsFailed,
                 RepeatsAnEarlierUpload = firstIds[f.Sha256] != f.Id,
+                CanDelete = UploadDeletionRules.BlockedReason(f.BatchType, f.Status, f.RecordsIngested, f.RecordsFailed, firstIds[f.Sha256] != f.Id, processed.Contains(f.BatchId)) is null,
             })
             .ToList();
 

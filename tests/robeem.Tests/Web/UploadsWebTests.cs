@@ -68,6 +68,43 @@ public sealed class UploadsWebTests
     }
 
     [Fact]
+    public async Task TheClient_DeletesAnUploadById_AndTheApisRefusalComesBackAsTheReason()
+    {
+        var ok = new StubHttpHandler(HttpStatusCode.NoContent, string.Empty);
+        var refused = new StubHttpHandler(HttpStatusCode.BadRequest, """{"title":"x","status":400,"errors":{"":["Some of the file's punches were already processed, so they are kept."]}}""", "application/problem+json");
+        var missing = new StubHttpHandler(HttpStatusCode.NotFound, string.Empty);
+
+        var done = await new UploadsApiClient(ok.CreateClient()).DeleteUploadAsync(7, CancellationToken.None);
+        var blocked = await new UploadsApiClient(refused.CreateClient()).DeleteUploadAsync(7, CancellationToken.None);
+        var gone = await new UploadsApiClient(missing.CreateClient()).DeleteUploadAsync(7, CancellationToken.None);
+
+        Assert.Equal((HttpMethod.Delete, "/api/attendance/ingestion/uploads/7"), (ok.Requests.Single().Method, ok.Requests.Single().RequestUri!.PathAndQuery));
+        Assert.True(done.Succeeded);
+        Assert.Equal((false, "Some of the file's punches were already processed, so they are kept."), (blocked.Succeeded, blocked.MessageText));
+        Assert.True(gone.NotFound);
+    }
+
+    [Fact]
+    public async Task DeletingAnUpload_TellsTheUserWhatHappened_AndComesBackToTheSamePage()
+    {
+        var uploads = new FakeUploads();
+        var controller = WithTempData(new UploadsController(uploads));
+
+        var done = (RedirectToActionResult)await controller.Delete(7, 3, 50, CancellationToken.None);
+        Assert.Contains("deleted", (string)controller.TempData["StatusMessage"]!);
+        Assert.Equal((3, 50), (done.RouteValues!["page"], done.RouteValues["pageSize"]));
+
+        uploads.DeleteResult = ApiSaveResult.Invalid(new Dictionary<string, string> { [string.Empty] = "Some of the file's punches were already processed." });
+        await controller.Delete(7, 3, 50, CancellationToken.None);
+        Assert.Equal("Some of the file's punches were already processed.", controller.TempData["ErrorMessage"]);
+
+        uploads.DeleteResult = ApiSaveResult.Missing();
+        await controller.Delete(7, 3, 50, CancellationToken.None);
+        Assert.Equal("That upload no longer exists.", controller.TempData["ErrorMessage"]);
+        Assert.Equal([7, 7, 7], uploads.Deleted);
+    }
+
+    [Fact]
     public async Task TheScreen_ChoosesTheOnlyTarget_ButWaitsForAChoiceAmongSeveral()
     {
         var one = new FakeUploads { Targets = [Target(3, ".csv")] };
@@ -222,12 +259,22 @@ public sealed class UploadsWebTests
 
         public List<(int Page, int PageSize)> HistoryAsks { get; } = [];
 
+        public ApiSaveResult DeleteResult { get; set; } = ApiSaveResult.Success(null);
+
+        public List<int> Deleted { get; } = [];
+
         public Task<IReadOnlyList<UploadTarget>> ListTargetsAsync(CancellationToken cancellationToken) => Task.FromResult(Targets);
 
         public Task<PagedResult<UploadedFileItem>> ListUploadsAsync(int page, int pageSize, CancellationToken cancellationToken)
         {
             HistoryAsks.Add((page, pageSize));
             return Task.FromResult(new PagedResult<UploadedFileItem> { Total = HistoryTotal, Page = page, PageSize = pageSize });
+        }
+
+        public Task<ApiSaveResult> DeleteUploadAsync(int uploadId, CancellationToken cancellationToken)
+        {
+            Deleted.Add(uploadId);
+            return Task.FromResult(DeleteResult);
         }
 
         public Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken)

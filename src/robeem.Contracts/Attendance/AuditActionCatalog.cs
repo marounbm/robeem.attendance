@@ -18,6 +18,7 @@ public static class AuditActionCatalog
         "PolicyChanged",
         "DayReprocessed",
         "ScheduleChanged",
+        "UploadDeleted",
         "AttendanceDataRead",
     ];
 }

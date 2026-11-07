@@ -9,7 +9,8 @@ namespace robeem.DataModel
     /// A record of one attendance file somebody uploaded: which file (name, size and SHA-256 of its
     /// bytes), when, by whom, into which integration, and the batch that stored its rows. The file
     /// itself is not kept; its rows are the <see cref="RawAttendanceTransaction"/>s of
-    /// <see cref="BatchId"/>. Insert-only: a row is never changed or deleted.
+    /// <see cref="BatchId"/>. Insert-only: a row is never changed, and is deleted only with a failed or repeated
+    /// upload none of whose punches was processed (<c>IUploadDeletionService</c>).
     /// </summary>
     [Serializable]
     [Table(nameof(AttendanceUploadedFile), Schema = nameof(SmartEnum.Module.Attendance))]

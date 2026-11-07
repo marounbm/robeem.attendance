@@ -12,6 +12,9 @@ public interface IUploadsApiClient
     /// <summary>Lists one page of the files uploaded so far, newest first, each with its SHA-256 and upload time. A page past the end answers the last.</summary>
     Task<PagedResult<UploadedFileItem>> ListUploadsAsync(int page, int pageSize, CancellationToken cancellationToken);
 
+    /// <summary>Deletes a failed or repeated upload with its unprocessed punches. A refusal comes back as the reason to show; a missing upload as not found.</summary>
+    Task<ApiSaveResult> DeleteUploadAsync(int uploadId, CancellationToken cancellationToken);
+
     /// <summary>Uploads an attendance file into the integration's raw transactions.</summary>
     Task<ApiCommandResult<AttendanceIngestionResult>> UploadAsync(int integrationId, Stream file, string fileName, CancellationToken cancellationToken);
 }

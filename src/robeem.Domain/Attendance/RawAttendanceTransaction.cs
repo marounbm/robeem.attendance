@@ -9,6 +9,8 @@ namespace robeem.DataModel
     /// The vendor-exact copy of one punch (study §6.2). Stored for every event, valid or not, and
     /// never changed afterwards (CLAUDE.md §1.1, §1.2): <c>RobeemDbContext</c> rejects a delete, and
     /// any update other than the bookkeeping columns listed in <see cref="MutableProperties"/>.
+    /// The one exception is a punch that was never processed (Pending or Failed, no normalized row), which is deleted together with the
+    /// failed or repeated upload it came from (<c>IUploadDeletionService</c>).
     /// </summary>
     /// <remarks>
     /// Vendor-supplied strings have no length limit, so an oversized value can never prevent the

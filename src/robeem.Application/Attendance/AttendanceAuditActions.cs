@@ -30,6 +30,9 @@ public static class AttendanceAuditActions
     /// <summary>A sync or reconciliation was started by a person instead of the schedule.</summary>
     public const string IntegrationRunRequested = "IntegrationRunRequested";
 
+    /// <summary>A failed or repeated upload was deleted with its never-processed punches. The only time raw attendance is deleted.</summary>
+    public const string UploadDeleted = "UploadDeleted";
+
     /// <summary>Raw or normalized attendance read outside normalization and processing.</summary>
     public const string AttendanceDataRead = "AttendanceDataRead";
 }

@@ -55,6 +55,7 @@ public sealed class ZktecoUploadScreenTests : IAsyncDisposable
             services.AddScoped<IRobeemDbContext>(_ => _database.CreateContext(TestDatabase.TenantA));
             services.AddScoped<ICatalogReader>(_ => _database.CreateCatalogReader());
             services.AddScoped<IIngestionService, IngestionService>();
+            services.AddSingleton<IUploadDeletionService>(new FakeUploadDeletion());
         });
         _api.Client.DefaultRequestHeaders.Add("X-Test-User", TestApi.As(1, AttendanceRoles.HRAdministrator));
     }

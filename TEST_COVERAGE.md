@@ -164,6 +164,10 @@ Real ones, in rough order of how much they matter.
 11. **Retention** (`RawTransactionRetentionStatus`) has no behaviour and no test.
 12. **Webhook ingestion** is not built.
 
+## Deleting a failed or repeated upload (2026-11-07)
+
+The one exception to invariant 2. `UploadDeletionTests` (service: a failed file, a file whose every punch was unusable, a repeat deleted while the first copy stays, a processed or archived punch keeping its upload, another tenant's id), `RawAttendanceTransactionTests` (the guard: permitted only for a named batch and a Pending/Failed row, forgotten after one save, a Normalized or Skipped row refused even when named; the plain `Delete_Throws` still holds), `AttendanceIngestionEndpointTests` (204 / 400 with the reason / 404, HR only) and `UploadsWebTests` (the client, and the controller's messages). Not tested: a punch with a replaced (`Excluded`) normalized row blocking deletion, which the database's foreign key also refuses. A repeat is only deletable until normalization reads it, a few seconds.
+
 ## Housekeeping done in P14
 
 - `AttendanceCatalogPersistenceTests` moved to `Infrastructure/Attendance`; the audit log's append-only test moved there too (`AttendanceAuditLogTests`), as persistence behaviour.

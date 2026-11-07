@@ -26,6 +26,9 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     private readonly ITenantContext _tenantContext;
 
+    // The batches whose never-processed upload may be deleted by the next save (see AllowUnprocessedUploadDeletion).
+    private readonly HashSet<int> _uploadDeletionBatchIds = [];
+
     public RobeemDbContext(DbContextOptions<RobeemDbContext> options, ITenantContext tenantContext)
         : base(options)
     {
@@ -81,16 +84,33 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
     /// <summary>Gets the current tenant id; throws when none is resolved, so tenant data access fails closed.</summary>
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
 
+    public void AllowUnprocessedUploadDeletion(int batchId) => _uploadDeletionBatchIds.Add(batchId);
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ApplyTenantAndAuditRules();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        try
+        {
+            ApplyTenantAndAuditRules();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        finally
+        {
+            _uploadDeletionBatchIds.Clear();
+        }
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        ApplyTenantAndAuditRules();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        try
+        {
+            ApplyTenantAndAuditRules();
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        finally
+        {
+            // The permission is for one save, whether or not it worked.
+            _uploadDeletionBatchIds.Clear();
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -109,15 +129,31 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         PersistenceConventions.Apply(modelBuilder, Database.IsNpgsql());
     }
 
-    private static void EnsureRawTransactionImmutable(EntityEntry entry)
+    private static void ApplyAudit(EntityEntry entry)
     {
-        if (entry.Entity is not RawAttendanceTransaction)
+        if (entry.State == EntityState.Modified && entry.Metadata.FindProperty(nameof(Entity.ModifiedOn)) is not null)
+        {
+            entry.Property(nameof(Entity.ModifiedOn)).CurrentValue = DateTime.Now;
+        }
+    }
+
+    private void EnsureRawTransactionImmutable(EntityEntry entry)
+    {
+        if (entry.Entity is not RawAttendanceTransaction raw)
         {
             return;
         }
 
         if (entry.State == EntityState.Deleted)
         {
+            // The one exception (CLAUDE.md §1.2): a row that was never processed, deleted with the failed or repeated upload it came from, which
+            // the caller named for this save. A row that was normalized, skipped or retained is never deleted, whatever the caller says.
+            var neverProcessed = entry.Property(nameof(RawAttendanceTransaction.ProcessingStatus)).OriginalValue is RawTransactionProcessingStatus.Pending or RawTransactionProcessingStatus.Failed;
+            if (neverProcessed && _uploadDeletionBatchIds.Contains(raw.ImportBatchId))
+            {
+                return;
+            }
+
             throw new InvalidOperationException("RawAttendanceTransaction is immutable.");
         }
 
@@ -133,19 +169,17 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         }
     }
 
-    private static void EnsureAuditLogAppendOnly(EntityEntry entry)
+    private void EnsureAuditLogAppendOnly(EntityEntry entry)
     {
+        // The record of an upload goes with its never-processed rows, in the same save (see EnsureRawTransactionImmutable); it is never edited.
+        if (entry is { State: EntityState.Deleted, Entity: AttendanceUploadedFile upload } && _uploadDeletionBatchIds.Contains(upload.BatchId))
+        {
+            return;
+        }
+
         if (entry.Entity is AttendanceAuditLog or AttendanceUploadedFile)
         {
             throw new InvalidOperationException($"{entry.Entity.GetType().Name} is append-only: a row is never changed or deleted.");
-        }
-    }
-
-    private static void ApplyAudit(EntityEntry entry)
-    {
-        if (entry.State == EntityState.Modified && entry.Metadata.FindProperty(nameof(Entity.ModifiedOn)) is not null)
-        {
-            entry.Property(nameof(Entity.ModifiedOn)).CurrentValue = DateTime.Now;
         }
     }
 

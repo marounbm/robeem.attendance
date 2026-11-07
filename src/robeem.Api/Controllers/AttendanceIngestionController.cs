@@ -16,11 +16,13 @@ public sealed class AttendanceIngestionController : ControllerBase
     private const long MaxUploadBytes = 10 * 1024 * 1024;
 
     private readonly IIngestionService _ingestion;
+    private readonly IUploadDeletionService _deletion;
     private readonly ICurrentUser _user;
 
-    public AttendanceIngestionController(IIngestionService ingestion, ICurrentUser user)
+    public AttendanceIngestionController(IIngestionService ingestion, IUploadDeletionService deletion, ICurrentUser user)
     {
         _ingestion = ingestion;
+        _deletion = deletion;
         _user = user;
     }
 
@@ -31,6 +33,27 @@ public sealed class AttendanceIngestionController : ControllerBase
     [HttpGet("uploads")]
     public async Task<PagedResult<UploadedFileItem>> Uploads(int? integrationId, int page, int pageSize, CancellationToken cancellationToken = default) =>
         await _ingestion.ListUploadedFilesAsync(integrationId, page <= 0 ? 1 : page, pageSize, cancellationToken);
+
+    /// <summary>
+    /// Deletes an upload that failed, or repeats an earlier one, with its punches, while none of them was processed (the one exception to
+    /// the immutability of raw attendance). 204 when deleted; 404 when there is no such upload; 400 with the reason when it may not be deleted.
+    /// The deletion is audited as <c>UploadDeleted</c>.
+    /// </summary>
+    [HttpDelete("uploads/{id:int}")]
+    public async Task<IActionResult> DeleteUpload(int id, CancellationToken cancellationToken)
+    {
+        var result = await _deletion.DeleteAsync(id, cancellationToken);
+        switch (result.Outcome)
+        {
+            case UploadDeletionOutcome.NotFound:
+                return NotFound();
+            case UploadDeletionOutcome.NotAllowed:
+                ModelState.AddModelError(string.Empty, result.Reason ?? "The upload can't be deleted.");
+                return ValidationProblem(ModelState);
+            default:
+                return NoContent();
+        }
+    }
 
     /// <summary>The integrations a file can be uploaded into, each with the file formats and layout of its vendor.</summary>
     [HttpGet("targets")]
