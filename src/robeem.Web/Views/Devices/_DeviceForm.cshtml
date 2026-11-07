@@ -2,13 +2,6 @@
 
 <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
-<datalist id="time-zones">
-    @foreach (var zone in DeviceFormViewModel.CommonTimeZones)
-    {
-        <option value="@zone"></option>
-    }
-</datalist>
-
 <div class="card mb-3">
     <div class="card-header">Device</div>
     <div class="card-body row g-3">
@@ -68,7 +61,12 @@
         </div>
         <div class="col-md-3">
             <label asp-for="Input.TimeZoneId" class="form-label"></label>
-            <input asp-for="Input.TimeZoneId" class="form-control" list="time-zones" autocomplete="off" maxlength="64" />
+            <select asp-for="Input.TimeZoneId" class="form-select">
+                @foreach (var zone in TimeZoneOptions.Choices(Model.Input.TimeZoneId))
+                {
+                    <option value="@zone" selected="@(zone == Model.Input.TimeZoneId?.Trim())">@zone</option>
+                }
+            </select>
             <span asp-validation-for="Input.TimeZoneId" class="text-danger small"></span>
         </div>
         <div class="col-md-4">
