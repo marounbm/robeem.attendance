@@ -94,6 +94,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             .Select(d => new RecordDayListItem
             {
                 EmployeeId = d.EmployeeId,
+                IsViewersOwnDay = d.EmployeeId == viewer.EmployeeId,
                 EmployeeNumber = d.Employee!.EmployeeNumber,
                 EmployeeName = d.Employee.FirstName + " " + d.Employee.LastName,
                 AttendanceDate = d.AttendanceDate,

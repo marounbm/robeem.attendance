@@ -5,6 +5,9 @@ public sealed class RecordDayListItem
 {
     public int EmployeeId { get; init; }
 
+    /// <summary>Gets a value indicating whether the day is the viewer's own: only the employee can correct it.</summary>
+    public bool IsViewersOwnDay { get; init; }
+
     public string EmployeeNumber { get; init; } = string.Empty;
 
     public string EmployeeName { get; init; } = string.Empty;

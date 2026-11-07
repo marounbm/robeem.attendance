@@ -26,7 +26,7 @@
     One line per employee and day, oldest first unless you sort by another column (press a column heading; press it again to turn the order round):
     the hours worked out from the punches and the schedule. You see your own
     days; a manager also sees their reports'; HR sees everyone's. Open a day to see how it was calculated.
-    A day with an open exception shows as <strong>Open exceptions</strong>: press <strong>Resolve</strong> to correct its punches (or accept a break exception) from the day itself, and only
+    A day with an open exception shows as <strong>Open exceptions</strong>: the employee presses <strong>Resolve</strong> to correct its punches (a manager or HR opens the day to accept a break exception), and only
     then does it come to <em>Approvals</em> if it still needs a decision. <strong>Pending review</strong> is a day that does.
 </p>
 
@@ -116,8 +116,10 @@
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
                             <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span></td>
                             <td class="text-end">
-                                <a class="btn btn-sm @(item.ExceptionCount > 0 ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
-                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@(item.ExceptionCount > 0 ? "Resolve" : "Open")</a>
+                                @* Only the employee can correct their day, so only they are offered Resolve; anyone else just opens it. *@
+                                @{ var resolvable = item.ExceptionCount > 0 && item.IsViewersOwnDay; }
+                                <a class="btn btn-sm @(resolvable ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
+                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@(resolvable ? "Resolve" : "Open")</a>
                             </td>
                         </tr>
                     }
