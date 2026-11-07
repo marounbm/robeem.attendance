@@ -59,12 +59,17 @@ public sealed class PoliciesWebTests
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"id":3,"actor":"employee:7","action":"PolicyChanged","entityType":"AttendancePolicy","entityId":2,"timestamp":"2026-10-05T14:03:00+00:00","details":"x"}],"total":41,"page":1,"pageSize":20}""");
         var client = new AuditApiClient(handler.CreateClient());
 
-        var all = await client.ListAsync(null, " ", null, 1, 20, CancellationToken.None);
-        await client.ListAsync("Policy Changed", "AttendancePolicy", 2, 3, 50, CancellationToken.None);
+        var all = await client.ListAsync(null, " ", null, null, null, 1, 20, CancellationToken.None);
+        await client.ListAsync("Policy Changed", "AttendancePolicy", 2, null, null, 3, 50, CancellationToken.None);
+        await client.ListAsync(null, null, null, new DateTime(2026, 5, 4, 8, 30, 0), new DateTime(2026, 5, 6, 17, 0, 0), 1, 20, CancellationToken.None);
 
         Assert.Equal((3, 41), (all.Items.Single().Id, all.Total));
         Assert.Equal(
-            ["/api/attendance/audit?page=1&pageSize=20", "/api/attendance/audit?page=3&pageSize=50&action=Policy%20Changed&entityType=AttendancePolicy&entityId=2"],
+            [
+                "/api/attendance/audit?page=1&pageSize=20",
+                "/api/attendance/audit?page=3&pageSize=50&action=Policy%20Changed&entityType=AttendancePolicy&entityId=2",
+                "/api/attendance/audit?page=1&pageSize=20&from=2026-05-04T08:30&to=2026-05-06T17:00",
+            ],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
     }
 
@@ -141,13 +146,17 @@ public sealed class PoliciesWebTests
     {
         var audit = new FakeAudit { Total = 95 };
         var controller = new AuditController(audit);
+        var from = new DateTime(2026, 5, 4, 8, 30, 0);
+        var to = new DateTime(2026, 5, 6, 17, 0, 0);
 
-        var model = (AuditIndexViewModel)((ViewResult)await controller.Index("ReviewDecided", "AttendanceRecord", 7, 3, pageSize, CancellationToken.None)).Model!;
+        var model = (AuditIndexViewModel)((ViewResult)await controller.Index("ReviewDecided", "AttendanceRecord", 7, from, to, 3, pageSize, CancellationToken.None)).Model!;
 
-        Assert.Equal(("ReviewDecided", "AttendanceRecord", 7, 3, expected), (audit.Asked.Action, audit.Asked.EntityType, audit.Asked.EntityId, audit.Asked.Page, audit.Asked.PageSize));
+        Assert.Equal(("ReviewDecided", "AttendanceRecord", 7, from, to, 3, expected), (audit.Asked.Action, audit.Asked.EntityType, audit.Asked.EntityId, audit.Asked.From, audit.Asked.To, audit.Asked.Page, audit.Asked.PageSize));
         Assert.Equal(("ReviewDecided", expected, 3, 95), (model.Action, model.PageSize, model.Page, model.Total));
+        Assert.Equal((from, to), (model.From, model.To));
         Assert.Equal("ReviewDecided", model.Pager.For(2)["action"]);
         Assert.Equal(("7", "AttendanceRecord"), (model.Pager.For(2)["entityId"], model.Pager.For(2)["entityType"]));
+        Assert.Equal(("2026-05-04T08:30", "2026-05-06T17:00"), (model.Pager.For(2)["from"], model.Pager.For(2)["to"]));
     }
 
     [Fact]
@@ -155,7 +164,7 @@ public sealed class PoliciesWebTests
     {
         var audit = new FakeAudit();
 
-        await new AuditController(audit).Index(null, null, null, -2, 0, CancellationToken.None);
+        await new AuditController(audit).Index(null, null, null, null, null, -2, 0, CancellationToken.None);
 
         Assert.Equal((1, 20), (audit.Asked.Page, audit.Asked.PageSize));
     }
@@ -221,13 +230,13 @@ public sealed class PoliciesWebTests
 
     private sealed class FakeAudit : IAuditApiClient
     {
-        public (string? Action, string? EntityType, int? EntityId, int Page, int PageSize) Asked { get; private set; }
+        public (string? Action, string? EntityType, int? EntityId, DateTime? From, DateTime? To, int Page, int PageSize) Asked { get; private set; }
 
         public int Total { get; set; }
 
-        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
+        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
         {
-            Asked = (action, entityType, entityId, page, pageSize);
+            Asked = (action, entityType, entityId, from, to, page, pageSize);
             return Task.FromResult(new PagedResult<AuditLogEntry> { Total = Total, Page = page, PageSize = pageSize });
         }
     }

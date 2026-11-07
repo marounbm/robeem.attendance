@@ -15,16 +15,18 @@ public sealed class AuditController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var size = AuditIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : AuditIndexViewModel.DefaultPageSize;
-        var result = await _audit.ListAsync(action, entityType, entityId, Math.Max(page, 1), size, cancellationToken);
+        var result = await _audit.ListAsync(action, entityType, entityId, from, to, Math.Max(page, 1), size, cancellationToken);
         return View(new AuditIndexViewModel
         {
             Entries = result.Items,
             Action = action,
             EntityType = entityType,
             EntityId = entityId,
+            From = from,
+            To = to,
             Page = result.Page,
             PageSize = size,
             Total = result.Total,

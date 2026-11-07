@@ -20,9 +20,11 @@ public sealed class AttendanceAuditController : ControllerBase
         _audit = audit;
     }
 
+    /// <param name="from">Only entries at or after this time (UTC), to the minute.</param>
+    /// <param name="to">Only entries up to the end of this minute (UTC).</param>
     /// <param name="page">The 1-based page, newest entries first (default 1). A page past the end answers the last page.</param>
     /// <param name="pageSize">Entries per page (default 20, at most 200).</param>
     [HttpGet]
-    public async Task<PagedResult<AuditLogEntry>> List(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken) =>
-        await _audit.ListAsync(action, entityType, entityId, page <= 0 ? 1 : page, pageSize, cancellationToken);
+    public async Task<PagedResult<AuditLogEntry>> List(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken) =>
+        await _audit.ListAsync(action, entityType, entityId, from, to, page <= 0 ? 1 : page, pageSize, cancellationToken);
 }

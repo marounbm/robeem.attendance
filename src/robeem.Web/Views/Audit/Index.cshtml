@@ -13,7 +13,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" asp-action="Index" class="row g-3 align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label" for="action">Action</label>
                 <select id="action" name="action" class="form-select">
                     <option value="">Any action</option>
@@ -23,15 +23,23 @@
                     }
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label" for="entityType">Record type</label>
                 <input id="entityType" name="entityType" class="form-control" value="@Model.EntityType" placeholder="e.g. AttendanceCorrection" autocomplete="off" />
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <label class="form-label" for="entityId">Record id</label>
                 <input id="entityId" name="entityId" type="number" min="1" class="form-control" value="@Model.EntityId" />
             </div>
             <div class="col-md-2">
+                <label class="form-label" for="from">From (UTC)</label>
+                <input id="from" name="from" type="datetime-local" class="form-control" value="@Model.From?.ToString(AuditIndexViewModel.MinuteFormat)" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="to">To (UTC)</label>
+                <input id="to" name="to" type="datetime-local" class="form-control" value="@Model.To?.ToString(AuditIndexViewModel.MinuteFormat)" />
+            </div>
+            <div class="col-md-1">
                 <label class="form-label" for="pageSize">Per page</label>
                 <select id="pageSize" name="pageSize" class="form-select">
                     @foreach (var size in AuditIndexViewModel.PageSizes)

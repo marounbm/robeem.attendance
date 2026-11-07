@@ -87,9 +87,48 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
         Assert.Equal(["three", "one"], (await ListAsync("A")).Select(e => e.Details));
         using var db2 = Database.CreateContext(TestDatabase.TenantA);
         var audit2 = CreateAudit(db2);
-        Assert.Equal(["three", "two", "one"], (await audit2.ListAsync(null, null, null, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
-        Assert.Equal(["two"], (await audit2.ListAsync(null, "Thing", 2, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
-        Assert.Single((await audit2.ListAsync(null, null, null, 1, 1, CancellationToken.None)).Items);
+        Assert.Equal(["three", "two", "one"], (await audit2.ListAsync(null, null, null, null, null, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
+        Assert.Equal(["two"], (await audit2.ListAsync(null, "Thing", 2, null, null, 1, 100, CancellationToken.None)).Items.Select(e => e.Details));
+        Assert.Single((await audit2.ListAsync(null, null, null, null, null, 1, 1, CancellationToken.None)).Items);
+    }
+
+    [Fact]
+    public async Task TheLog_CanBeFilteredBetweenTwoTimes_TheEndMinuteIncluded_AndPagedWithTheSameRange()
+    {
+        var start = new DateTime(2026, 5, 4, 10, 0, 0);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var audit = CreateAudit(db);
+
+            // 09:59:59, 10:00:00, 10:30:20, 10:59:59, 11:00:00: the range 10:00 to 10:59 holds the middle three.
+            foreach (var (offset, label) in new[] { (-1, "before"), (0, "start"), (1830, "middle"), (3599, "last"), (3600, "after") })
+            {
+                Clock.Local = start.AddSeconds(offset);
+                audit.Record("A", "Thing", 1, label);
+                await db.SaveChangesAsync();
+            }
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var log = CreateAudit(read);
+        var from = new DateTime(2026, 5, 4, 10, 0, 0);
+        var to = new DateTime(2026, 5, 4, 10, 59, 0);
+
+        var both = await log.ListAsync(null, null, null, from, to, 1, 100, CancellationToken.None);
+        var onlyFrom = await log.ListAsync(null, null, null, from, null, 1, 100, CancellationToken.None);
+        var onlyTo = await log.ListAsync(null, null, null, null, to, 1, 100, CancellationToken.None);
+        var firstPage = await log.ListAsync(null, null, null, from, to, 1, 2, CancellationToken.None);
+        var secondPage = await log.ListAsync(null, null, null, from, to, 2, 2, CancellationToken.None);
+        var none = await log.ListAsync(null, null, null, to.AddHours(5), to.AddHours(6), 1, 100, CancellationToken.None);
+
+        Assert.Equal(["last", "middle", "start"], both.Items.Select(e => e.Details));
+        Assert.Equal(["after", "last", "middle", "start"], onlyFrom.Items.Select(e => e.Details));
+        Assert.Equal(["last", "middle", "start", "before"], onlyTo.Items.Select(e => e.Details));
+
+        // The total follows the range, and the pages together are the range once.
+        Assert.Equal((3, 3), (firstPage.Total, secondPage.Total));
+        Assert.Equal(["last", "middle", "start"], firstPage.Items.Concat(secondPage.Items).Select(e => e.Details));
+        Assert.Equal((0, 0), (none.Total, none.Items.Count));
     }
 
     [Fact]
@@ -108,12 +147,12 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
 
         using var read = Database.CreateContext(TestDatabase.TenantA);
         var log = CreateAudit(read);
-        var first = await log.ListAsync(null, null, null, 1, 2, CancellationToken.None);
-        var second = await log.ListAsync(null, null, null, 2, 2, CancellationToken.None);
-        var third = await log.ListAsync(null, null, null, 3, 2, CancellationToken.None);
-        var beyond = await log.ListAsync(null, null, null, 99, 2, CancellationToken.None);
-        var onlyA = await log.ListAsync("A", null, null, 1, 2, CancellationToken.None);
-        var nothing = await log.ListAsync("Nope", null, null, 4, 10, CancellationToken.None);
+        var first = await log.ListAsync(null, null, null, null, null, 1, 2, CancellationToken.None);
+        var second = await log.ListAsync(null, null, null, null, null, 2, 2, CancellationToken.None);
+        var third = await log.ListAsync(null, null, null, null, null, 3, 2, CancellationToken.None);
+        var beyond = await log.ListAsync(null, null, null, null, null, 99, 2, CancellationToken.None);
+        var onlyA = await log.ListAsync("A", null, null, null, null, 1, 2, CancellationToken.None);
+        var nothing = await log.ListAsync("Nope", null, null, null, null, 4, 10, CancellationToken.None);
 
         // Every page knows the whole list; together the pages are the list once, newest first.
         Assert.All(new[] { first, second, third }, p => Assert.Equal((5, 2, 3), (p.Total, p.PageSize, p.PageCount)));
@@ -121,8 +160,8 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
         Assert.Equal((3, 1), (beyond.Page, beyond.Items.Count));
         Assert.Equal((3, 2, 2), (onlyA.Total, onlyA.Items.Count, onlyA.PageCount));
         Assert.Equal((0, 1, 0), (nothing.Total, nothing.Page, nothing.Items.Count));
-        Assert.Equal(20, (await log.ListAsync(null, null, null, 1, 0, CancellationToken.None)).PageSize);
-        Assert.Equal(200, (await log.ListAsync(null, null, null, 1, 100000, CancellationToken.None)).PageSize);
+        Assert.Equal(20, (await log.ListAsync(null, null, null, null, null, 1, 0, CancellationToken.None)).PageSize);
+        Assert.Equal(200, (await log.ListAsync(null, null, null, null, null, 1, 100000, CancellationToken.None)).PageSize);
     }
 
     [Fact]
@@ -154,6 +193,6 @@ public sealed class AttendanceAuditTrailTests : AttendanceEngineTestBase
     private async Task<IReadOnlyList<robeem.Contracts.Attendance.AuditLogEntry>> ListAsync(string action)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return (await CreateAudit(db).ListAsync(action, null, null, 1, 100, CancellationToken.None)).Items;
+        return (await CreateAudit(db).ListAsync(action, null, null, null, null, 1, 100, CancellationToken.None)).Items;
     }
 }

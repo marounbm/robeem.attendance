@@ -9,6 +9,9 @@ internal static class PersistenceConventions
     private static readonly ValueConverter<DateTimeOffset, DateTimeOffset> UtcDateTimeOffsetConverter =
         new(v => v.ToUniversalTime(), v => v);
 
+    private static readonly ValueConverter<DateTimeOffset, long> DateTimeOffsetTicksConverter =
+        new(v => v.UtcTicks, v => new DateTimeOffset(v, TimeSpan.Zero));
+
     private static readonly ValueConverter<TimeSpan, long> TimeSpanTicksConverter =
         new(v => v.Ticks, v => TimeSpan.FromTicks(v));
 
@@ -64,9 +67,11 @@ internal static class PersistenceConventions
             .SelectMany(t => t.GetProperties())
             .Where(p => p.ClrType == typeof(DateTimeOffset) || p.ClrType == typeof(DateTimeOffset?));
 
+        // SQLite has no such type either and cannot compare or order a DateTimeOffset, so there (the tests) the instant is stored as UTC ticks, which
+        // compare the same way; the audit log is filtered between two times.
         foreach (var property in dateTimeOffsetProperties)
         {
-            property.SetValueConverter(UtcDateTimeOffsetConverter);
+            property.SetValueConverter(isNpgsql ? UtcDateTimeOffsetConverter : DateTimeOffsetTicksConverter);
         }
     }
 }

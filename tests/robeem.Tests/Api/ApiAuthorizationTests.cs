@@ -664,7 +664,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
 
         public Task FlushNewAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken) =>
+        public Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<AuditLogEntry>());
     }
 }

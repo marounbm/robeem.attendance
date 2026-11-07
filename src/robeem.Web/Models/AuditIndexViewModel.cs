@@ -8,6 +8,9 @@ public sealed class AuditIndexViewModel
 {
     public const int DefaultPageSize = 20;
 
+    /// <summary>The format of a date-time to the minute: what a <c>datetime-local</c> input sends and shows, and what the Api is asked with.</summary>
+    public const string MinuteFormat = "yyyy-MM-dd'T'HH:mm";
+
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];
 
@@ -19,6 +22,12 @@ public sealed class AuditIndexViewModel
     public string? EntityType { get; init; }
 
     public int? EntityId { get; init; }
+
+    /// <summary>Gets the start of the time range, in UTC; null for no lower bound.</summary>
+    public DateTime? From { get; init; }
+
+    /// <summary>Gets the end of the time range, in UTC, through the minute given; null for no upper bound.</summary>
+    public DateTime? To { get; init; }
 
     /// <summary>Gets the 1-based page shown.</summary>
     public int Page { get; init; } = 1;
@@ -55,6 +64,16 @@ public sealed class AuditIndexViewModel
         if (EntityId is { } entityId)
         {
             values["entityId"] = entityId.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (From is { } from)
+        {
+            values["from"] = from.ToString(MinuteFormat, CultureInfo.InvariantCulture);
+        }
+
+        if (To is { } to)
+        {
+            values["to"] = to.ToString(MinuteFormat, CultureInfo.InvariantCulture);
         }
 
         return values;

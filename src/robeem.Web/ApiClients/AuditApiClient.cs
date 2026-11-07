@@ -1,6 +1,7 @@
 using System.Globalization;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
+using robeem.Web.Models;
 
 namespace robeem.Web.ApiClients;
 
@@ -13,7 +14,7 @@ public sealed class AuditApiClient : IAuditApiClient
         _http = http;
     }
 
-    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = new List<string>
         {
@@ -33,6 +34,16 @@ public sealed class AuditApiClient : IAuditApiClient
         if (entityId is { } id)
         {
             query.Add($"entityId={id.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        if (from is { } start)
+        {
+            query.Add($"from={start.ToString(AuditIndexViewModel.MinuteFormat, CultureInfo.InvariantCulture)}");
+        }
+
+        if (to is { } end)
+        {
+            query.Add($"to={end.ToString(AuditIndexViewModel.MinuteFormat, CultureInfo.InvariantCulture)}");
         }
 
         using var response = await _http.GetAsync($"api/attendance/audit?{string.Join('&', query)}", cancellationToken);

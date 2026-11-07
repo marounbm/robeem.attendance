@@ -24,7 +24,8 @@ public interface IAttendanceAuditTrail
 
     /// <summary>
     /// Lists one page of entries, newest first, with the number that match on every page together. The page size is 1 to 200 (default 20);
-    /// a page past the end answers the last page. Reading the trail is not itself recorded.
+    /// a page past the end answers the last page. <paramref name="from"/> and <paramref name="to"/> bound the time of the entries, in UTC:
+    /// from the minute given, through the end of the minute given. Reading the trail is not itself recorded.
     /// </summary>
-    Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken);
 }

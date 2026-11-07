@@ -48,7 +48,7 @@ public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<AuditLogEntry>> ListAsync(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
         var entries = _db.AttendanceAuditLogs.AsNoTracking();
@@ -65,6 +65,19 @@ public sealed class AttendanceAuditTrail : IAttendanceAuditTrail
         if (entityId is { } id)
         {
             entries = entries.Where(a => a.TargetId == id);
+        }
+
+        if (from is { } start)
+        {
+            var since = new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc));
+            entries = entries.Where(a => a.Timestamp >= since);
+        }
+
+        if (to is { } end)
+        {
+            // The minute given is included whole, so an entry at 10:30:20 is found by "to 10:30".
+            var before = new DateTimeOffset(DateTime.SpecifyKind(end, DateTimeKind.Utc)).AddMinutes(1);
+            entries = entries.Where(a => a.Timestamp < before);
         }
 
         // The total is counted with the same filters as the page; a page past the end is answered with the last page.
