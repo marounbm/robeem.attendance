@@ -14,15 +14,17 @@ public sealed class AuditController : Controller
         _audit = audit;
     }
 
+    // The filter on the audit action is called auditAction, not action: a parameter called action is filled from the route's action
+    // name ("Index"), and as a pager route value it would redirect the link to another action.
     [HttpGet]
-    public async Task<IActionResult> Index(string? action, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? auditAction, string? entityType, int? entityId, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken cancellationToken)
     {
         var size = AuditIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : AuditIndexViewModel.DefaultPageSize;
-        var result = await _audit.ListAsync(action, entityType, entityId, from, to, Math.Max(page, 1), size, cancellationToken);
+        var result = await _audit.ListAsync(auditAction, entityType, entityId, from, to, Math.Max(page, 1), size, cancellationToken);
         return View(new AuditIndexViewModel
         {
             Entries = result.Items,
-            Action = action,
+            Action = auditAction,
             EntityType = entityType,
             EntityId = entityId,
             From = from,

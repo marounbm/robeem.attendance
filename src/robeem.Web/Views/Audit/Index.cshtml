@@ -14,8 +14,8 @@
     <div class="card-body">
         <form method="get" asp-action="Index" class="row g-3 align-items-end">
             <div class="col-md-2">
-                <label class="form-label" for="action">Action</label>
-                <select id="action" name="action" class="form-select">
+                <label class="form-label" for="auditAction">Action</label>
+                <select id="auditAction" name="auditAction" class="form-select">
                     <option value="">Any action</option>
                     @foreach (var action in Model.Actions)
                     {

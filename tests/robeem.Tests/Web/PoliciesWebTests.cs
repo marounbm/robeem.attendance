@@ -154,7 +154,10 @@ public sealed class PoliciesWebTests
         Assert.Equal(("ReviewDecided", "AttendanceRecord", 7, from, to, 3, expected), (audit.Asked.Action, audit.Asked.EntityType, audit.Asked.EntityId, audit.Asked.From, audit.Asked.To, audit.Asked.Page, audit.Asked.PageSize));
         Assert.Equal(("ReviewDecided", expected, 3, 95), (model.Action, model.PageSize, model.Page, model.Total));
         Assert.Equal((from, to), (model.From, model.To));
-        Assert.Equal("ReviewDecided", model.Pager.For(2)["action"]);
+        Assert.Equal("ReviewDecided", model.Pager.For(2)["auditAction"]);
+
+        // A pager value called action would send the link to another action of the controller.
+        Assert.DoesNotContain("action", model.Pager.For(2).Keys);
         Assert.Equal(("7", "AttendanceRecord"), (model.Pager.For(2)["entityId"], model.Pager.For(2)["entityType"]));
         Assert.Equal(("2026-05-04T08:30", "2026-05-06T17:00"), (model.Pager.For(2)["from"], model.Pager.For(2)["to"]));
     }

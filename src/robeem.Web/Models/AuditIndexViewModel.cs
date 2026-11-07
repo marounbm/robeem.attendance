@@ -53,7 +53,7 @@ public sealed class AuditIndexViewModel
         var values = new Dictionary<string, string?> { ["pageSize"] = PageSize.ToString(CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Action))
         {
-            values["action"] = Action;
+            values["auditAction"] = Action;
         }
 
         if (!string.IsNullOrWhiteSpace(EntityType))
