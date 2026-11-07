@@ -16,7 +16,7 @@ public sealed class TenantsController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? returnUrl, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
         if (await _tenants.ListAsync(cancellationToken) is not { } tenants)
         {
@@ -27,12 +27,11 @@ public sealed class TenantsController : Controller
         {
             Tenants = tenants,
             CurrentTenantId = (await _tenants.GetCurrentAsync(cancellationToken))?.Id,
-            ReturnUrl = returnUrl,
         });
     }
 
     [HttpPost]
-    public async Task<IActionResult> Select(string tenantId, string? returnUrl, CancellationToken cancellationToken)
+    public async Task<IActionResult> Select(string tenantId, CancellationToken cancellationToken)
     {
         if (await _tenants.ListAsync(cancellationToken) is not { } tenants)
         {
@@ -52,6 +51,7 @@ public sealed class TenantsController : Controller
             Secure = Request.IsHttps,
         });
 
-        return LocalRedirect(returnUrl is not null && Url.IsLocalUrl(returnUrl) ? returnUrl : "/");
+        // A different tenant is a different set of data: what was open belongs to the old one, so always start again from home.
+        return LocalRedirect("/");
     }
 }

@@ -216,7 +216,7 @@ public sealed class ActorTests
     {
         var controller = CreateController(development: true, out var http);
 
-        var result = await controller.Select(3, ["Employee", "Manager"], null, null, CancellationToken.None);
+        var result = await controller.Select(3, ["Employee", "Manager"], null, CancellationToken.None);
 
         Assert.IsType<LocalRedirectResult>(result);
         var cookies = http.Response.Headers.SetCookie.ToString();
@@ -229,7 +229,7 @@ public sealed class ActorTests
     {
         var controller = CreateController(development: true, out var http);
 
-        await controller.Select(3, ["HRAdministrator"], "Manager", null, CancellationToken.None);
+        await controller.Select(3, ["HRAdministrator"], "Manager", CancellationToken.None);
 
         Assert.Contains(Uri.EscapeDataString("3;Employee,Manager"), http.Response.Headers.SetCookie.ToString());
     }
@@ -240,22 +240,23 @@ public sealed class ActorTests
         var dev = CreateController(development: true, out var devHttp);
         var prod = CreateController(development: false, out _);
 
-        Assert.IsType<BadRequestObjectResult>(await dev.Select(999, ["Employee"], null, null, CancellationToken.None));
-        Assert.IsType<BadRequestObjectResult>(await dev.Select(3, ["Root"], null, null, CancellationToken.None));
-        Assert.IsType<NotFoundResult>(await prod.Select(3, ["Employee"], null, null, CancellationToken.None));
-        Assert.IsType<NotFoundResult>(await prod.Index(null, CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await dev.Select(999, ["Employee"], null, CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await dev.Select(3, ["Root"], null, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await prod.Select(3, ["Employee"], null, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await prod.Index(CancellationToken.None));
         Assert.Equal(0, devHttp.Response.Headers.SetCookie.Count);
     }
 
     [Fact]
-    public async Task ReturnUrl_MustBeLocal()
+    public async Task ChangingTheRole_AlwaysGoesHome_NoMatterWhatPageWasOpen()
     {
         var controller = CreateController(development: true, out _);
 
-        var local = Assert.IsType<LocalRedirectResult>(await controller.Select(3, ["Employee"], null, "/Employees?x=1", CancellationToken.None));
-        var foreign = Assert.IsType<LocalRedirectResult>(await controller.Select(3, ["Employee"], null, "https://evil.test/", CancellationToken.None));
+        var selected = Assert.IsType<LocalRedirectResult>(await controller.Select(3, ["Employee"], null, CancellationToken.None));
+        var preset = Assert.IsType<LocalRedirectResult>(await controller.Select(3, null, "Manager", CancellationToken.None));
+        var cleared = Assert.IsType<LocalRedirectResult>(controller.Clear());
 
-        Assert.Equal(("/Employees?x=1", "/"), (local.Url, foreign.Url));
+        Assert.Equal(("/", "/", "/"), (selected.Url, preset.Url, cleared.Url));
     }
 
     private static HttpRequest Request(string cookie, string? displayName)

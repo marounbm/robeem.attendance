@@ -10,6 +10,5 @@
         <strong>@Model.Name</strong>
         <span class="text-muted">(@(Model.Roles.Count == 0 ? "no roles" : string.Join(", ", Model.Roles)))</span>
     }
-    <a class="ms-1" asp-controller="Actor" asp-action="Index"
-       asp-route-returnUrl="@(Context.Request.Path + Context.Request.QueryString)">Change</a>
+    <a class="ms-1" asp-controller="Actor" asp-action="Index">Change</a>
 </span>

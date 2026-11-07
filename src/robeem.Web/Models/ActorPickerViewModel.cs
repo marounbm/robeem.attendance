@@ -19,6 +19,4 @@ public sealed class ActorPickerViewModel
     public IReadOnlyList<ActorOption> Actors { get; init; } = Array.Empty<ActorOption>();
 
     public ActingAs? Current { get; init; }
-
-    public string? ReturnUrl { get; init; }
 }

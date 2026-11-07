@@ -5,8 +5,7 @@
         Tenant: <strong>@Model.Name</strong>
         @if (Model.CanSelectTenant)
         {
-            <a class="ms-2" asp-controller="Tenants" asp-action="Index"
-               asp-route-returnUrl="@(Context.Request.Path + Context.Request.QueryString)">Switch</a>
+            <a class="ms-2" asp-controller="Tenants" asp-action="Index">Switch</a>
         }
     </span>
 }

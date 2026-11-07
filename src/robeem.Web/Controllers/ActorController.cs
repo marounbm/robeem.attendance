@@ -23,18 +23,18 @@ public sealed class ActorController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? returnUrl, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
         if (!_environment.IsDevelopment() || await _actors.ListAsync(cancellationToken) is not { } actors)
         {
             return NotFound();
         }
 
-        return View(new ActorPickerViewModel { Actors = actors, Current = ActorCookie.Read(Request), ReturnUrl = returnUrl });
+        return View(new ActorPickerViewModel { Actors = actors, Current = ActorCookie.Read(Request) });
     }
 
     [HttpPost]
-    public async Task<IActionResult> Select(int? employeeId, string[]? roles, string? preset, string? returnUrl, CancellationToken cancellationToken)
+    public async Task<IActionResult> Select(int? employeeId, string[]? roles, string? preset, CancellationToken cancellationToken)
     {
         if (!_environment.IsDevelopment() || await _actors.ListAsync(cancellationToken) is not { } actors)
         {
@@ -64,11 +64,11 @@ public sealed class ActorController : Controller
         }
 
         ActorCookie.Write(Response, Request.IsHttps, employeeId, name, chosen.Distinct());
-        return Back(returnUrl);
+        return Home();
     }
 
     [HttpPost]
-    public IActionResult Clear(string? returnUrl)
+    public IActionResult Clear()
     {
         if (!_environment.IsDevelopment())
         {
@@ -76,8 +76,9 @@ public sealed class ActorController : Controller
         }
 
         ActorCookie.Clear(Response);
-        return Back(returnUrl);
+        return Home();
     }
 
-    private IActionResult Back(string? returnUrl) => LocalRedirect(returnUrl is not null && Url.IsLocalUrl(returnUrl) ? returnUrl : "/");
+    // Another role sees other screens, and the page that was open may be one the new role can't use: always start again from home.
+    private IActionResult Home() => LocalRedirect("/");
 }

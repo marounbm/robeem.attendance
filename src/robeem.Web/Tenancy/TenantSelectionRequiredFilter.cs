@@ -26,8 +26,7 @@ public sealed class TenantSelectionRequiredFilter : IExceptionFilter
 
         if (HttpMethods.IsGet(http.Request.Method))
         {
-            var returnUrl = http.Request.PathBase + http.Request.Path + http.Request.QueryString;
-            context.Result = new RedirectToActionResult(nameof(TenantsController.Index), "Tenants", new { returnUrl });
+            context.Result = new RedirectToActionResult(nameof(TenantsController.Index), "Tenants", null);
         }
         else
         {
