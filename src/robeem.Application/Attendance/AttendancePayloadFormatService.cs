@@ -240,7 +240,13 @@ public sealed class AttendancePayloadFormatService : IAttendancePayloadFormatSer
 
         var interpreter = _interpreters.Create(format);
         var rows = transactions.Take(PreviewRows).Select((t, index) => ToPreviewRow(index + 1, t, interpreter)).ToList();
-        return new PayloadFormatPreview { TotalRows = transactions.Count, Rows = rows, Warnings = AmbiguityWarnings(PayloadFormatLayout.UsesSeparatePatterns(format) ? PayloadFormatLayout.Patterns(format.DateFormats) : PayloadFormatLayout.Patterns(format.TimestampFormats)) };
+        return new PayloadFormatPreview
+        {
+            TotalRows = transactions.Count,
+            Rows = rows,
+            Warnings = AmbiguityWarnings(PayloadFormatLayout.UsesSeparatePatterns(format) ? PayloadFormatLayout.Patterns(format.DateFormats) : PayloadFormatLayout.Patterns(format.TimestampFormats)),
+            Suggestions = new PayloadFormatPatternSuggester(_interpreters).Suggest(format, transactions),
+        };
     }
 
     private static PayloadFormatPreviewRow ToPreviewRow(int number, ExternalAttendanceTransaction transaction, IAttendanceEventInterpreter interpreter)

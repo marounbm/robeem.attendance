@@ -246,6 +246,65 @@ public sealed class TimestampSpecTests : IDisposable
     }
 
     [Fact]
+    public async Task APreview_SuggestsTheCommonPatternsThatReadEveryTimestampOfASingleColumnFile()
+    {
+        // The format asks for the wrong pattern, so no row reads; the file is day-first with seconds.
+        File.WriteAllText(_path, "Badge,When,Type\r\nE-1,25/04/2026 09:00:15,IN\r\nE-1,26/04/2026 17:30:00,OUT\r\n");
+        var input = SingleInput("yyyy-MM-dd HH:mm");
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var suggestions = (await FormatService(db).PreviewAsync(input, _path, CancellationToken.None)).Suggestions!;
+
+        Assert.False(suggestions.Separate);
+        Assert.False(suggestions.Partial);
+        Assert.Equal(2, suggestions.TimestampsChecked);
+        Assert.Contains(suggestions.Timestamp, s => s.Pattern == "dd/MM/yyyy HH:mm:ss" && s.Reads == 2 && s.Example == "25/04/2026 09:00:15 → 2026-04-25 09:00:15" && !s.InFormat);
+        Assert.Contains(suggestions.Timestamp, s => s.Pattern == "d/M/yyyy H:mm:ss");
+        Assert.DoesNotContain(suggestions.Timestamp, s => s.Pattern is "MM/dd/yyyy HH:mm:ss" or "dd/MM/yyyy HH:mm");
+
+        // A pattern the format already has is said to be in it.
+        var already = (await FormatService(db).PreviewAsync(SingleInput("dd/MM/yyyy HH:mm:ss"), _path, CancellationToken.None)).Suggestions!;
+        Assert.Contains(already.Timestamp, s => s.Pattern == "dd/MM/yyyy HH:mm:ss" && s.InFormat);
+    }
+
+    [Fact]
+    public async Task APreview_SuggestsADatePatternAndATimePattern_ForADateColumnAndATimeColumn()
+    {
+        File.WriteAllText(_path, "Badge,Date,Time,Type\r\nE-1,2026-04-25,9:00 AM,IN\r\nE-1,2026-04-26,5:30 PM,OUT\r\n");
+        var input = SeparateInput();
+        input.DateFormats = "dd/MM/yyyy";
+        input.TimeFormats = "HH:mm";
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var suggestions = (await FormatService(db).PreviewAsync(input, _path, CancellationToken.None)).Suggestions!;
+
+        Assert.True(suggestions.Separate);
+        Assert.False(suggestions.Partial);
+        Assert.Empty(suggestions.Timestamp);
+        Assert.Contains("yyyy-MM-dd", suggestions.Date.Select(s => s.Pattern));
+        Assert.DoesNotContain("dd/MM/yyyy", suggestions.Date.Select(s => s.Pattern));
+        Assert.Contains("h:mm tt", suggestions.Time.Select(s => s.Pattern));
+        Assert.DoesNotContain("HH:mm", suggestions.Time.Select(s => s.Pattern));
+    }
+
+    [Fact]
+    public async Task APreview_SaysWhenTheMostAPatternReadsIsOnlySomeOfTheFile_OrNothingAtAll()
+    {
+        // Two spellings in one file: nothing reads both, so the patterns that read the most are offered as partial.
+        File.WriteAllText(_path, "Badge,When,Type\r\nE-1,25/04/2026 09:00,IN\r\nE-1,26/04/2026 09:00,IN\r\nE-1,2026-04-27 09:00,IN\r\n");
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var mixed = (await FormatService(db).PreviewAsync(SingleInput("dd/MM/yyyy HH:mm"), _path, CancellationToken.None)).Suggestions!;
+
+        Assert.True(mixed.Partial);
+        Assert.All(mixed.Timestamp, s => Assert.Equal(2, s.Reads));
+        Assert.Contains(mixed.Timestamp, s => s.Pattern == "dd/MM/yyyy HH:mm");
+
+        File.WriteAllText(_path, "Badge,When,Type\r\nE-1,Saturday the fourteenth,IN\r\n");
+        var unreadable = (await FormatService(db).PreviewAsync(SingleInput("dd/MM/yyyy HH:mm"), _path, CancellationToken.None)).Suggestions!;
+        Assert.True(unreadable.NoneRead);
+    }
+
+    [Fact]
     public void OnlyNumericDayAndMonthSwaps_AreWarnedAbout()
     {
         Assert.Empty(AttendancePayloadFormatService.AmbiguityWarnings(["dd/MM/yyyy", "yyyy-MM-dd"]));
@@ -260,6 +319,18 @@ public sealed class TimestampSpecTests : IDisposable
         Assert.All(TimestampPatternCatalog.Times, o => Assert.True(DateTime.TryParseExact(o.Example, o.Pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out _), o.Pattern));
         Assert.All(TimestampPatternCatalog.Combined, o => Assert.True(DateTime.TryParseExact(o.Example, o.Pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out _), o.Pattern));
         Assert.All(TimestampPatternCatalog.Cultures, c => Assert.True(TimestampCultures.IsValid(c.Tag), c.Tag));
+    }
+
+    [Fact]
+    public void ThePatternCatalog_ListsEachPatternOnce_InOrder()
+    {
+        foreach (var options in new[] { TimestampPatternCatalog.Dates, TimestampPatternCatalog.Times, TimestampPatternCatalog.Combined })
+        {
+            var patterns = options.Select(o => o.Pattern).ToList();
+
+            Assert.Equal(patterns.Count, patterns.Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(patterns.Order(StringComparer.OrdinalIgnoreCase).ThenBy(p => p, StringComparer.Ordinal), patterns);
+        }
     }
 
     private static AttendancePayloadFormat SeparateFormat(string dates, string times) => new()
@@ -289,6 +360,16 @@ public sealed class TimestampSpecTests : IDisposable
         DateFormats = "dd/MM/yyyy" + Environment.NewLine + "yyyy-MM-dd",
         TimeFormats = "HH:mm",
         EventCodes = [new PayloadFormatEventCodeInput { Code = "IN", EventType = "CheckIn" }],
+    };
+
+    private static PayloadFormatInput SingleInput(string pattern) => new()
+    {
+        Name = "Single",
+        EmployeeColumn = "Badge",
+        TimestampColumn = "When",
+        TypeColumn = "Type",
+        TimestampFormats = pattern,
+        EventCodes = [new PayloadFormatEventCodeInput { Code = "IN", EventType = "CheckIn" }, new PayloadFormatEventCodeInput { Code = "OUT", EventType = "CheckOut" }],
     };
 
     private static Cell Text(string value) => new(value, null, 0);

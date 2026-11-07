@@ -13,4 +13,7 @@ public sealed class PayloadFormatPreview
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
     public IReadOnlyList<PayloadFormatPreviewRow> Rows { get; init; } = [];
+
+    /// <summary>Gets the common patterns that read the timestamps in the file; null when the file has no timestamp text to check.</summary>
+    public PayloadFormatPatternSuggestions? Suggestions { get; init; }
 }

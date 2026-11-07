@@ -1,0 +1,58 @@
+@model PayloadFormatPatternSuggestions
+@{
+    var lists = Model.Separate
+        ? new[] { ("Date column", "DateFormats", Model.Date), ("Time column", "TimeFormats", Model.Time) }
+        : new[] { ("Timestamp column", "TimestampFormats", Model.Timestamp) };
+}
+
+@* What the common patterns make of this file's timestamps. Advice only: nothing here is saved until the patterns above are. *@
+<div class="alert @(Model.NoneRead ? "alert-warning" : Model.Partial ? "alert-warning" : "alert-info") mt-3 mb-0" role="status">
+    @if (Model.NoneRead)
+    {
+        <strong>None of the common patterns reads the timestamps in this file.</strong>
+        <span>Look at the “Timestamp as written” column below and write a pattern for it.</span>
+    }
+    else
+    {
+        <strong>
+            @(Model.Partial
+                ? $"No common pattern reads all {Model.TimestampsChecked} different timestamps in this file; these read the most:"
+                : $"These patterns read all {Model.TimestampsChecked} different timestamps in this file:")
+        </strong>
+        @foreach (var (title, field, suggestions) in lists)
+        {
+            <div class="mt-2">
+                <div class="small text-uppercase text-muted">@title</div>
+                <ul class="mb-0 ps-3">
+                    @foreach (var suggestion in suggestions)
+                    {
+                        <li>
+                            <code>@suggestion.Pattern</code>
+                            @if (Model.Partial)
+                            {
+                                <span class="text-muted">(reads @suggestion.Reads of @Model.TimestampsChecked)</span>
+                            }
+
+                            <span class="small text-muted">e.g. @suggestion.Example</span>
+                            @if (suggestion.InFormat)
+                            {
+                                <span class="badge text-bg-success">already in your patterns</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-link btn-sm py-0 add-suggested-pattern" data-target="Input_@field" data-pattern="@suggestion.Pattern">Add</button>
+                            }
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (lists.Sum(l => l.Item3.Count) > lists.Length)
+        {
+            <div class="small mt-2">
+                Several patterns can read the same text. If day and month could be swapped (<code>03/04/2026</code>), check the “Read as” column below to see which reading is right.
+            </div>
+        }
+    }
+</div>

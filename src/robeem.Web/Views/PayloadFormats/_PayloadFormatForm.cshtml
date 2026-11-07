@@ -324,6 +324,11 @@
                     <div class="alert alert-warning mt-3 mb-0" role="status">@warning</div>
                 }
 
+                @if (preview.Suggestions is { } suggestions)
+                {
+                    <partial name="_PatternSuggestions" model="suggestions" />
+                }
+
                 <p class="mt-3 mb-2">The file has <strong>@preview.TotalRows</strong> data rows. The first @preview.Rows.Count:</p>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
@@ -434,6 +439,20 @@
                     box.value = lines.join('\n');
                 }
                 picker.value = '';
+            });
+        });
+
+        // The patterns the sample file suggests are added to the box they belong to, once; saving the format is still up to the user.
+        document.querySelectorAll('.add-suggested-pattern').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var box = document.getElementById(button.dataset.target);
+                var lines = box.value.split(/[\r\n;]+/).map(function (l) { return l.trim(); }).filter(Boolean);
+                if (lines.indexOf(button.dataset.pattern) < 0) {
+                    lines.push(button.dataset.pattern);
+                    box.value = lines.join('\n');
+                }
+
+                button.replaceWith(Object.assign(document.createElement('span'), { className: 'badge text-bg-success', textContent: 'added above — save to keep it' }));
             });
         });
 
