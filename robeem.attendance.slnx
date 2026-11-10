@@ -14,6 +14,7 @@
     <File Path="INTEGRATION_RESTRUCTURE_PLAN.md" />
     <File Path="PRIME_TENANT_PLAN.md" />
     <File Path="APPROVALS_PLAN.md" />
+    <File Path="P16_P17_LOOKBACK_AND_BREAK_INFERENCE_PLAN.md" />
   </Folder>
   <Folder Name="/Docs/Notes/">
     <File Path="DISCOVERY_NOTES.md" />

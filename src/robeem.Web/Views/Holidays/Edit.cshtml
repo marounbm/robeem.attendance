@@ -1,0 +1,35 @@
+@model HolidayFormViewModel
+@{
+    ViewData["Title"] = "Edit holiday";
+}
+
+<h1 class="h3 mb-3">Edit holiday</h1>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.Id" class="row g-3" style="max-width: 48rem;">
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger col-12 mb-0" role="alert"></div>
+    <div class="col-md-4">
+        <label asp-for="Input.Date" class="form-label"></label>
+        <input asp-for="Input.Date" type="date" value="@Model.Input.Date.ToString("yyyy-MM-dd")" class="form-control" />
+        <span asp-validation-for="Input.Date" class="text-danger small"></span>
+    </div>
+    <div class="col-md-8">
+        <label asp-for="Input.Name" class="form-label"></label>
+        <input asp-for="Input.Name" class="form-control" maxlength="255" />
+        <span asp-validation-for="Input.Name" class="text-danger small"></span>
+    </div>
+    <div class="col-12">
+        <div class="form-check">
+            <input asp-for="Input.IsProvisional" class="form-check-input" />
+            <label asp-for="Input.IsProvisional" class="form-check-label"></label>
+            <div class="form-text">Tick while the date follows the moon and may still move; clear it once the decree is out.</div>
+        </div>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-link" asp-action="Index" asp-route-year="@Model.Input.Date.Year">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

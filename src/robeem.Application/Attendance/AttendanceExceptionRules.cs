@@ -24,10 +24,14 @@ internal static class AttendanceExceptionRules
     /// manager, never by the employee.
     /// </summary>
     public static bool CanAccept(AttendanceExceptionType type, AttendanceExceptionStatus status, int employeeId, int? managerId, ExceptionViewer viewer) =>
-        type is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
+        IsAcceptable(type)
         && status == AttendanceExceptionStatus.Open
         && employeeId != viewer.EmployeeId
         && (viewer.IsHr || (viewer.IsManager && managerId == viewer.EmployeeId));
+
+    /// <summary>Whether this kind of exception can be accepted as it is: a break exception, or a no-show. There is no punch to supply for either.</summary>
+    public static bool IsAcceptable(AttendanceExceptionType type) =>
+        type is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak or AttendanceExceptionType.NoShow;
 
     /// <summary>Splits the stored list of suggested event types.</summary>
     public static IReadOnlyList<string> Suggested(string suggestedEventTypes) =>

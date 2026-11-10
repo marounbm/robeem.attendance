@@ -95,6 +95,33 @@ public sealed class AttendancePolicyServiceTests : IDisposable
         Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.PolicyChanged && a.Details!.Contains("breaks under 7 min ignored") && a.Details.Contains("long/early"));
     }
 
+    [Fact]
+    public async Task TheBreakInference_IsOffByDefault_IsStoredAndReadBack_AndOnlyKnownModesAreAccepted()
+    {
+        var fresh = new PolicyInput();
+        Assert.Equal(("Off", 90, 120), (fresh.BreakInferenceMode, fresh.InferredBreakWindowMinutes, fresh.InferredBreakMaxMinutes));
+
+        var input = Input("Gaps", ScheduleId("Night shift"));
+        input.BreakInferenceMode = "FromGap";
+        input.InferredBreakWindowMinutes = 45;
+        input.InferredBreakMaxMinutes = 75;
+        var id = (await CreateAsync(input)).Id!.Value;
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var back = await Service(db).GetInputAsync(id, CancellationToken.None);
+        var listed = Assert.Single(await Service(db).ListAsync(CancellationToken.None));
+        Assert.Equal(("FromGap", 45, 75), (back!.BreakInferenceMode, back.InferredBreakWindowMinutes, back.InferredBreakMaxMinutes));
+        Assert.Equal(("FromGap", 45, 75), (listed.BreakInferenceMode, listed.InferredBreakWindowMinutes, listed.InferredBreakMaxMinutes));
+        Assert.Equal(BreakInferenceMode.FromGap, db.AttendancePolicies.Single().BreakInferenceMode);
+
+        var bad = Input("Bad", ScheduleId("Day shift"));
+        bad.BreakInferenceMode = "Guess";
+        bad.InferredBreakMaxMinutes = 0;
+        var refused = await CreateAsync(bad);
+        Assert.Contains(nameof(PolicyInput.BreakInferenceMode), refused.Errors.Keys);
+        Assert.Contains(nameof(PolicyInput.InferredBreakMaxMinutes), refused.Errors.Keys);
+    }
+
     [Theory]
     [InlineData(nameof(PolicyInput.RoundingRuleMinutes), -1)]
     [InlineData(nameof(PolicyInput.RoundingRuleMinutes), 61)]

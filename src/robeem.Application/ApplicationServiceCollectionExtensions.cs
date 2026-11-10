@@ -5,7 +5,10 @@ using robeem.Application.Attendance.Catalog;
 using robeem.Application.Attendance.Jobs;
 using robeem.Application.Attendance.Seeding;
 using robeem.Application.Common;
+using robeem.Application.HR.Absence;
 using robeem.Application.HR.Employees;
+using robeem.Application.HR.Holidays;
+using robeem.Application.HR.Leaves;
 using robeem.Application.HR.Schedules;
 using robeem.Application.HR.Seeding;
 using robeem.Application.Security;
@@ -20,6 +23,10 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddRobeemApplication(this IServiceCollection services)
     {
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddScoped<IHolidayService, HolidayService>();
+        services.AddScoped<ILeaveService, LeaveService>();
+        services.AddScoped<IEmployeeAbsenceCalendar, HrAbsenceCalendar>();
+        services.AddScoped<ISeedContributor, HolidaySeedContributor>();
         services.AddScoped<ITimeScheduleService, TimeScheduleService>();
         services.AddScoped<IChangeAuditTrail, AttendanceChangeAuditTrail>();
         services.AddScoped<IIngestionService, IngestionService>();
@@ -49,6 +56,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IScheduleResolutionService, ScheduleResolutionService>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
+        services.AddScoped<IAttendanceLookbackService, AttendanceLookbackService>();
+        services.AddScoped<IRuleSetProvider, RuleSetProvider>();
+        services.AddScoped<IAttendanceRuleService, AttendanceRuleService>();
         services.AddScoped<IPendingDayProcessor, PendingDayProcessor>();
         services.AddScoped<IJobRunLog, JobRunLog>();
         services.AddScoped<IAttendanceApprovalService, AttendanceApprovalService>();

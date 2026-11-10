@@ -14,6 +14,10 @@ public interface IRobeemDbContext
 {
     DbSet<Profile> Profiles { get; }
 
+    DbSet<PublicHoliday> PublicHolidays { get; }
+
+    DbSet<EmployeeLeave> EmployeeLeaves { get; }
+
     DbSet<TimeSchedule> TimeSchedules { get; }
 
     DbSet<TimeScheduleShift> TimeScheduleShifts { get; }
@@ -51,6 +55,12 @@ public interface IRobeemDbContext
     DbSet<AttendanceApproval> AttendanceApprovals { get; }
 
     DbSet<PayPeriod> PayPeriods { get; }
+
+    DbSet<AttendanceRuleSet> AttendanceRuleSets { get; }
+
+    DbSet<AttendanceRule> AttendanceRules { get; }
+
+    DbSet<AttendanceRuleCondition> AttendanceRuleConditions { get; }
 
     DbSet<AttendanceAuditLog> AttendanceAuditLogs { get; }
 

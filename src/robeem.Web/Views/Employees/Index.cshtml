@@ -66,7 +66,13 @@
                             <td>@employee.FullName</td>
                             <td>@employee.Department</td>
                             <td>@employee.JobTitle</td>
-                            <td>@(employee.TimeScheduleTitle ?? "—")</td>
+                            <td>
+                                @(employee.TimeScheduleTitle ?? "—")
+                                @if (employee.PayBasis == "Hourly")
+                                {
+                                    <span class="badge text-bg-info ms-1" title="Paid by the hours worked; not compared with a schedule.">hourly</span>
+                                }
+                            </td>
                             <td>@(employee.ManagerName ?? "—")</td>
                             <td>@employee.HireDate.ToString("yyyy-MM-dd")</td>
                             <td>
@@ -81,6 +87,7 @@
                             </td>
                             <td class="text-end">
                                 <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@employee.Id">Edit</a>
+                                <a class="btn btn-sm btn-outline-secondary" asp-controller="Leaves" asp-action="Index" asp-route-employeeId="@employee.Id">Leave</a>
                             </td>
                         </tr>
                     }

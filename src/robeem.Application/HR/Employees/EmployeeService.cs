@@ -72,6 +72,7 @@ public sealed class EmployeeService : IEmployeeService
                 JobTitle = x.p.JobTitle,
                 HireDate = x.p.HireDate,
                 IsActive = x.p.IsActive,
+                PayBasis = x.p.PayBasis.ToString(),
                 TimeScheduleTitle = x.s != null ? x.s.Title : null,
                 ManagerName = x.m != null ? x.m.FirstName + " " + x.m.LastName : null,
             });
@@ -104,6 +105,7 @@ public sealed class EmployeeService : IEmployeeService
             HireDate = profile.HireDate,
             TerminationDate = profile.TerminationDate,
             IsActive = profile.IsActive,
+            PayBasis = profile.PayBasis.ToString(),
             ManagerId = profile.ManagerId,
             TimeScheduleId = scheduleId,
         };
@@ -121,6 +123,29 @@ public sealed class EmployeeService : IEmployeeService
             .ToListAsync(cancellationToken);
 
         return rows.Select(p => new ManagerOption { Id = p.Id, Name = $"{p.FirstName} {p.LastName} ({p.EmployeeNumber})" }).ToList();
+    }
+
+    public async Task<IReadOnlyList<EmployeeLookupItem>> LookupAsync(string? search, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return [];
+        }
+
+        // PostgreSQL compares text case-sensitively; lower-case both sides so search is not.
+        var term = search.Trim().ToLowerInvariant();
+        var rows = await _db.Profiles
+            .AsNoTracking()
+            .Where(p => p.EmployeeNumber.ToLower().Contains(term) || p.FirstName.ToLower().Contains(term) || p.LastName.ToLower().Contains(term))
+            .OrderByDescending(p => p.IsActive)
+            .ThenBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .ThenBy(p => p.EmployeeNumber)
+            .Take(20)
+            .Select(p => new { p.Id, p.EmployeeNumber, p.FirstName, p.LastName })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(p => new EmployeeLookupItem { Id = p.Id, EmployeeNumber = p.EmployeeNumber, Name = $"{p.FirstName} {p.LastName}" }).ToList();
     }
 
     public async Task<IReadOnlyList<ScheduleOption>> ListSchedulesAsync(CancellationToken cancellationToken)
@@ -191,6 +216,7 @@ public sealed class EmployeeService : IEmployeeService
         profile.HireDate = input.HireDate.Date;
         profile.TerminationDate = input.TerminationDate?.Date;
         profile.IsActive = input.IsActive;
+        profile.PayBasis = Enum.TryParse<PayBasis>(input.PayBasis, out var payBasis) ? payBasis : PayBasis.Scheduled;
         profile.ManagerId = input.ManagerId;
         profile.Title = profile.FullName;
     }
@@ -204,6 +230,11 @@ public sealed class EmployeeService : IEmployeeService
         if (input.TerminationDate is { } terminated && terminated.Date < input.HireDate.Date)
         {
             errors[nameof(EmployeeInput.TerminationDate)] = "Termination date cannot be before the hire date.";
+        }
+
+        if (!EmployeeInput.PayBases.Contains(input.PayBasis, StringComparer.Ordinal))
+        {
+            errors[nameof(EmployeeInput.PayBasis)] = $"Choose one of: {string.Join(", ", EmployeeInput.PayBases)}.";
         }
 
         if (await IsEmployeeNumberTakenAsync(input.EmployeeNumber, existingId, cancellationToken))

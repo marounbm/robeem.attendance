@@ -5,6 +5,9 @@ namespace robeem.Contracts.HR.Employees;
 /// <summary>Fields an HR user can set when creating or editing an employee.</summary>
 public sealed class EmployeeInput
 {
+    /// <summary>The ways an employee can be paid, as the pay basis names them.</summary>
+    public static readonly IReadOnlyList<string> PayBases = ["Scheduled", "Hourly"];
+
     [Required]
     [StringLength(50)]
     [Display(Name = "Employee number")]
@@ -45,6 +48,11 @@ public sealed class EmployeeInput
 
     [Display(Name = "Active")]
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Gets or sets how the employee is paid: <c>Scheduled</c>, or <c>Hourly</c> (wages: the hours worked, never compared with a schedule).</summary>
+    [Required]
+    [Display(Name = "Paid")]
+    public string PayBasis { get; set; } = "Scheduled";
 
     /// <summary>Gets or sets the employee's manager; <c>null</c> means none, and HR then decides their attendance corrections.</summary>
     [Display(Name = "Manager")]

@@ -37,6 +37,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<Profile> Profiles => Set<Profile>();
 
+    public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+
+    public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
+
     public DbSet<TimeSchedule> TimeSchedules => Set<TimeSchedule>();
 
     public DbSet<TimeScheduleShift> TimeScheduleShifts => Set<TimeScheduleShift>();
@@ -74,6 +78,12 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
     public DbSet<AttendanceApproval> AttendanceApprovals => Set<AttendanceApproval>();
 
     public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
+
+    public DbSet<AttendanceRuleSet> AttendanceRuleSets => Set<AttendanceRuleSet>();
+
+    public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
+
+    public DbSet<AttendanceRuleCondition> AttendanceRuleConditions => Set<AttendanceRuleCondition>();
 
     public DbSet<AttendanceAuditLog> AttendanceAuditLogs => Set<AttendanceAuditLog>();
 

@@ -1,0 +1,20 @@
+@model LeaveFormViewModel
+@{
+    ViewData["Title"] = "Edit leave";
+}
+
+<h1 class="h3 mb-3">Edit leave</h1>
+
+<p class="small text-muted">
+    Days that were already calculated are brought up to date by the nightly check or the next recalculation, not at once.
+</p>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.Id" style="max-width: 48rem;">
+    <partial name="_LeaveForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-employeeId="@Model.Input.EmployeeId">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

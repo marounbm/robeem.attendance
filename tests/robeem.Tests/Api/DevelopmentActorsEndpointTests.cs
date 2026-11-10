@@ -77,6 +77,8 @@ public sealed class DevelopmentActorsEndpointTests
 
         public Task<IReadOnlyList<ScheduleOption>> ListSchedulesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<EmployeeLookupItem>> LookupAsync(string? search, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<EmployeeSaveResult> UpdateAsync(int id, EmployeeInput input, CancellationToken cancellationToken) => throw new NotSupportedException();

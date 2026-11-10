@@ -24,6 +24,9 @@ public static class ApiClientServiceCollectionExtensions
         services.AddTransient<ActorHeaderHandler>();
 
         AddClient<IEmployeesApiClient, EmployeesApiClient>(services);
+        AddClient<IRulesApiClient, RulesApiClient>(services);
+        AddClient<IHolidaysApiClient, HolidaysApiClient>(services);
+        AddClient<ILeavesApiClient, LeavesApiClient>(services);
         AddClient<ITenantsApiClient, TenantsApiClient>(services);
         AddClient<IActorsApiClient, ActorsApiClient>(services);
         AddClient<IStandInApiClient, StandInApiClient>(services);

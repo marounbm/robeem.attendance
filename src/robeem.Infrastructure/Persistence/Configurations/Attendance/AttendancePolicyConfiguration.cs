@@ -10,6 +10,7 @@ public sealed class AttendancePolicyConfiguration : IEntityTypeConfiguration<Att
     {
         builder.Property(p => p.CorrectionApprovalWorkflow).HasConversion<string>().HasMaxLength(32);
         builder.Property(p => p.UnlabeledPunchInterpretationMode).HasConversion<string>().HasMaxLength(32);
+        builder.Property(p => p.BreakInferenceMode).HasConversion<string>().HasMaxLength(32);
 
         // At most one policy per schedule, and one tenant-wide default (TimeScheduleId null).
         // A plain unique index would not do: NULLs are distinct in it, so it would allow any number

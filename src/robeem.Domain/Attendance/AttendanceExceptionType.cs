@@ -19,5 +19,11 @@ namespace robeem.DataModel
 
         /// <summary>The break started earlier than scheduled. A policy decides whether this is raised.</summary>
         EarlyBreak,
+
+        /// <summary>
+        /// A scheduled shift passed without a single punch, on a day with no approved leave or holiday. It is settled by the punches
+        /// arriving or being corrected, by a manager or HR accepting it with a reason, or by a leave or holiday that is entered later.
+        /// </summary>
+        NoShow,
     }
 }

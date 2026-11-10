@@ -1,0 +1,58 @@
+@model LeaveFormViewModel
+@{
+    ViewData["Title"] = "Add leave";
+}
+
+<h1 class="h3 mb-3">Add leave</h1>
+
+@if (!Model.HasEmployee)
+{
+    <p class="text-muted">First find the employee the leave is for.</p>
+
+    <form method="get" asp-action="Create" class="row g-2 align-items-center mb-3" style="max-width: 40rem;">
+        <div class="col">
+            <input type="search" name="search" value="@Model.Search" class="form-control" placeholder="Search number or name" aria-label="Search employees" autofocus />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-secondary">Search</button>
+        </div>
+    </form>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Search))
+    {
+        <div class="card" style="max-width: 40rem;">
+            @if (Model.Matches.Count == 0)
+            {
+                <div class="card-body text-muted">No employee matches “@Model.Search”.</div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var match in Model.Matches)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>@match.Name <span class="text-muted">(@match.EmployeeNumber)</span></span>
+                            <a class="btn btn-sm btn-primary" asp-action="Create" asp-route-employeeId="@match.Id">Choose</a>
+                        </li>
+                    }
+                </ul>
+                @if (Model.Matches.Count == 20)
+                {
+                    <div class="card-footer small text-muted">Showing the first 20; type more of the name or number to narrow it.</div>
+                }
+            }
+        </div>
+    }
+}
+else
+{
+    <form method="post" asp-action="Create" style="max-width: 48rem;">
+        <partial name="_LeaveForm" model="Model" />
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-link" asp-action="Index" asp-route-employeeId="@Model.Input.EmployeeId">Cancel</a>
+    </form>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

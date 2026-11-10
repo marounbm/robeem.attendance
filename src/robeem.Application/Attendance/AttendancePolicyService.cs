@@ -53,6 +53,10 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 RaiseExceptionOnLateBreak = r.Policy.RaiseExceptionOnLateBreak,
                 RaiseExceptionOnEarlyBreak = r.Policy.RaiseExceptionOnEarlyBreak,
                 RaiseExceptionOnNoBreak = r.Policy.RaiseExceptionOnNoBreak,
+                BreakInferenceMode = r.Policy.BreakInferenceMode.ToString(),
+                InferredBreakWindowMinutes = r.Policy.InferredBreakWindowMinutes,
+                InferredBreakMaxMinutes = r.Policy.InferredBreakMaxMinutes,
+                HourlyMaxSpanHours = r.Policy.HourlyMaxSpanHours,
             })
             .ToList();
     }
@@ -82,6 +86,10 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 RaiseExceptionOnLateBreak = policy.RaiseExceptionOnLateBreak,
                 RaiseExceptionOnEarlyBreak = policy.RaiseExceptionOnEarlyBreak,
                 RaiseExceptionOnNoBreak = policy.RaiseExceptionOnNoBreak,
+                BreakInferenceMode = policy.BreakInferenceMode.ToString(),
+                InferredBreakWindowMinutes = policy.InferredBreakWindowMinutes,
+                InferredBreakMaxMinutes = policy.InferredBreakMaxMinutes,
+                HourlyMaxSpanHours = policy.HourlyMaxSpanHours,
             };
     }
 
@@ -192,6 +200,14 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         Range(errors, nameof(PolicyInput.IgnoreBreaksShorterThanMinutes), input.IgnoreBreaksShorterThanMinutes, 0, PolicyInput.MaxBreakMinutes, "minutes");
         Range(errors, nameof(PolicyInput.BreakStartGraceMinutes), input.BreakStartGraceMinutes, 0, PolicyInput.MaxBreakMinutes, "minutes");
         Range(errors, nameof(PolicyInput.LongBreakGraceMinutes), input.LongBreakGraceMinutes, 0, PolicyInput.MaxBreakMinutes, "minutes");
+        Range(errors, nameof(PolicyInput.InferredBreakWindowMinutes), input.InferredBreakWindowMinutes, 0, PolicyInput.MaxBreakMinutes, "minutes");
+        Range(errors, nameof(PolicyInput.InferredBreakMaxMinutes), input.InferredBreakMaxMinutes, 1, PolicyInput.MaxBreakMinutes, "minutes");
+        Range(errors, nameof(PolicyInput.HourlyMaxSpanHours), input.HourlyMaxSpanHours, 1, PolicyInput.MaxHourlySpanHours, "hours");
+
+        if (!PolicyInput.BreakInferenceModes.Contains(input.BreakInferenceMode, StringComparer.Ordinal))
+        {
+            errors[nameof(PolicyInput.BreakInferenceMode)] = $"Choose one of: {string.Join(", ", PolicyInput.BreakInferenceModes)}.";
+        }
 
         if (!PolicyInput.Workflows.Contains(input.CorrectionApprovalWorkflow, StringComparer.Ordinal))
         {
@@ -233,6 +249,10 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         policy.RaiseExceptionOnLateBreak = input.RaiseExceptionOnLateBreak;
         policy.RaiseExceptionOnEarlyBreak = input.RaiseExceptionOnEarlyBreak;
         policy.RaiseExceptionOnNoBreak = input.RaiseExceptionOnNoBreak;
+        policy.BreakInferenceMode = Enum.Parse<BreakInferenceMode>(input.BreakInferenceMode);
+        policy.InferredBreakWindowMinutes = input.InferredBreakWindowMinutes;
+        policy.InferredBreakMaxMinutes = input.InferredBreakMaxMinutes;
+        policy.HourlyMaxSpanHours = input.HourlyMaxSpanHours;
     }
 
     private static string RaisedBreaks(AttendancePolicy p)
@@ -263,5 +283,5 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
 
     private static string Summary(AttendancePolicy p) => string.Create(
         CultureInfo.InvariantCulture,
-        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, missing-punch grace {p.MissingPunchGraceMinutes} min, breaks under {p.IgnoreBreaksShorterThanMinutes} min ignored, break start allowance {p.BreakStartGraceMinutes} min, long break allowance {p.LongBreakGraceMinutes} min, break exceptions raised for: {RaisedBreaks(p)}.");
+        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, missing-punch grace {p.MissingPunchGraceMinutes} min, breaks under {p.IgnoreBreaksShorterThanMinutes} min ignored, break start allowance {p.BreakStartGraceMinutes} min, long break allowance {p.LongBreakGraceMinutes} min, break exceptions raised for: {RaisedBreaks(p)}, breaks inferred {p.BreakInferenceMode} (window {p.InferredBreakWindowMinutes} min, longest {p.InferredBreakMaxMinutes} min), hourly shifts up to {p.HourlyMaxSpanHours} h.");
 }

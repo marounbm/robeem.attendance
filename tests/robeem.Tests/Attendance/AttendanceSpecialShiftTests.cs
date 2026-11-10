@@ -138,7 +138,7 @@ public sealed class AttendanceSpecialShiftTests : AttendanceEngineTestBase
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var secondShiftId = db.AttendanceRecords.Single(r => r.ScheduledStart == Monday.At(14, 0)).TimeScheduleShiftId;
         var raised = db.AttendanceExceptions.ToList();
-        Assert.Equal([NormalizedEventType.CheckIn, NormalizedEventType.CheckOut], raised.Select(e => e.MissingEventType!.Value).OrderBy(t => t));
+        Assert.Equal(AttendanceExceptionType.NoShow, Assert.Single(raised).ExceptionType);
         Assert.All(raised, e => Assert.Equal(secondShiftId, e.TimeScheduleShiftId));
     }
 }

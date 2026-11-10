@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.HR.Absence;
 using robeem.Application.Persistence;
 using robeem.DataModel;
 
@@ -25,14 +26,18 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
     private readonly IAttendancePolicyResolver _policies;
     private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
+    private readonly IEmployeeAbsenceCalendar _absences;
+    private readonly IRuleSetProvider _ruleSets;
 
-    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies, IAttendanceAuditTrail audit, TimeProvider clock)
+    public AttendanceProcessingEngine(IRobeemDbContext db, IScheduleResolutionService schedules, IAttendancePolicyResolver policies, IAttendanceAuditTrail audit, TimeProvider clock, IEmployeeAbsenceCalendar absences, IRuleSetProvider ruleSets)
     {
         _db = db;
         _schedules = schedules;
         _policies = policies;
         _audit = audit;
         _clock = clock;
+        _absences = absences;
+        _ruleSets = ruleSets;
     }
 
     public async Task<DayProcessingResult> ProcessEmployeeDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken)
@@ -60,19 +65,41 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         // c. The policy: the employee's schedule's, else the tenant default (CLAUDE.md §3).
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
 
+        // The rules that read breaks and decide which findings become exceptions: the policy scope's published set, else the policy's own settings.
+        var rules = await _ruleSets.ResolveAsync(policy, cancellationToken);
+
         // d. One calculation per shift starting that day, plus one for punches no shift claims.
         var inputs = windows
             .Where(w => w.Date == day)
             .Select(w => (Shift: (ResolvedShift?)w.Shift, Punches: punches.Where(w.Contains).ToList()))
             .ToList();
-        var unscheduled = punches.Where(p => p.Local.Date == day && !windows.Any(w => w.Contains(p))).ToList();
+
+        // Hourly staff have no shift: the hours worked are all there is. A check-in is paired with the check-out that follows it within
+        // the policy's span, even after midnight, and the session is the day of its check-in.
+        var isHourly = await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == employeeId && p.PayBasis == PayBasis.Hourly, cancellationToken);
+        var unscheduled = isHourly
+            ? HourlyDayPunches(punches, day, policy.HourlyMaxSpanHours)
+            : punches.Where(p => p.Local.Date == day && !windows.Any(w => w.Contains(p))).ToList();
         if (unscheduled.Count > 0)
         {
             inputs.Add((null, unscheduled));
         }
 
+        // Approved leave: the same range the shifts were resolved over, so leave after midnight meets an overnight shift.
+        var calendar = await _absences.GetAsync([employeeId], day.AddDays(-1), day.AddDays(1), cancellationToken);
+        var excused = calendar.For(employeeId);
+
+        // A leave or holiday that covers the whole day: nothing was expected, so a shift nobody punched for is not a no-show and has
+        // no record. A shift that was worked is calculated as usual. The day a shift starts on decides, as its record does.
+        var wholeDay = excused.FirstOrDefault(p => p.IsWholeDay && p.Date == day);
+        var excuseNote = wholeDay is not null && inputs.All(i => i.Punches.Count == 0) ? $"{wholeDay.Kind}: {wholeDay.Reference}" : null;
+        if (wholeDay is not null)
+        {
+            inputs = inputs.Where(i => i.Punches.Count > 0).ToList();
+        }
+
         var calculated = inputs
-            .Select(i => (i.Shift, Calculation: ShiftAttendanceCalculator.Calculate(i.Shift, i.Punches, policy)))
+            .Select(i => (i.Shift, Calculation: ShiftAttendanceCalculator.Calculate(i.Shift, i.Punches, policy, excused, rules)))
             .ToList();
 
         // e. Exceptions, after the pairing: raised once, and closed when the problem is gone.
@@ -80,14 +107,14 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var detected = new List<(int? ShiftId, DetectedException Detected)>();
         for (var i = 0; i < calculated.Count; i++)
         {
-            var found = AttendanceExceptionDetector.Detect(calculated[i].Shift, day, calculated[i].Calculation, policy, now);
-            detected.AddRange(found.Select(d => (ShiftId: calculated[i].Shift?.TimeScheduleShiftId, Detected: WithSuggestions(d, found, inputs[i].Shift, inputs[i].Punches, day, policy, now))));
+            var found = AttendanceExceptionDetector.Detect(calculated[i].Shift, day, calculated[i].Calculation, policy, now, rules);
+            detected.AddRange(found.Select(d => (ShiftId: calculated[i].Shift?.TimeScheduleShiftId, Detected: WithSuggestions(d, found, inputs[i].Shift, inputs[i].Punches, day, policy, now, excused, rules))));
         }
 
-        var exceptions = await ReconcileExceptionsAsync(employeeId, day, detected, now, cancellationToken);
+        var exceptions = await ReconcileExceptionsAsync(employeeId, day, detected, now, excuseNote, cancellationToken);
 
         // f. Records, versioned. A shift with an exception that isn't closed is never auto-Approved.
-        var (current, result) = await WriteRecordsAsync(employeeId, day, calculated, policy, exceptions.ShiftsWithActive, cancellationToken);
+        var (current, result) = await WriteRecordsAsync(employeeId, day, calculated, policy, exceptions.ShiftsWithActive, isHourly, rules.Version, cancellationToken);
 
         // g. The day summary.
         await WriteSummaryAsync(employeeId, day, current, exceptions.ActiveCount, cancellationToken);
@@ -135,11 +162,43 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
 
     private static DateTime Min(DateTime a, DateTime b) => a < b ? a : b;
 
-    private static AttendanceRecord BuildRecord(int employeeId, DateTime day, ResolvedShift? shift, ShiftCalculation calculation, AttendancePolicy policy, bool hasActiveException)
+    /// <summary>
+    /// The punches of the sessions that start on <paramref name="day"/>, for an employee paid by the hour. A session opens with the first
+    /// punch, takes the punches that follow within <paramref name="maxSpanHours"/> of it, and closes at a check-out; a later punch opens the next.
+    /// </summary>
+    private static List<AttendancePunch> HourlyDayPunches(List<AttendancePunch> punches, DateTime day, int maxSpanHours)
+    {
+        var span = TimeSpan.FromHours(Math.Max(1, maxSpanHours));
+        var result = new List<AttendancePunch>();
+        DateTimeOffset? opened = null;
+        var closed = true;
+        var sessionIsDay = false;
+        foreach (var punch in punches.OrderBy(p => p.Utc).ThenBy(p => p.NormalizedTransactionId))
+        {
+            if (opened is null || closed || punch.Utc - opened.Value > span)
+            {
+                (opened, closed, sessionIsDay) = (punch.Utc, false, punch.Local.Date == day);
+            }
+
+            if (punch.Type == NormalizedEventType.CheckOut)
+            {
+                closed = true;
+            }
+
+            if (sessionIsDay)
+            {
+                result.Add(punch);
+            }
+        }
+
+        return result;
+    }
+
+    private static AttendanceRecord BuildRecord(int employeeId, DateTime day, ResolvedShift? shift, ShiftCalculation calculation, AttendancePolicy policy, bool hasActiveException, bool isHourly)
     {
         // Auto-approved only when complete, scheduled, free of overtime that needs pre-approval, and
-        // free of exceptions that aren't closed (CLAUDE.md §1.5, study §11.3).
-        var needsReview = shift is null
+        // free of exceptions that aren't closed (CLAUDE.md §1.5, study §11.3). Hourly staff have no shift: work outside one is normal.
+        var needsReview = (shift is null && !isHourly)
             || hasActiveException
             || !calculation.IsComplete
             || (calculation.OvertimeMinutes > 0 && policy.RequiresOvertimePreApproval);
@@ -164,6 +223,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             LateMinutes = calculation.LateMinutes,
             EarlyDepartureMinutes = calculation.EarlyDepartureMinutes,
             OvertimeMinutes = calculation.OvertimeMinutes,
+            ExcusedMinutes = calculation.ExcusedMinutes,
             BreakFindings = calculation.BreakFindings,
             Status = needsReview ? AttendanceRecordStatus.PendingReview : AttendanceRecordStatus.Approved,
             SourceNormalizedTransactionIds = calculation.SourceIds.Count == 0 ? null : string.Join(",", calculation.SourceIds),
@@ -189,6 +249,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         && a.LateMinutes == b.LateMinutes
         && a.EarlyDepartureMinutes == b.EarlyDepartureMinutes
         && a.OvertimeMinutes == b.OvertimeMinutes
+        && a.ExcusedMinutes == b.ExcusedMinutes
         && a.BreakFindings == b.BreakFindings
         && a.SourceNormalizedTransactionIds == b.SourceNormalizedTransactionIds
         && a.SourceCorrectionIds == b.SourceCorrectionIds;
@@ -214,7 +275,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         List<AttendancePunch> punches,
         DateTime day,
         AttendancePolicy policy,
-        DateTime now)
+        DateTime now,
+        IReadOnlyList<ExcusedPeriod> excused,
+        RuleSetSnapshot rules)
     {
         if (found.Type != AttendanceExceptionType.InvalidSequence || found.NormalizedTransactionId is not { } transactionId)
         {
@@ -232,7 +295,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         foreach (var type in AttendanceTypes.Where(t => t != offending.Type))
         {
             var changed = punches.Select(p => p.NormalizedTransactionId == transactionId ? p with { Type = type } : p).ToList();
-            var detected = AttendanceExceptionDetector.Detect(shift, day, ShiftAttendanceCalculator.Calculate(shift, changed, policy), policy, now);
+            var detected = AttendanceExceptionDetector.Detect(shift, day, ShiftAttendanceCalculator.Calculate(shift, changed, policy, excused, rules), policy, now, rules);
             var invalid = detected.Where(d => d.Type == AttendanceExceptionType.InvalidSequence).ToList();
             if (invalid.All(d => d.NormalizedTransactionId != transactionId) && invalid.Count < invalidNow)
             {
@@ -345,6 +408,8 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         List<(ResolvedShift? Shift, ShiftCalculation Calculation)> calculated,
         AttendancePolicy policy,
         HashSet<int?> shiftsWithActiveException,
+        bool isHourly,
+        int ruleSetVersion,
         CancellationToken cancellationToken)
     {
         var existing = await _db.AttendanceRecords
@@ -379,12 +444,16 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         foreach (var (shift, calculation) in calculated)
         {
             var hasActiveException = shiftsWithActiveException.Contains(shift?.TimeScheduleShiftId);
-            var candidate = BuildRecord(employeeId, day, shift, calculation, policy, hasActiveException);
+            var candidate = BuildRecord(employeeId, day, shift, calculation, policy, hasActiveException, isHourly);
+            candidate.RuleSetVersion = ruleSetVersion;
             var versions = existing.Where(r => r.TimeScheduleShiftId == candidate.TimeScheduleShiftId).ToList();
             var previous = versions.Where(r => r.IsCurrent).OrderByDescending(r => r.Version).FirstOrDefault();
 
             if (previous is not null && SameCalculation(previous, candidate))
             {
+                // The rules in force are not part of the calculation: a day that comes out the same keeps its record, and only notes which set it was last checked with.
+                previous.RuleSetVersion = ruleSetVersion;
+
                 // The status is a reviewer's to change, and is kept, except that an exception which
                 // appeared after an approval takes the approval back.
                 if (hasActiveException && previous.Status is AttendanceRecordStatus.Approved or AttendanceRecordStatus.Calculated)
@@ -475,6 +544,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         DateTime day,
         List<(int? ShiftId, DetectedException Detected)> detected,
         DateTime now,
+        string? excuseNote,
         CancellationToken cancellationToken)
     {
         var stored = await _db.AttendanceExceptions
@@ -542,7 +612,17 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var resolved = 0;
         foreach (var gone in stored.Where(e => !matched.Contains(e)))
         {
-            if (gone.Status == AttendanceExceptionStatus.Open)
+            if (gone.Status == AttendanceExceptionStatus.Open && gone.ExceptionType == AttendanceExceptionType.NoShow && excuseNote is not null)
+            {
+                // A leave or holiday that was entered after the no-show was raised: nothing was expected of the employee.
+                gone.Status = AttendanceExceptionStatus.Closed;
+                gone.ResolutionMethod = AttendanceExceptionResolutionMethod.ExcusedAbsence;
+                gone.ResolvedAt = now;
+                gone.ResolutionNote = excuseNote;
+                _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), gone.Id, $"Open -> Closed: excused by approved absence ({excuseNote}).");
+                resolved++;
+            }
+            else if (gone.Status == AttendanceExceptionStatus.Open)
             {
                 gone.Status = AttendanceExceptionStatus.Closed;
                 gone.ResolutionMethod = AttendanceExceptionResolutionMethod.AutoResolved;

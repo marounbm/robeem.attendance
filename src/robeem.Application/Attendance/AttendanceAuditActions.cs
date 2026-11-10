@@ -35,4 +35,7 @@ public static class AttendanceAuditActions
 
     /// <summary>Raw or normalized attendance read outside normalization and processing.</summary>
     public const string AttendanceDataRead = "AttendanceDataRead";
+
+    /// <summary>A set of rules that decide how breaks are read and which findings become exceptions was published. The entry lists any rule that suppresses a finding, with its reason.</summary>
+    public const string RuleSetPublished = "RuleSetPublished";
 }

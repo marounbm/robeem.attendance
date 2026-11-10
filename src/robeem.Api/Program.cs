@@ -25,11 +25,13 @@ builder.Services.Configure<RawPayloadSanitizerOptions>(builder.Configuration.Get
 builder.Services.Configure<SampleDataOptions>(builder.Configuration.GetSection(SampleDataOptions.SectionName));
 builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration.GetSection(AttendanceNormalizationOptions.SectionName));
 builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSection(AttendanceSyncOptions.SectionName));
+builder.Services.Configure<AttendanceLookbackOptions>(builder.Configuration.GetSection(AttendanceLookbackOptions.SectionName));
 
 // The scheduler decision is in CLAUDE.md §2.8: one in-process host runs these jobs.
 builder.Services.AddSingleton<IScheduledJob, NormalizationJob>();
 builder.Services.AddSingleton<IScheduledJob, IntegrationSyncJob>();
 builder.Services.AddSingleton<IScheduledJob, ReconciliationJob>();
+builder.Services.AddSingleton<IScheduledJob, AttendanceLookbackJob>();
 builder.Services.AddSingleton<IJobRunRecorder, JobRunRecorder>();
 builder.Services.AddSingleton<JobCoordinator>();
 builder.Services.AddSingleton<IJobCoordinator>(services => services.GetRequiredService<JobCoordinator>());

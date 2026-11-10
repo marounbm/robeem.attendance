@@ -1,3 +1,4 @@
+using robeem.Application.HR.Absence;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -18,8 +19,17 @@ internal static class ShiftAttendanceCalculator
     /// <param name="shift">The scheduled shift; null for work outside any shift (no lateness, early departure or overtime).</param>
     /// <param name="punches">The punches the shift claims, in any order.</param>
     /// <param name="policy">The applicable policy: rounding, grace periods, overtime threshold, interpretation mode.</param>
-    public static ShiftCalculation Calculate(ResolvedShift? shift, IReadOnlyList<AttendancePunch> punches, AttendancePolicy policy)
+    /// <param name="excused">The employee's excused time around the day; only part-day leave that overlaps the shift is used. Null or empty when there is none.</param>
+    /// <param name="rules">The rules in force; null reads the policy's own settings as rules (<see cref="RuleSetSnapshot.FromPolicy"/>).</param>
+    public static ShiftCalculation Calculate(ResolvedShift? shift, IReadOnlyList<AttendancePunch> punches, AttendancePolicy policy, IReadOnlyList<ExcusedPeriod>? excused = null, RuleSetSnapshot? rules = null)
     {
+        rules ??= RuleSetSnapshot.FromPolicy(policy);
+
+        // Part-day approved leave inside the shift: it is not lateness, not an early departure and not a break (study: approved leave).
+        var leave = shift is null || excused is null
+            ? []
+            : excused.Where(p => !p.IsWholeDay && p.Overlaps(shift.StartsAt, shift.EndsAt)).ToList();
+
         // Other events (e.g. door access) are not attendance.
         var ordered = InterpretUnlabeled(
             punches.Where(p => p.Type != NormalizedEventType.Other).OrderBy(p => p.Utc).ThenBy(p => p.NormalizedTransactionId).ToList(),
@@ -29,6 +39,12 @@ internal static class ShiftAttendanceCalculator
         // A punch still unlabeled can't be used, and is never guessed (CLAUDE.md §1.5, §1.6).
         var complete = ordered.All(p => p.Type != NormalizedEventType.Unknown);
         var typed = WithoutRepeats(ordered.Where(p => p.Type != NormalizedEventType.Unknown).ToList(), policy.DuplicateTimeWindowSeconds);
+
+        // A device that sends only in and out: the gap near the scheduled break is read as the break, marked inferred (CLAUDE.md §1.6).
+        if (rules.CanInferBreak)
+        {
+            typed = BreakInferrer.Infer(typed, shift, rules, policy.IgnoreBreaksShorterThanMinutes, leave);
+        }
 
         // A break shorter than the policy's minimum is a toilet visit, not a break: both punches are left out, so
         // the time stays work and the break rules never see it.
@@ -74,27 +90,43 @@ internal static class ShiftAttendanceCalculator
         var breakOut = typed.FirstOrDefault(p => p.Type == NormalizedEventType.BreakOut);
         var breakIn = typed.FirstOrDefault(p => p.Type == NormalizedEventType.BreakIn && (breakOut is null || p.Utc >= breakOut.Utc));
 
+        // Away on approved leave over the scheduled break: no break was expected of the employee.
+        var breakExcused = shift is { BreakTime: true, BreakStartsAt: { } breakStart }
+            && leave.Any(p => p.Overlaps(breakStart, breakStart.AddMinutes(shift.BreakMinutes)));
+
+        // The leave inside the shift that takes working time away, not the part over the scheduled break.
+        var excusedMinutes = 0;
+        if (shift is not null && leave.Count > 0)
+        {
+            excusedMinutes = ExcusedTime.UnionMinutes(leave, shift.StartsAt, shift.EndsAt);
+            if (shift is { BreakTime: true, BreakStartsAt: { } scheduledBreak })
+            {
+                excusedMinutes -= ExcusedTime.UnionMinutes(leave, scheduledBreak, scheduledBreak.AddMinutes(shift.BreakMinutes));
+            }
+        }
+
         complete &= state == State.Off && checkIn is not null && checkOut is not null;
-        if (shift?.BreakTime == true && policy.RaiseExceptionOnNoBreak)
+        if (shift?.BreakTime == true && !breakExcused && rules.Raises(RuleFinding.NoBreak, ShiftFacts.For(shift, 0, excusedMinutes)))
         {
             complete &= breakOut is not null && breakIn is not null;
         }
 
-        var (findings, breakExcess, breakOffset) = FindBreakIssues(shift, checkIn, checkOut, breakOut, breakIn, onBreak, policy);
+        var (findings, breakExcess, breakOffset) = FindBreakIssues(shift, checkIn, checkOut, breakOut, breakIn, onBreak, policy, breakExcused);
 
+        // Leave at the start or the end of the shift is not lateness or an early departure.
         var late = shift is not null && checkIn is not null
-            ? Math.Max(0, WholeMinutes(RoundedLocal(checkIn, rounding) - shift.StartsAt) - policy.LateGraceMinutes)
+            ? Math.Max(0, WholeMinutes(RoundedLocal(checkIn, rounding) - shift.StartsAt) - ExcusedTime.UnionMinutes(leave, shift.StartsAt, RoundedLocal(checkIn, rounding)) - policy.LateGraceMinutes)
             : 0;
         var early = shift is not null && checkOut is not null
-            ? Math.Max(0, WholeMinutes(shift.EndsAt - RoundedLocal(checkOut, rounding)) - policy.EarlyDepartureGraceMinutes)
+            ? Math.Max(0, WholeMinutes(shift.EndsAt - RoundedLocal(checkOut, rounding)) - ExcusedTime.UnionMinutes(leave, RoundedLocal(checkOut, rounding), shift.EndsAt) - policy.EarlyDepartureGraceMinutes)
             : 0;
 
         // Overtime only from a complete shift: with a punch missing, the time worked is not known.
-        // Below the policy's threshold, extra time is not overtime.
+        // Below the policy's threshold, extra time is not overtime. Time away on leave is not expected.
         var overtime = 0;
         if (shift is not null && complete)
         {
-            var extra = WholeMinutes(working) - ScheduledMinutes(shift);
+            var extra = WholeMinutes(working) - (ScheduledMinutes(shift) - excusedMinutes);
             overtime = extra > 0 && extra >= policy.OvertimeThresholdMinutes ? extra : 0;
         }
 
@@ -109,6 +141,8 @@ internal static class ShiftAttendanceCalculator
             LateMinutes = late,
             EarlyDepartureMinutes = early,
             OvertimeMinutes = overtime,
+            ExcusedMinutes = excusedMinutes,
+            BreakExcused = breakExcused,
             BreakFindings = findings,
             BreakExcessMinutes = breakExcess,
             BreakStartOffsetMinutes = breakOffset,
@@ -164,7 +198,8 @@ internal static class ShiftAttendanceCalculator
         AttendancePunch? breakOut,
         AttendancePunch? breakIn,
         TimeSpan onBreak,
-        AttendancePolicy policy)
+        AttendancePolicy policy,
+        bool breakExcused)
     {
         if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart })
         {
@@ -173,7 +208,8 @@ internal static class ShiftAttendanceCalculator
 
         if (breakOut is null)
         {
-            return checkIn is not null && checkOut is not null ? (BreakFindings.NoBreak, 0, 0) : (BreakFindings.None, 0, 0);
+            // Away on approved leave over the break time: no break was expected.
+            return checkIn is not null && checkOut is not null && !breakExcused ? (BreakFindings.NoBreak, 0, 0) : (BreakFindings.None, 0, 0);
         }
 
         if (breakIn is null)

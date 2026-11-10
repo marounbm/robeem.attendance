@@ -65,6 +65,19 @@ namespace robeem.DataModel
 
         public int OvertimeMinutes { get; set; }
 
+        /// <summary>
+        /// Gets or sets the minutes of the shift covered by part-day approved leave when the day was calculated. Late and early minutes, a
+        /// missing break and overtime are measured with them taken out. Kept so a later change to the leave shows as a different calculation.
+        /// </summary>
+        public int ExcusedMinutes { get; set; }
+
+        /// <summary>
+        /// Gets or sets the number of the published rule set the day was last calculated with; 0 when no set was published and the rules came from
+        /// the policy. Not part of the calculation: it is brought up to date when the day is calculated again, and tells the look-back which days a
+        /// newly published set has not reached.
+        /// </summary>
+        public int RuleSetVersion { get; set; }
+
         /// <summary>Gets or sets what was found about the break: long, late, early or none taken. Recorded whatever the policy raises as an exception.</summary>
         public BreakFindings BreakFindings { get; set; }
 

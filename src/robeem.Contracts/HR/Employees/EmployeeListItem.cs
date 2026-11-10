@@ -16,6 +16,9 @@ public sealed class EmployeeListItem
 
     public bool IsActive { get; init; }
 
+    /// <summary>Gets how the employee is paid: <c>Scheduled</c> or <c>Hourly</c>.</summary>
+    public string PayBasis { get; init; } = "Scheduled";
+
     public string? TimeScheduleTitle { get; init; }
 
     public string? ManagerName { get; init; }

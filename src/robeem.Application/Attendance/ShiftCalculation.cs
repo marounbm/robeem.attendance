@@ -23,6 +23,12 @@ internal sealed record ShiftCalculation
 
     public int OvertimeMinutes { get; init; }
 
+    /// <summary>Gets the minutes of the shift covered by part-day approved leave (not counting the part over the scheduled break).</summary>
+    public int ExcusedMinutes { get; init; }
+
+    /// <summary>Gets a value indicating whether approved leave covers part of the scheduled break, so that no break was expected of the employee.</summary>
+    public bool BreakExcused { get; init; }
+
     /// <summary>Gets what was found about the break: long, late, early, or none taken. Always computed; the policy decides what is raised.</summary>
     public BreakFindings BreakFindings { get; init; }
 

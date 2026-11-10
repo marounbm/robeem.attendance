@@ -16,7 +16,7 @@ public sealed class DayCorrectionView
     public bool HasOvernightShift { get; init; }
 
     /// <summary>
-    /// Gets the types of punch the day must have once corrected (CheckIn, BreakIn, BreakOut, CheckOut, in the order of the day): check-in and
+    /// Gets the types of punch the day must have once corrected (CheckIn, BreakOut, BreakIn, CheckOut, in the order of the day): check-in and
     /// check-out always, the break pair when a shift has a break and the policy asks for it. A correction that leaves one out is refused.
     /// </summary>
     public IReadOnlyList<string> RequiredPunches { get; init; } = Array.Empty<string>();

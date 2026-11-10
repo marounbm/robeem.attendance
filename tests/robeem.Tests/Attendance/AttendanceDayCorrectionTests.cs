@@ -342,7 +342,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task ThePunchesMustFollowTheOrder_CheckIn_BreakIn_BreakOut_CheckOut()
+    public async Task ThePunchesMustFollowTheOrder_CheckIn_BreakOut_BreakIn_CheckOut()
     {
         GiveTheShiftABreak();
         AddPunches("I@08:00,O@13:00,O@13:05");
@@ -350,20 +350,43 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         var punches = (await GetDayAsync())!.Punches;
         var lunchOut = punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
 
-        // All four types are there, but the break-in comes after the check-out.
-        var late = await ProposeAsync(Request(
+        // All four types are there, but the break-in comes before the break-out.
+        var reversed = await ProposeAsync(Request(
             string.Empty,
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(14, 0) }));
-        Assert.Contains("out of order", late.Errors["Edits"]);
-        Assert.Contains("break-out at 13:00 can't come after a check-in", late.Errors["Edits"]);
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakIn" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakOut", At = Monday.At(14, 0) }));
+        Assert.Contains("out of order", reversed.Errors["Edits"]);
+        Assert.Contains("break-in at 13:00 can't come after a check-in", reversed.Errors["Edits"]);
+        Assert.Contains("The order is check-in, break-out, break-in, check-out.", reversed.Errors["Edits"]);
 
-        // The same two edits with the break-in before the break-out are in order.
+        // The same two edits with the break-out before the break-in are in order.
         var inOrder = await ProposeAsync(Request(
             string.Empty,
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(12, 0) }));
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakIn" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakOut", At = Monday.At(12, 0) }));
         Assert.True(inOrder.Succeeded, string.Join("; ", inOrder.Errors.Values));
+    }
+
+    [Fact]
+    public async Task ADayThatPassesTheOrderCheck_IsReadByTheEngineAsBreakOutThenBreakIn_WithNoBreakException()
+    {
+        GiveTheShiftABreak();
+        AddPunches("I@08:00,O@13:00,O@17:00");
+        await ProcessAsync(Monday);
+        var lunchIn = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+
+        // 08:00 in, 12:00 out for lunch (added), 13:00 back in (the 13:00 tap), 17:00 out.
+        var sent = await ProposeAsync(Request(
+            "Lunch break",
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchIn, EventType = "BreakIn" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakOut", At = Monday.At(12, 0) }));
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
+        await DecideFirstAsync(approved: true);
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        var record = check.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((TimeSpan.FromHours(8), TimeSpan.FromHours(1), AttendanceRecordStatus.Approved), (record.WorkingHours, record.BreakDuration, record.Status));
+        Assert.Empty(check.AttendanceExceptions.Where(e => e.Status != AttendanceExceptionStatus.Closed));
     }
 
     [Fact]
@@ -384,16 +407,16 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         var day = (await GetDayAsync())!;
         var stray = day.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
 
-        Assert.Equal(["CheckIn", "BreakIn", "BreakOut", "CheckOut"], day.RequiredPunches);
+        Assert.Equal(["CheckIn", "BreakOut", "BreakIn", "CheckOut"], day.RequiredPunches);
         var refused = await ProposeAsync(Request(string.Empty, new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray }));
-        Assert.Contains("a break-in, a break-out", refused.Errors["Edits"]);
+        Assert.Contains("a break-out, a break-in", refused.Errors["Edits"]);
 
-        // Adding the break-in at 12:00 and turning the 13:00 tap into the break-out settles it.
-        var lunchOut = day.Punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
+        // Adding the break-out at 12:00 and turning the 13:00 tap into the break-in settles it.
+        var lunchIn = day.Punches.Single(p => p.At == Monday.At(13, 0)).TransactionId!.Value;
         var sent = await ProposeAsync(Request(
             string.Empty,
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchOut, EventType = "BreakOut" },
-            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakIn", At = Monday.At(12, 0) }));
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Change, TransactionId = lunchIn, EventType = "BreakIn" },
+            new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "BreakOut", At = Monday.At(12, 0) }));
         Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
     }
 

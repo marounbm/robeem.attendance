@@ -19,6 +19,9 @@ public interface IEmployeeService
     /// <summary>Lists the active employees who can be chosen as a manager, except <paramref name="excludeEmployeeId"/> (nobody manages themselves).</summary>
     Task<IReadOnlyList<ManagerOption>> ListManagerOptionsAsync(int? excludeEmployeeId, CancellationToken cancellationToken);
 
+    /// <summary>Finds employees by part of the number or name, ignoring case, for a search box: at most 20, active ones first. An empty search finds none.</summary>
+    Task<IReadOnlyList<EmployeeLookupItem>> LookupAsync(string? search, CancellationToken cancellationToken);
+
     Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken);
 
     Task<EmployeeSaveResult> UpdateAsync(int id, EmployeeInput input, CancellationToken cancellationToken);

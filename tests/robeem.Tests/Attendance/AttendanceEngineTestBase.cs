@@ -66,7 +66,7 @@ public abstract class AttendanceEngineTestBase : IDisposable
     }
 
     protected AttendanceProcessingEngine CreateEngine(RobeemDbContext db) =>
-        new(db, new ScheduleResolutionService(db), new AttendancePolicyResolver(db), CreateAudit(db), Clock);
+        new(db, new ScheduleResolutionService(db), new AttendancePolicyResolver(db), CreateAudit(db), Clock, new robeem.Application.HR.Absence.HrAbsenceCalendar(db), new RuleSetProvider(db));
 
     /// <summary>The audit trail of a context, for the system unless a test names the user.</summary>
     protected AttendanceAuditTrail CreateAudit(RobeemDbContext db, ICurrentUser? user = null) =>

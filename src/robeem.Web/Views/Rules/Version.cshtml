@@ -1,0 +1,20 @@
+@model RuleSetDto
+@{
+    ViewData["Title"] = $"Rules version {Model.Version}";
+}
+
+<h1 class="h3 mb-3">Rules, version @Model.Version</h1>
+
+<p class="text-muted">
+    @Model.ScopeTitle: @Model.Status.ToLowerInvariant()@(Model.PublishedAt is { } at ? " on " + at.ToString("yyyy-MM-dd HH:mm") : string.Empty).
+    @if (!string.IsNullOrWhiteSpace(Model.Notes))
+    {
+        <span>Notes: @Model.Notes</span>
+    }
+</p>
+
+<div class="card mb-3">
+    <partial name="_RulesTable" model="Model" />
+</div>
+
+<a class="btn btn-link" asp-action="Index" asp-route-scheduleId="@Model.TimeScheduleId">Back to the rules</a>

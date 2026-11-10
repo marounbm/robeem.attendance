@@ -32,6 +32,11 @@ public sealed class EmployeesController : ControllerBase
     public async Task<IReadOnlyList<ManagerOption>> ListManagerOptions(int? excludeId, CancellationToken cancellationToken)
         => await _employees.ListManagerOptionsAsync(excludeId, cancellationToken);
 
+    /// <summary>Employees found by part of the number or name, for a search box: at most 20. An empty search finds none.</summary>
+    [HttpGet("options")]
+    public async Task<IReadOnlyList<EmployeeLookupItem>> Lookup(string? search, CancellationToken cancellationToken)
+        => await _employees.LookupAsync(search, cancellationToken);
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EmployeeInput>> Get(int id, CancellationToken cancellationToken)
         => await _employees.GetAsync(id, cancellationToken) is { } input ? input : NotFound();

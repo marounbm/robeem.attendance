@@ -265,7 +265,7 @@ public sealed class AttendanceExceptionDetectionTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task AScheduledDay_WithNoPunchesAtAll_IsAMissingCheckInAndCheckOut_OnceTheGraceHasElapsed()
+    public async Task AScheduledDay_WithNoPunchesAtAll_IsOneNoShow_OnceTheGraceHasElapsed()
     {
         AssignSchedule(StandardDay);
 
@@ -278,8 +278,11 @@ public sealed class AttendanceExceptionDetectionTests : AttendanceEngineTestBase
 
         Clock.Local = DueFrom;
         await ProcessAsync(Monday);
-        Assert.Equal([NormalizedEventType.CheckIn, NormalizedEventType.CheckOut], MissingPunchTypes());
+
+        // One exception for the day, not two missing punches: a person is not asked for a punch on a day they may have been away.
+        Assert.Empty(MissingPunchTypes());
         using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(AttendanceExceptionType.NoShow, Assert.Single(check.AttendanceExceptions).ExceptionType);
         Assert.Equal(AttendanceRecordStatus.PendingReview, Assert.Single(check.AttendanceRecords).Status);
     }
 

@@ -1,0 +1,90 @@
+@model RulesIndexViewModel
+@{
+    ViewData["Title"] = "Rules";
+}
+
+<h1 class="h3 mb-3">Rules</h1>
+
+<p class="text-muted">
+    These rules decide how a break is read from the punches of a device that sends no break type, and which findings (a long, late or early
+    break, a shift worked with no break, a no-show) become an exception for a person to settle. They apply to everyone on a schedule, or to the
+    whole company. Until a set is published, the rules are the attendance policy's own settings. A change is made on a draft and
+    published as a new version; a published set is never edited. A rule can never invent a punch.
+</p>
+
+<partial name="_StatusMessage" />
+
+<ul class="nav nav-pills mb-3">
+    @foreach (var scope in Model.Scopes)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(scope.TimeScheduleId == Model.ScheduleId ? "active" : string.Empty)" asp-action="Index" asp-route-scheduleId="@scope.TimeScheduleId">
+                @scope.Title
+                @if (scope.HasDraft)
+                {
+                    <span class="badge text-bg-warning ms-1">draft</span>
+                }
+            </a>
+        </li>
+    }
+</ul>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <strong>@Model.Current.ScopeTitle</strong>:
+            @if (Model.Current.Status == "Policy")
+            {
+                <span class="text-muted">from the attendance policy (nothing published yet)</span>
+            }
+            else
+            {
+                <span class="text-muted">published version @Model.Current.Version@(Model.Current.PublishedAt is { } at ? " on " + at.ToString("yyyy-MM-dd HH:mm") : string.Empty)</span>
+            }
+        </span>
+        <form method="post" asp-action="StartDraft" asp-route-scheduleId="@Model.ScheduleId">
+            <button type="submit" class="btn btn-sm btn-primary">@(Model.HasDraft ? "Continue the draft" : "Change these rules")</button>
+        </form>
+    </div>
+    <partial name="_RulesTable" model="Model.Current" />
+</div>
+
+<h2 class="h5">Versions</h2>
+<div class="card">
+    @if (Model.History.Count == 0)
+    {
+        <div class="card-body text-muted">No set has been published for this scope yet.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Version</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Published</th>
+                        <th scope="col">By</th>
+                        <th scope="col">Rules</th>
+                        <th scope="col">Notes</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var set in Model.History)
+                    {
+                        <tr>
+                            <td>@set.Version</td>
+                            <td><span class="badge text-bg-@(set.Status == "Published" ? "success" : "secondary")">@set.Status</span></td>
+                            <td class="text-nowrap">@(set.PublishedAt?.ToString("yyyy-MM-dd HH:mm"))</td>
+                            <td>@(set.PublishedByName ?? "—")</td>
+                            <td>@set.RuleCount</td>
+                            <td>@set.Notes</td>
+                            <td class="text-end"><a class="btn btn-sm btn-outline-primary" asp-action="Version" asp-route-id="@set.Id">View</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

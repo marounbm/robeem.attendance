@@ -48,6 +48,9 @@ namespace robeem.DataModel
 
         public bool IsActive { get; set; } = true;
 
+        /// <summary>Gets or sets how the employee is paid: by the schedule, or by the hours worked (wages), which are never compared with a schedule.</summary>
+        public PayBasis PayBasis { get; set; } = PayBasis.Scheduled;
+
         /// <summary>
         /// Gets or sets the employee's manager (another <see cref="Profile"/>); null when they have
         /// none. A manager decides the attendance corrections of their direct reports; for an

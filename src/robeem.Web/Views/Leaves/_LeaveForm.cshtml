@@ -1,0 +1,71 @@
+@model LeaveFormViewModel
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+<input type="hidden" asp-for="Input.EmployeeId" />
+
+<div class="card mb-3">
+    <div class="card-body row g-3">
+        <div class="col-12">
+            <div class="form-label">Employee</div>
+            <div class="fw-semibold">@Model.EmployeeName <span class="text-muted">(@Model.EmployeeNumber)</span></div>
+            <span asp-validation-for="Input.EmployeeId" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.LeaveType" class="form-label"></label>
+            <select asp-for="Input.LeaveType" class="form-select" asp-items="@(LeavesIndexViewModel.LeaveTypes.Select(t => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem(t, t)))"></select>
+            <span asp-validation-for="Input.LeaveType" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.StartDate" class="form-label"></label>
+            <input asp-for="Input.StartDate" type="date" value="@Model.Input.StartDate.ToString("yyyy-MM-dd")" class="form-control" />
+            <span asp-validation-for="Input.StartDate" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.EndDate" class="form-label"></label>
+            <input asp-for="Input.EndDate" type="date" value="@Model.Input.EndDate.ToString("yyyy-MM-dd")" class="form-control" />
+            <span asp-validation-for="Input.EndDate" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <div class="form-check">
+                <input asp-for="Input.IsPartDay" class="form-check-input" id="part-day" />
+                <label asp-for="Input.IsPartDay" class="form-check-label"></label>
+                <div class="form-text">Only one day. Give the hours the employee is away; an end earlier than the start runs into the next day.</div>
+            </div>
+        </div>
+        <div class="col-md-3 part-day-field">
+            <label asp-for="Input.StartTime" class="form-label"></label>
+            <input asp-for="Input.StartTime" type="time" class="form-control" />
+            <span asp-validation-for="Input.StartTime" class="text-danger small"></span>
+        </div>
+        <div class="col-md-3 part-day-field">
+            <label asp-for="Input.EndTime" class="form-label"></label>
+            <input asp-for="Input.EndTime" type="time" class="form-control" />
+            <span asp-validation-for="Input.EndTime" class="text-danger small"></span>
+        </div>
+        <div class="col-12">
+            <label asp-for="Input.Notes" class="form-label"></label>
+            <textarea asp-for="Input.Notes" class="form-control" rows="2" maxlength="500"></textarea>
+            <span asp-validation-for="Input.Notes" class="text-danger small"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var box = document.getElementById('part-day');
+        var fields = document.querySelectorAll('.part-day-field');
+        var endDate = document.getElementById('Input_EndDate');
+        var startDate = document.getElementById('Input_StartDate');
+        var sync = function () {
+            fields.forEach(function (field) { field.hidden = !box.checked; });
+            if (box.checked && startDate && endDate) {
+                endDate.value = startDate.value;
+            }
+        };
+        box.addEventListener('change', sync);
+        if (startDate) {
+            startDate.addEventListener('change', function () { if (box.checked && endDate) { endDate.value = startDate.value; } });
+        }
+        sync();
+    })();
+</script>

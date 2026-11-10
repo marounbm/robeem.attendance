@@ -65,6 +65,13 @@ public sealed class EmployeesApiClient : IEmployeesApiClient
         return await ApiResponses.ReadAsync<List<ManagerOption>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<EmployeeLookupItem>> LookupAsync(string? search, CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?> { ["search"] = search ?? string.Empty };
+        using var response = await _http.GetAsync(QueryHelpers.AddQueryString($"{EmployeesPath}/options", query), cancellationToken);
+        return await ApiResponses.ReadAsync<List<EmployeeLookupItem>>(response, cancellationToken);
+    }
+
     public async Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsJsonAsync(EmployeesPath, input, cancellationToken);

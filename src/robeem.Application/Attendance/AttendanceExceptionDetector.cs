@@ -27,22 +27,24 @@ internal static class AttendanceExceptionDetector
     /// <param name="calculation">The calculation of the shift: its punches are the interpreted, de-duplicated ones.</param>
     /// <param name="policy">The applicable policy: the grace window.</param>
     /// <param name="now">The current local wall-clock time.</param>
-    public static IReadOnlyList<DetectedException> Detect(ResolvedShift? shift, DateTime day, ShiftCalculation calculation, AttendancePolicy policy, DateTime now)
+    /// <param name="rules">The rules that say which findings become exceptions; null reads the policy's own settings as rules.</param>
+    public static IReadOnlyList<DetectedException> Detect(ResolvedShift? shift, DateTime day, ShiftCalculation calculation, AttendancePolicy policy, DateTime now, RuleSetSnapshot? rules = null)
     {
+        rules ??= RuleSetSnapshot.FromPolicy(policy);
         var punches = calculation.Punches;
         var found = new List<DetectedException>();
 
         var expectedEnd = shift?.EndsAt ?? day.AddDays(1);
         var graceOver = now >= expectedEnd.AddMinutes(policy.MissingPunchGraceMinutes);
 
-        // A scheduled shift without a single punch is a no-show. Nothing is expected on a day off,
-        // or when no schedule is configured, and then there is no shift to get here.
+        // A scheduled shift without a single punch is a no-show: one exception, not two missing punches, because a person is not
+        // asked to supply a punch for a day they may have been away. Nothing is expected on a day off, for hourly staff, or when no
+        // schedule is configured, and then there is no shift to get here. The engine drops it on a day covered by approved leave.
         if (calculation.SourceIds.Count == 0 && punches.Count == 0)
         {
-            if (shift is not null && graceOver)
+            if (shift is not null && graceOver && rules.Raises(RuleFinding.NoShow, ShiftFacts.For(shift, 0, calculation.ExcusedMinutes)))
             {
-                found.Add(Missing(NormalizedEventType.CheckIn, "No punch was recorded for a scheduled shift."));
-                found.Add(Missing(NormalizedEventType.CheckOut, "No punch was recorded for a scheduled shift."));
+                found.Add(new DetectedException(AttendanceExceptionType.NoShow, null, null, "No punch was recorded for a scheduled shift."));
             }
 
             return found;
@@ -129,13 +131,16 @@ internal static class AttendanceExceptionDetector
         // missed for sure while the shift is still running. The policy decides whether that is a problem at all.
         var hasCheckOut = punches.Any(p => p.Type == NormalizedEventType.CheckOut);
         var hasBreakPunch = punches.Any(p => p.Type is NormalizedEventType.BreakOut or NormalizedEventType.BreakIn);
-        if (breakExpected && !hasBreakPunch && (hasCheckOut || graceOver) && policy.RaiseExceptionOnNoBreak)
+
+        // Away on approved leave over the break: no break was expected.
+        if (breakExpected && !calculation.BreakExcused && !hasBreakPunch && (hasCheckOut || graceOver)
+            && rules.Raises(RuleFinding.NoBreak, ShiftFacts.For(shift, 0, calculation.ExcusedMinutes)))
         {
             found.Add(Missing(NormalizedEventType.BreakOut, "The shift has a break, but no break-out was recorded."));
             found.Add(Missing(NormalizedEventType.BreakIn, "The shift has a break, but no break-in was recorded."));
         }
 
-        AddBreakFindings(found, calculation, shift, policy);
+        AddBreakFindings(found, calculation, shift, rules);
 
         // One report per problem: a repeated cause (two stray break-ins) is still one missing break-out.
         return found
@@ -148,7 +153,7 @@ internal static class AttendanceExceptionDetector
     /// Raises the long, late and early breaks that the policy asks to be raised. The finding is on the record either way; here it only
     /// becomes an exception when the policy says so. It is tied to the break-out punch, so accepting one break does not accept another.
     /// </summary>
-    private static void AddBreakFindings(List<DetectedException> found, ShiftCalculation calculation, ResolvedShift? shift, AttendancePolicy policy)
+    private static void AddBreakFindings(List<DetectedException> found, ShiftCalculation calculation, ResolvedShift? shift, RuleSetSnapshot rules)
     {
         if (shift?.BreakStartsAt is not { } scheduledStart || calculation.BreakOut is not { } breakOut)
         {
@@ -157,7 +162,7 @@ internal static class AttendanceExceptionDetector
 
         var scheduled = scheduledStart.ToString("HH:mm", CultureInfo.InvariantCulture);
         var findings = calculation.BreakFindings;
-        if (findings.HasFlag(BreakFindings.LongBreak) && policy.RaiseExceptionOnLongBreak)
+        if (findings.HasFlag(BreakFindings.LongBreak) && rules.Raises(RuleFinding.LongBreak, ShiftFacts.For(shift, calculation.BreakExcessMinutes, calculation.ExcusedMinutes)))
         {
             found.Add(new DetectedException(
                 AttendanceExceptionType.LongBreak,
@@ -166,7 +171,7 @@ internal static class AttendanceExceptionDetector
                 $"The break lasted {Minutes((int)calculation.BreakDuration.TotalMinutes)}, {Minutes(calculation.BreakExcessMinutes)} longer than the scheduled {Minutes(shift.BreakMinutes)}."));
         }
 
-        if (findings.HasFlag(BreakFindings.LateBreak) && policy.RaiseExceptionOnLateBreak)
+        if (findings.HasFlag(BreakFindings.LateBreak) && rules.Raises(RuleFinding.LateBreak, ShiftFacts.For(shift, calculation.BreakStartOffsetMinutes, calculation.ExcusedMinutes)))
         {
             found.Add(new DetectedException(
                 AttendanceExceptionType.LateBreak,
@@ -175,7 +180,7 @@ internal static class AttendanceExceptionDetector
                 $"The break started {Minutes(calculation.BreakStartOffsetMinutes)} after the scheduled {scheduled}."));
         }
 
-        if (findings.HasFlag(BreakFindings.EarlyBreak) && policy.RaiseExceptionOnEarlyBreak)
+        if (findings.HasFlag(BreakFindings.EarlyBreak) && rules.Raises(RuleFinding.EarlyBreak, ShiftFacts.For(shift, -calculation.BreakStartOffsetMinutes, calculation.ExcusedMinutes)))
         {
             found.Add(new DetectedException(
                 AttendanceExceptionType.EarlyBreak,

@@ -71,6 +71,22 @@ namespace robeem.DataModel
         /// </summary>
         public bool RaiseExceptionOnNoBreak { get; set; } = true;
 
+        /// <summary>Gets or sets whether a break is inferred from a gap between a check-out and the next check-in, for devices that send no break type.</summary>
+        public BreakInferenceMode BreakInferenceMode { get; set; } = BreakInferenceMode.Off;
+
+        /// <summary>Gets or sets how far from the scheduled break start an out-and-in gap may start and still be read as the break, in minutes.</summary>
+        public int InferredBreakWindowMinutes { get; set; } = 90;
+
+        /// <summary>Gets or sets the longest gap that is read as a break, in minutes; a longer one is time away, not a break.</summary>
+        public int InferredBreakMaxMinutes { get; set; } = 120;
+
+        /// <summary>
+        /// Gets or sets the longest time, in hours, between an hourly employee's check-in and the check-out it is paired with. Hourly
+        /// staff have no shift, so a check-in is paired with the first check-out within this span, even after midnight, and the day is
+        /// the check-in's.
+        /// </summary>
+        public int HourlyMaxSpanHours { get; set; } = 16;
+
         #region not mapped
         [NotMapped]
         public bool IsTenantDefault => TimeScheduleId is null;

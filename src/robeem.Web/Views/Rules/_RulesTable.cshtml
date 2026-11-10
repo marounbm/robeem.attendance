@@ -1,0 +1,21 @@
+@model RuleSetDto
+
+@if (Model.Rules.Count == 0)
+{
+    <div class="card-body text-muted">This set has no rules, so nothing is read from a gap and no finding is raised as an exception.</div>
+}
+else
+{
+    <ol class="list-group list-group-numbered list-group-flush">
+        @foreach (var rule in Model.Rules)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                    <div class="fw-semibold">@rule.Name</div>
+                    <div class="@(rule.IsEnabled ? string.Empty : "text-muted text-decoration-line-through")">@rule.Sentence</div>
+                </div>
+                <span class="badge text-bg-@(rule.IsEnabled ? "success" : "secondary")">@(rule.IsEnabled ? "On" : "Off")</span>
+            </li>
+        }
+    </ol>
+}

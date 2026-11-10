@@ -1,0 +1,134 @@
+@model RulesEditViewModel
+@{
+    ViewData["Title"] = "Change the rules";
+}
+
+<h1 class="h3 mb-1">Change the rules</h1>
+<p class="text-muted">
+    @Model.ScopeTitle. This is a draft: nothing changes until it is published. The rules are looked at in the order they are listed, and for a
+    finding the first rule whose conditions all hold decides, so put a rule that suppresses an exception before the rule it overrides.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="post" asp-action="Edit">
+    <input type="hidden" name="draftId" value="@Model.DraftId" />
+    <input type="hidden" name="scheduleId" value="@Model.ScheduleId" />
+    <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+
+    @for (var i = 0; i < Model.Rules.Count; i++)
+    {
+        var rule = Model.Rules[i];
+        var interpretation = rule.Action == "InferBreak";
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Rule @(i + 1)</span>
+                <span>
+                    <button type="submit" name="command" value="up:@i" class="btn btn-sm btn-outline-secondary" title="Look at this rule earlier" disabled="@(i == 0)">↑</button>
+                    <button type="submit" name="command" value="down:@i" class="btn btn-sm btn-outline-secondary" title="Look at this rule later" disabled="@(i == Model.Rules.Count - 1)">↓</button>
+                    <button type="submit" name="command" value="remove-rule:@i" class="btn btn-sm btn-outline-danger">Remove rule</button>
+                </span>
+            </div>
+            <div class="card-body row g-3">
+                <input type="hidden" asp-for="Rules[i].Stage" />
+                <div class="col-md-6">
+                    <label asp-for="Rules[i].Name" class="form-label">Name</label>
+                    <input asp-for="Rules[i].Name" class="form-control" maxlength="255" />
+                    <span asp-validation-for="Rules[i].Name" class="text-danger small"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Rules[i].Action" class="form-label">Then</label>
+                    <select asp-for="Rules[i].Action" class="form-select">
+                        @foreach (var (value, label) in RulesEditViewModel.Actions)
+                        {
+                            <option value="@value" selected="@(rule.Action == value)">@label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Rules[i].Action" class="text-danger small"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Rules[i].Finding" class="form-label">About</label>
+                    <select asp-for="Rules[i].Finding" class="form-select" disabled="@interpretation">
+                        <option value="">—</option>
+                        @foreach (var (value, label) in RulesEditViewModel.Findings)
+                        {
+                            <option value="@value" selected="@(rule.Finding == value)">@label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="Rules[i].Finding" class="text-danger small"></span>
+                </div>
+                @if (rule.Action == "SuppressException")
+                {
+                    <div class="col-12">
+                        <label asp-for="Rules[i].Reason" class="form-label">Why is it not raised? (kept in the audit log)</label>
+                        <input asp-for="Rules[i].Reason" class="form-control" maxlength="500" />
+                        <span asp-validation-for="Rules[i].Reason" class="text-danger small"></span>
+                    </div>
+                }
+                <div class="col-12">
+                    <div class="form-check">
+                        <input asp-for="Rules[i].IsEnabled" class="form-check-input" />
+                        <label asp-for="Rules[i].IsEnabled" class="form-check-label">The rule is on</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="form-label mb-1">When all of these hold@(rule.Conditions.Count == 0 ? " (nothing: the rule always applies)" : string.Empty)</div>
+                    @for (var j = 0; j < rule.Conditions.Count; j++)
+                    {
+                        <div class="row g-2 align-items-start mb-2">
+                            <div class="col-md-6">
+                                <select asp-for="Rules[i].Conditions[j].Fact" class="form-select">
+                                    @foreach (var (value, label) in RulesEditViewModel.Facts)
+                                    {
+                                        <option value="@value" selected="@(rule.Conditions[j].Fact == value)">@label</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="Rules[i].Conditions[j].Fact" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-2">
+                                <select asp-for="Rules[i].Conditions[j].Operator" class="form-select">
+                                    @foreach (var (value, label) in RulesEditViewModel.Operators)
+                                    {
+                                        <option value="@value" selected="@(rule.Conditions[j].Operator == value)">@label</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <input asp-for="Rules[i].Conditions[j].Value" type="number" class="form-control" />
+                                <span asp-validation-for="Rules[i].Conditions[j].Value" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" name="command" value="remove-condition:@i:@j" class="btn btn-sm btn-outline-danger">Remove</button>
+                            </div>
+                        </div>
+                    }
+                    <span asp-validation-for="Rules[i].Conditions" class="text-danger small d-block"></span>
+                    <button type="submit" name="command" value="add-condition:@i" class="btn btn-sm btn-outline-secondary">Add a condition</button>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(rule.Sentence))
+                {
+                    <div class="col-12 small text-muted">In words: @rule.Sentence</div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="mb-3">
+        <button type="submit" name="command" value="add-rule" class="btn btn-outline-secondary">Add a rule</button>
+    </div>
+
+    <div class="mb-3" style="max-width: 48rem;">
+        <label asp-for="Notes" class="form-label">Note for the history (optional)</label>
+        <textarea asp-for="Notes" class="form-control" rows="2" maxlength="1000"></textarea>
+    </div>
+
+    <button type="submit" name="command" value="save" class="btn btn-primary">Save the draft</button>
+    <button type="submit" name="command" value="publish" class="btn btn-success" onclick="return confirm('Publish these rules? Days are calculated with them from now on.');">Save and publish</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-scheduleId="@Model.ScheduleId">Back</a>
+</form>
+
+<form method="post" asp-action="Discard" class="mt-3">
+    <input type="hidden" name="draftId" value="@Model.DraftId" />
+    <input type="hidden" name="scheduleId" value="@Model.ScheduleId" />
+    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Throw this draft away?');">Throw the draft away</button>
+</form>

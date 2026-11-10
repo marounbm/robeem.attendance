@@ -202,8 +202,8 @@
         </div>
 
         <p class="small text-muted">
-            Once corrected, the punches of the day must follow the order <strong>check-in, break-in, break-out, check-out</strong>, and none can be
-            left without its partner (a check-in needs a check-out, a break-in needs a break-out).
+            Once corrected, the punches of the day must follow the order <strong>check-in, break-out, break-in, check-out</strong>, and none can be
+            left without its partner (a check-in needs a check-out, a break-out needs a break-in).
             @if (day.RequiredPunches.Count > 0)
             {
                 <text>The day must have: @string.Join(", ", day.RequiredPunches.Select(t => DisplayFormats.Words(t).ToLowerInvariant())).</text>
@@ -295,11 +295,11 @@
             var required = (form.dataset.required || '').split(',').filter(Boolean);
             var words = { CheckIn: 'a check-in', BreakOut: 'a break-out', BreakIn: 'a break-in', CheckOut: 'a check-out' };
 
-            var order = ['CheckIn', 'BreakIn', 'BreakOut', 'CheckOut'];
+            var order = ['CheckIn', 'BreakOut', 'BreakIn', 'CheckOut'];
             var dayStart = new Date(form.querySelector('input[name="Date"]').value + 'T00:00:00');
 
             // What may follow each punch; the start of the day and a check-out are followed by a check-in only.
-            var next = { Start: ['CheckIn'], CheckIn: ['BreakIn', 'CheckOut'], BreakIn: ['BreakOut'], BreakOut: ['BreakIn', 'CheckOut'], CheckOut: ['CheckIn'] };
+            var next = { Start: ['CheckIn'], CheckIn: ['BreakOut', 'CheckOut'], BreakOut: ['BreakIn'], BreakIn: ['BreakOut', 'CheckOut'], CheckOut: ['CheckIn'] };
 
             var clock = function (minutes) {
                 var m = minutes % 1440;
@@ -353,14 +353,14 @@
                     return;
                 }
 
-                // And they must follow the order check-in, break-in, break-out, check-out, by time.
+                // And they must follow the order check-in, break-out, break-in, check-out, by time.
                 punches.sort(function (a, b) { return a[1] - b[1] || order.indexOf(a[0]) - order.indexOf(b[0]); });
                 var previous = 'Start';
                 for (var i = 0; i < punches.length; i++) {
                     if (next[previous].indexOf(punches[i][0]) < 0) {
                         event.preventDefault();
                         fail('The punches are out of order: ' + words[punches[i][0]] + ' at ' + clock(punches[i][1]) + " can't come "
-                            + (previous === 'Start' ? 'first' : 'after ' + words[previous]) + '. The order is check-in, break-in, break-out, check-out.');
+                            + (previous === 'Start' ? 'first' : 'after ' + words[previous]) + '. The order is check-in, break-out, break-in, check-out.');
                         return;
                     }
 

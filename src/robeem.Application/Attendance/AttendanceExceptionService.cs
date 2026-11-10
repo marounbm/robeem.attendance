@@ -31,9 +31,9 @@ public sealed class AttendanceExceptionService : IAttendanceExceptionService
             return SaveResult.Missing();
         }
 
-        if (exception.ExceptionType is not (AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak))
+        if (!AttendanceExceptionRules.IsAcceptable(exception.ExceptionType))
         {
-            return SaveResult.Invalid("id", "Only a break exception can be accepted. A missing punch is corrected, with the time it happened.");
+            return SaveResult.Invalid("id", "Only a break exception or a no-show can be accepted. A missing punch is corrected, with the time it happened.");
         }
 
         if (exception.Status != AttendanceExceptionStatus.Open)

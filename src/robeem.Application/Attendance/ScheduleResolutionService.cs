@@ -27,6 +27,12 @@ public sealed class ScheduleResolutionService : IScheduleResolutionService
 
         var dates = Enumerable.Range(0, (to - from).Days + 1).Select(i => from.AddDays(i)).ToList();
 
+        // Hourly staff are paid by the hours they work and never compared with a schedule, even one they were once given.
+        if (await _db.Profiles.AsNoTracking().AnyAsync(p => p.Id == employeeId && p.PayBasis == PayBasis.Hourly, cancellationToken))
+        {
+            return dates.Select(ShiftResolution.NoScheduleConfigured).ToList();
+        }
+
         // 1. The employee's assignment. None: not on any schedule; never guessed (CLAUDE.md §3.2).
         var assignment = await _db.TimeScheduleEmployees
             .AsNoTracking()

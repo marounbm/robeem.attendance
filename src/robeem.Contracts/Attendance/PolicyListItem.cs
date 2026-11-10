@@ -45,4 +45,12 @@ public sealed class PolicyListItem
     public bool RaiseExceptionOnEarlyBreak { get; init; }
 
     public bool RaiseExceptionOnNoBreak { get; init; }
+
+    public string BreakInferenceMode { get; init; } = string.Empty;
+
+    public int InferredBreakWindowMinutes { get; init; }
+
+    public int InferredBreakMaxMinutes { get; init; }
+
+    public int HourlyMaxSpanHours { get; init; }
 }

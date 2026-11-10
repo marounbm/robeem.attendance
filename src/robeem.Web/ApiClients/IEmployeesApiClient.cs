@@ -17,6 +17,9 @@ public interface IEmployeesApiClient
     /// <summary>Employees who can be chosen as a manager, except <paramref name="excludeEmployeeId"/>.</summary>
     Task<IReadOnlyList<ManagerOption>> ListManagerOptionsAsync(int? excludeEmployeeId, CancellationToken cancellationToken);
 
+    /// <summary>Finds employees by part of the number or name, for a search box: at most 20; an empty search finds none.</summary>
+    Task<IReadOnlyList<EmployeeLookupItem>> LookupAsync(string? search, CancellationToken cancellationToken);
+
     Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken);
 
     Task<EmployeeSaveResult> UpdateAsync(int id, EmployeeInput input, CancellationToken cancellationToken);

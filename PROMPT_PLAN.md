@@ -738,3 +738,17 @@ default false, CorrectionApprovalWorkflow=Manager.
 ```
 
 **Definition of done**: seed data appears in every tenant database after `dotnet run --project src/robeem.Api` in Development (per CLAUDE.md §5), and in the test suite's seeding tests (mirroring `SeedDataRunnerTests.cs`); no provider is marked active without a corresponding working adapter.
+
+---
+
+## Addendum 2026-11-07 — Prompts 15a, 15b, 16, 17, 18 (approved)
+
+Approved by the product owner on 2026-11-07. The full text of these prompts is in `P16_P17_LOOKBACK_AND_BREAK_INFERENCE_PLAN.md` (listed under *Docs / Plans* in the solution); it is the single source, so it is not copied here. Implemented in this order:
+
+- [x] **P15a** — Restore the punch order in *Correct a day*: check-in, break-out, break-in, check-out. Done 2026-11-07.
+- [x] **P15b** — `PublicHoliday` and `EmployeeLeave` tables (schema `HR`), simple Holidays and Leaves screens, the 2026 Lebanese holiday seed, and `IEmployeeAbsenceCalendar`. Done 2026-11-07. The seeded dates are unverified (the Banque du Liban page answered 403); the Easter Monday row and the lunar rows are marked provisional.
+- [x] **P16** — Break inference for devices that send no break type, adjusted for approved leave and overnight shifts. Done 2026-11-07. Deviation: no stored `BreakInferred` column (derived from the punch sources); the Correct-a-day label for an inferred pair is not done.
+- [x] **P17** — Look-back job: no-show exception, device liveness, leave re-read, hourly staff. Done 2026-11-07. Deviations: the "incomplete day" check is a check-in with no check-out (the record has no completeness column); the optional `GET api/attendance/devices/activity` and the Devices "Last punch" column are not built (the silent devices are in the job's summary and log).
+- [x] **P18** — Rules HR can see and change: break inference and which findings become exceptions. Done 2026-11-07, with a reduced scope. Built: rule tables, the evaluator and validator, drafts and published versions, audit, the screens, the API, the look-back catch-up by `RuleSetVersion`. Deviations: the default rules are derived from the policy in memory instead of a migration that stores a set per policy, and the policy columns are not dropped; the "test against a day" tool, the impact preview, and storing the fired rule ids on exceptions are not built; only records note the rule set version.
+
+Tick each box and add its deviations to an `ATTENDANCE_P<n>_NOTES.md` as it is finished.

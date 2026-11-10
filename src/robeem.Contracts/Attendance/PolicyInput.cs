@@ -11,12 +11,16 @@ public sealed class PolicyInput
     public const int MaxDuplicateWindowSeconds = 3600;
     public const int MaxMissingPunchGraceMinutes = 1440;
     public const int MaxBreakMinutes = 240;
+    public const int MaxHourlySpanHours = 24;
 
     /// <summary>The workflows a correction can follow, as the policy's <c>CorrectionApprovalWorkflow</c> names them.</summary>
     public static readonly IReadOnlyList<string> Workflows = ["Manager", "HR", "Both"];
 
     /// <summary>The interpretation modes an administrator can choose. <c>RulesEngine</c> exists in the model but has no engine yet.</summary>
     public static readonly IReadOnlyList<string> InterpretationModes = ["Off", "Sequential"];
+
+    /// <summary>The ways a break can be inferred for a device that sends no break type, as the policy's <c>BreakInferenceMode</c> names them.</summary>
+    public static readonly IReadOnlyList<string> BreakInferenceModes = ["Off", "FromGap"];
 
     [Required]
     [StringLength(255)]
@@ -85,4 +89,20 @@ public sealed class PolicyInput
 
     [Display(Name = "No break raises an exception")]
     public bool RaiseExceptionOnNoBreak { get; set; } = true;
+
+    [Required]
+    [Display(Name = "Breaks on devices with no break type")]
+    public string BreakInferenceMode { get; set; } = "Off";
+
+    [Range(0, MaxBreakMinutes)]
+    [Display(Name = "Break window (minutes)")]
+    public int InferredBreakWindowMinutes { get; set; } = 90;
+
+    [Range(1, MaxBreakMinutes)]
+    [Display(Name = "Longest gap read as a break (minutes)")]
+    public int InferredBreakMaxMinutes { get; set; } = 120;
+
+    [Range(1, MaxHourlySpanHours)]
+    [Display(Name = "Longest hourly shift (hours)")]
+    public int HourlyMaxSpanHours { get; set; } = 16;
 }

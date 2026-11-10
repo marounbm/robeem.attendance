@@ -17,8 +17,8 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     private static readonly NormalizedEventType[] AttendanceTypes =
     [
         NormalizedEventType.CheckIn,
-        NormalizedEventType.BreakIn,
         NormalizedEventType.BreakOut,
+        NormalizedEventType.BreakIn,
         NormalizedEventType.CheckOut,
     ];
 
@@ -200,8 +200,8 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     }
 
     /// <summary>
-    /// Gets what is out of order in the punches, in time: after a check-in comes a break-in or a check-out, after a break-in a break-out,
-    /// after a break-out a break-in or a check-out, and a new check-in only after a check-out. Null when they follow that order and the day ends checked out.
+    /// Gets what is out of order in the punches, in time: after a check-in or a break-in comes a break-out or a check-out, after a break-out a break-in
+    /// (a check-out during a break leaves the break-in missing), and a new check-in only after a check-out. Null when they follow that order and the day ends checked out.
     /// </summary>
     private static string? OutOfOrder(List<(NormalizedEventType Type, DateTime At)> punches)
     {
@@ -213,13 +213,13 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             var allowed = previous switch
             {
                 null or NormalizedEventType.CheckOut => type == NormalizedEventType.CheckIn,
-                NormalizedEventType.CheckIn or NormalizedEventType.BreakOut => type is NormalizedEventType.BreakIn or NormalizedEventType.CheckOut,
-                _ => type == NormalizedEventType.BreakOut,
+                NormalizedEventType.CheckIn or NormalizedEventType.BreakIn => type is NormalizedEventType.BreakOut or NormalizedEventType.CheckOut,
+                _ => type == NormalizedEventType.BreakIn,
             };
             if (!allowed)
             {
                 return $"The punches are out of order: {DescribeType(type)} at {at:HH:mm} can't come {(previous is null ? "first" : $"after {DescribeType(previous.Value)}")}. "
-                    + "The order is check-in, break-in, break-out, check-out.";
+                    + "The order is check-in, break-out, break-in, check-out.";
             }
 
             previous = type;

@@ -128,6 +128,31 @@
             <strong>No break</strong> is a shift with a scheduled break that was worked with no break punches. Ticked, the break punches are reported missing so
             someone can supply them; unticked, working through the break is allowed and the day is complete without it.
         </div>
+        <div class="col-md-4">
+            <label asp-for="Input.BreakInferenceMode" class="form-label"></label>
+            <select asp-for="Input.BreakInferenceMode" class="form-select">
+                <option value="Off">Use the punches as the device typed them</option>
+                <option value="FromGap">Read the gap near the break as the break</option>
+            </select>
+            <div class="form-text">
+                For a device that sends only in and out. On a shift with a break, when exactly one check-out followed by a check-in starts near the
+                scheduled break, those two punches are read as the break-out and break-in and marked inferred. A gap covered by approved leave is not a break.
+                Nothing is read when several gaps fit, or when a punch is missing.
+            </div>
+            <span asp-validation-for="Input.BreakInferenceMode" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.InferredBreakWindowMinutes" class="form-label"></label>
+            <input asp-for="Input.InferredBreakWindowMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
+            <div class="form-text">How far from the scheduled break start the gap may begin.</div>
+            <span asp-validation-for="Input.InferredBreakWindowMinutes" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.InferredBreakMaxMinutes" class="form-label"></label>
+            <input asp-for="Input.InferredBreakMaxMinutes" type="number" min="1" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
+            <div class="form-text">A longer gap is time away, not a break. The shortest is the “ignore breaks shorter than” setting above.</div>
+            <span asp-validation-for="Input.InferredBreakMaxMinutes" class="text-danger small"></span>
+        </div>
     </div>
 </div>
 
@@ -158,6 +183,12 @@
             <input asp-for="Input.DuplicateTimeWindowSeconds" type="number" min="1" max="@PolicyInput.MaxDuplicateWindowSeconds" class="form-control" />
             <div class="form-text">Repeat punches of one person, device and kind within this window count once.</div>
             <span asp-validation-for="Input.DuplicateTimeWindowSeconds" class="text-danger small"></span>
+        </div>
+        <div class="col-md-2">
+            <label asp-for="Input.HourlyMaxSpanHours" class="form-label"></label>
+            <input asp-for="Input.HourlyMaxSpanHours" type="number" min="1" max="@PolicyInput.MaxHourlySpanHours" class="form-control" />
+            <div class="form-text">For staff paid by the hour: a check-in is paired with a check-out within this many hours, even after midnight.</div>
+            <span asp-validation-for="Input.HourlyMaxSpanHours" class="text-danger small"></span>
         </div>
         <div class="col-md-2">
             <label asp-for="Input.MissingPunchGraceMinutes" class="form-label"></label>

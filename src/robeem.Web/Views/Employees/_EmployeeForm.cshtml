@@ -62,6 +62,18 @@
                 <label asp-for="Input.IsActive" class="form-check-label"></label>
             </div>
         </div>
+        <div class="col-12">
+            <label asp-for="Input.PayBasis" class="form-label"></label>
+            <select asp-for="Input.PayBasis" class="form-select">
+                <option value="Scheduled">By the schedule</option>
+                <option value="Hourly">By the hour (wages)</option>
+            </select>
+            <div class="form-text">
+                An employee paid by the hour is paid for the hours worked. They are never compared with a schedule, so a day without punches is not an
+                exception; an exception is raised only when the hours worked cannot be calculated, such as a check-in with no check-out.
+            </div>
+            <span asp-validation-for="Input.PayBasis" class="text-danger small"></span>
+        </div>
         <div class="col-md-6">
             <label asp-for="Input.TimeScheduleId" class="form-label"></label>
             <select asp-for="Input.TimeScheduleId" class="form-select"

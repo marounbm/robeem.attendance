@@ -21,6 +21,8 @@ public static class NavigationMenu
         [
             new NavItem("Employees", "Employees", "Index", "Add and edit employees, their time schedule and their manager.", Hr),
             new NavItem("Time schedules", "TimeSchedules", "Index", "Define the shifts, the weekly pattern and the teams that every day is calculated against.", Hr),
+            new NavItem("Holidays", "Holidays", "Index", "The days the whole company does not work; the Lebanese 2026 calendar is there to start with.", Hr),
+            new NavItem("Leaves", "Leaves", "Index", "Time employees are away with approval: whole days or part of a day.", Hr),
         ]);
 
     // Attendance is one screen with two tabs: the calculated days, and the exceptions to settle. The Exceptions tab is not a menu entry of its own.
@@ -68,7 +70,9 @@ public static class NavigationMenu
             new NavItem("Pay periods", "PayPeriods", "Index", "Create, close and reopen the pay periods; closing ends payroll extraction of a period.", Payroll),
         ]);
 
-    private static readonly NavSection Settings = new("Settings", [new NavItem("Policies", "Policies", "Index", "Rounding, grace periods, overtime and correction rules: the tenant default and each schedule's own.", Hr)]);
+    private static readonly NavSection Settings = new("Settings", [new NavItem("Policies", "Policies", "Index", "Rounding, grace periods, overtime and correction rules: the tenant default and each schedule's own.", Hr),
+            new NavItem("Rules", "Rules", "Index", "How a break is read from the punches of a device that sends no break type, and which findings become an exception: see the rules, change them on a draft, publish a new version.", Hr),
+        ]);
 
     // How the system is running, and who did what.
     private static readonly NavSection SystemSection = new(
