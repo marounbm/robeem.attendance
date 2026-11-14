@@ -16,11 +16,13 @@ namespace robeem.Web.Controllers;
 public sealed class RecordsController : Controller
 {
     private readonly IRecordsApiClient _records;
+    private readonly IExceptionsApiClient _exceptions;
     private readonly ICurrentActor _actor;
 
-    public RecordsController(IRecordsApiClient records, ICurrentActor actor)
+    public RecordsController(IRecordsApiClient records, IExceptionsApiClient exceptions, ICurrentActor actor)
     {
         _records = records;
+        _exceptions = exceptions;
         _actor = actor;
     }
 
@@ -48,6 +50,50 @@ public sealed class RecordsController : Controller
             OnlyWithExceptions = onlyWithExceptions,
             Sort = field,
             Descending = descending,
+        });
+    }
+
+    /// <summary>
+    /// One employee's days and exceptions over a date range (the last 30 days unless asked otherwise, at most 92), with the totals.
+    /// The employee must be one the user may see; without one the page only offers the choice.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> Employee(int? employeeId, DateTime? from, DateTime? to, CancellationToken cancellationToken)
+    {
+        var employees = await _records.ListEmployeeOptionsAsync(cancellationToken);
+        var end = (to ?? DateTime.Today).Date;
+        var start = (from ?? end.AddDays(1 - EmployeeAttendanceViewModel.DefaultRangeDays)).Date;
+        if (start > end)
+        {
+            (start, end) = (end, start);
+        }
+
+        var shortened = (end - start).TotalDays >= EmployeeAttendanceViewModel.MaxRangeDays;
+        if (shortened)
+        {
+            start = end.AddDays(1 - EmployeeAttendanceViewModel.MaxRangeDays);
+        }
+
+        // A person with a single choice (an employee, who sees only themselves) does not have to make it.
+        var chosen = employeeId is { } id && employees.Any(e => e.Id == id) ? id : employees.Count == 1 ? employees[0].Id : (int?)null;
+        IReadOnlyList<RecordDayListItem> days = Array.Empty<RecordDayListItem>();
+        IReadOnlyList<ExceptionListItem> exceptions = Array.Empty<ExceptionListItem>();
+        if (chosen is { } employee)
+        {
+            // The range is short enough for every day to fit on one page of the largest size.
+            days = (await _records.ListAsync(start, end, employee, null, false, 1, 200, RecordSortField.Date, false, cancellationToken)).Items;
+            exceptions = (await _exceptions.ListAsync("All", start, end, employee, 200, cancellationToken)).OrderBy(e => e.AttendanceDate).ThenBy(e => e.Id).ToList();
+        }
+
+        return View(new EmployeeAttendanceViewModel
+        {
+            Employees = employees,
+            EmployeeId = chosen,
+            From = start,
+            To = end,
+            RangeShortened = shortened,
+            Days = days,
+            Exceptions = exceptions,
         });
     }
 

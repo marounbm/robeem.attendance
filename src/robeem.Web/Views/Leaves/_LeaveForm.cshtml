@@ -7,7 +7,13 @@
     <div class="card-body row g-3">
         <div class="col-12">
             <div class="form-label">Employee</div>
-            <div class="fw-semibold">@Model.EmployeeName <span class="text-muted">(@Model.EmployeeNumber)</span></div>
+            <div class="fw-semibold">
+                @Model.EmployeeName <span class="text-muted">(@Model.EmployeeNumber)</span>
+                @if (Model.Id is null)
+                {
+                    <a class="btn btn-sm btn-link" asp-action="Create" asp-route-employeeId="">Change employee</a>
+                }
+            </div>
             <span asp-validation-for="Input.EmployeeId" class="text-danger small"></span>
         </div>
         <div class="col-md-4">

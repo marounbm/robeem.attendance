@@ -229,8 +229,63 @@ public sealed class RecordsWebTests
         Assert.Equal("Records", NavigationMenu.Find("Exceptions")!.TabOf);
     }
 
-    private static RecordsController Controller(FakeRecords records, string[] roles) =>
-        new(records, new FakeActor(roles)) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NullTempDataProvider()) };
+    [Fact]
+    public async Task TheEmployeePage_ShowsTheLast30Days_OfTheOnlyEmployeeTheUserMaySee_AndTotalsThem()
+    {
+        var records = new FakeRecords
+        {
+            Days =
+            [
+                new RecordDayListItem { EmployeeId = 12, TotalWorkingHours = TimeSpan.FromHours(8), TotalOvertimeHours = TimeSpan.FromHours(1), TotalBreakHours = TimeSpan.FromMinutes(30), ExceptionCount = 1 },
+                new RecordDayListItem { EmployeeId = 12, TotalWorkingHours = TimeSpan.FromHours(7.5), TotalBreakHours = TimeSpan.FromMinutes(30) },
+            ],
+        };
+        var exceptions = new FakeExceptions
+        {
+            Items = [new ExceptionListItem { Id = 2, Status = "Open" }, new ExceptionListItem { Id = 1, Status = "Closed" }],
+        };
+
+        var model = (EmployeeAttendanceViewModel)((ViewResult)await Controller(records, ["Employee"], exceptions).Employee(null, null, null, CancellationToken.None)).Model!;
+
+        Assert.Equal(12, model.EmployeeId);
+        Assert.Equal(DateTime.Today, model.To);
+        Assert.Equal(DateTime.Today.AddDays(-29), model.From);
+        Assert.Equal((12, 200, null), (records.EmployeeId, records.PageSizeAsked, records.Status));
+        Assert.Equal(("All", 12), (exceptions.StatusAsked, exceptions.EmployeeAsked));
+        Assert.Equal((TimeSpan.FromHours(15.5), TimeSpan.FromHours(1), TimeSpan.FromHours(1)), (model.TotalWorked, model.TotalOvertime, model.TotalBreak));
+        Assert.Equal((1, 1), (model.DaysWithOpenExceptions, model.OpenExceptions));
+        Assert.Equal([1, 2], model.Exceptions.Select(e => e.Id));
+    }
+
+    [Fact]
+    public async Task TheEmployeePage_ReadsNothing_UntilAnEmployeeTheUserMaySeeIsChosen()
+    {
+        var records = new FakeRecords { Options = [new EmployeeOption { Id = 12, Name = "Ada" }, new EmployeeOption { Id = 13, Name = "Bob" }] };
+        var exceptions = new FakeExceptions();
+        var controller = Controller(records, ["HRAdministrator"], exceptions);
+
+        var none = (EmployeeAttendanceViewModel)((ViewResult)await controller.Employee(null, null, null, CancellationToken.None)).Model!;
+        var stranger = (EmployeeAttendanceViewModel)((ViewResult)await controller.Employee(99, null, null, CancellationToken.None)).Model!;
+
+        Assert.Equal((null, null), (none.EmployeeId, stranger.EmployeeId));
+        Assert.Equal((0, 0), (records.ListCalls, exceptions.ListCalls));
+    }
+
+    [Fact]
+    public async Task TheEmployeePage_CutsARangeLongerThan92Days_AndPutsTheDatesInOrder()
+    {
+        var records = new FakeRecords { Options = [new EmployeeOption { Id = 12, Name = "Ada" }, new EmployeeOption { Id = 13, Name = "Bob" }] };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var cut = (EmployeeAttendanceViewModel)((ViewResult)await controller.Employee(12, new DateTime(2026, 1, 1), new DateTime(2026, 10, 31), CancellationToken.None)).Model!;
+        var swapped = (EmployeeAttendanceViewModel)((ViewResult)await controller.Employee(12, new DateTime(2026, 10, 31), new DateTime(2026, 10, 1), CancellationToken.None)).Model!;
+
+        Assert.Equal((true, new DateTime(2026, 10, 31), new DateTime(2026, 10, 31).AddDays(-91)), (cut.RangeShortened, cut.To, cut.From));
+        Assert.Equal((false, new DateTime(2026, 10, 1), new DateTime(2026, 10, 31)), (swapped.RangeShortened, swapped.From, swapped.To));
+    }
+
+    private static RecordsController Controller(FakeRecords records, string[] roles, FakeExceptions? exceptions = null) =>
+        new(records, exceptions ?? new FakeExceptions(), new FakeActor(roles)) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NullTempDataProvider()) };
 
     private sealed class NullTempDataProvider : ITempDataProvider
     {
@@ -283,6 +338,12 @@ public sealed class RecordsWebTests
 
         public int Total { get; set; }
 
+        public IReadOnlyList<RecordDayListItem> Days { get; set; } = Array.Empty<RecordDayListItem>();
+
+        public IReadOnlyList<EmployeeOption> Options { get; set; } = [new EmployeeOption { Id = 12, Name = "Ada Lovelace (E-1)" }];
+
+        public int ListCalls { get; private set; }
+
         public int ServerPage { get; set; } = 1;
 
         public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken)
@@ -290,16 +351,39 @@ public sealed class RecordsWebTests
             (SortAsked, DescendingAsked) = (sort, descending);
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             (PageAsked, PageSizeAsked) = (page, pageSize);
-            return Task.FromResult(new PagedResult<RecordDayListItem> { Total = Total, Page = ServerPage, PageSize = pageSize });
+            ListCalls++;
+            return Task.FromResult(new PagedResult<RecordDayListItem> { Items = Days, Total = Total, Page = ServerPage, PageSize = pageSize });
         }
 
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<EmployeeOption>>([new EmployeeOption { Id = 12, Name = "Ada Lovelace (E-1)" }]);
+            Task.FromResult(Options);
 
         public Task<RecordDayDetail?> GetDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken) =>
             Task.FromResult<RecordDayDetail?>(Missing ? null : new RecordDayDetail { EmployeeId = employeeId, AttendanceDate = date });
 
         public Task<ReprocessResponse?> ReprocessAsync(int employeeId, DateTime date, CancellationToken cancellationToken) =>
             Task.FromResult<ReprocessResponse?>(Missing ? null : Result);
+    }
+
+    private sealed class FakeExceptions : IExceptionsApiClient
+    {
+        public IReadOnlyList<ExceptionListItem> Items { get; set; } = Array.Empty<ExceptionListItem>();
+
+        public string? StatusAsked { get; private set; }
+
+        public int? EmployeeAsked { get; private set; }
+
+        public int ListCalls { get; private set; }
+
+        public Task<IReadOnlyList<ExceptionListItem>> ListAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken)
+        {
+            (StatusAsked, EmployeeAsked) = (status, employeeId);
+            ListCalls++;
+            return Task.FromResult(Items);
+        }
+
+        public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

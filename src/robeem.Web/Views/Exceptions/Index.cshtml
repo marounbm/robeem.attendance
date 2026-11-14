@@ -38,6 +38,7 @@
             }
         </select>
     </div>
+    <partial name="_MonthPicker" model="@((Model.From, Model.To))" />
     <div class="col-auto">
         <label class="form-label small mb-0" for="from">From</label>
         <input id="from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />

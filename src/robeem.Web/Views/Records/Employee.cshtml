@@ -1,0 +1,170 @@
+@model EmployeeAttendanceViewModel
+@{
+    ViewData["Title"] = "Attendance";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Attendance</h1>
+</div>
+
+<partial name="_AttendanceTabs" model="@("Employee")" />
+
+<p class="text-muted">
+    One employee's days and exceptions together, with the totals for the period. Choose the employee and the dates (up to @EmployeeAttendanceViewModel.MaxRangeDays days;
+    the last @EmployeeAttendanceViewModel.DefaultRangeDays days if you give none). You can choose only employees whose attendance you may see.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="get" asp-action="Employee" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="employeeId">Employee</label>
+        <select id="employeeId" name="employeeId" class="form-select" required>
+            @if (Model.EmployeeId is null)
+            {
+                <option value="">Choose an employee…</option>
+            }
+            @foreach (var employee in Model.Employees)
+            {
+                <option value="@employee.Id" selected="@(employee.Id == Model.EmployeeId)">@employee.Name</option>
+            }
+        </select>
+    </div>
+    <partial name="_MonthPicker" model="@(((DateTime?)Model.From, (DateTime?)Model.To))" />
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="from">From</label>
+        <input id="from" type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0" for="to">To</label>
+        <input id="to" type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Show</button>
+        <a asp-action="Employee" class="btn btn-link">Clear</a>
+    </div>
+</form>
+
+@if (Model.EmployeeId is null)
+{
+    <div class="card">
+        <div class="card-body text-muted">Choose an employee to see their days and exceptions.</div>
+    </div>
+}
+else
+{
+    if (Model.RangeShortened)
+    {
+        <div class="alert alert-warning" role="alert">
+            At most @EmployeeAttendanceViewModel.MaxRangeDays days are shown at a time, so the period starts on @Model.From.ToString("yyyy-MM-dd").
+        </div>
+    }
+
+    <h2 class="h5">@Model.EmployeeName <span class="small text-muted">@Model.From.ToString("yyyy-MM-dd") to @Model.To.ToString("yyyy-MM-dd")</span></h2>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Days</div><div class="fs-5">@Model.Days.Count</div></div></div></div>
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Worked</div><div class="fs-5">@DisplayFormats.Hours(Model.TotalWorked)</div></div></div></div>
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Overtime</div><div class="fs-5">@DisplayFormats.Hours(Model.TotalOvertime)</div></div></div></div>
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Break</div><div class="fs-5">@DisplayFormats.Hours(Model.TotalBreak)</div></div></div></div>
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Days with open exceptions</div><div class="fs-5">@Model.DaysWithOpenExceptions</div></div></div></div>
+        <div class="col-6 col-md-2"><div class="card"><div class="card-body py-2"><div class="small text-muted">Open exceptions</div><div class="fs-5">@Model.OpenExceptions</div></div></div></div>
+    </div>
+
+    <h2 class="h5">Days</h2>
+    <div class="card mb-4">
+        @if (Model.Days.Count == 0)
+        {
+            <div class="card-body text-muted">No days were calculated for this employee in the period.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col" class="text-end">Worked</th>
+                            <th scope="col" class="text-end">Overtime</th>
+                            <th scope="col" class="text-end">Break</th>
+                            <th scope="col" class="text-end">Open exceptions</th>
+                            <th scope="col">Status</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Days)
+                        {
+                            var resolvable = item.ExceptionCount > 0 && item.IsViewersOwnDay;
+                            <tr>
+                                <td class="text-nowrap">@DisplayFormats.Date(item.AttendanceDate)</td>
+                                <td class="text-end">@DisplayFormats.Hours(item.TotalWorkingHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
+                                <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
+                                <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span></td>
+                                <td class="text-end">
+                                    <a class="btn btn-sm @(resolvable ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
+                                       asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@(resolvable ? "Resolve" : "Open")</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <h2 class="h5">Exceptions</h2>
+    <div class="card">
+        @if (Model.Exceptions.Count == 0)
+        {
+            <div class="card-body text-muted">No exceptions in the period.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Shift</th>
+                            <th scope="col">Problem</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">How it was settled</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Exceptions)
+                        {
+                            <tr>
+                                <td class="text-nowrap">
+                                    <a asp-action="Day" asp-route-employeeId="@item.EmployeeId" asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@DisplayFormats.Date(item.AttendanceDate)</a>
+                                </td>
+                                <td>@(item.ShiftTitle ?? "Unscheduled work")</td>
+                                <td>
+                                    @if (item.MissingEventType is not null)
+                                    {
+                                        <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@DisplayFormats.Words(item.ExceptionType)</span>
+                                    }
+                                    <div class="small text-muted">@item.Description</div>
+                                </td>
+                                <td><span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span></td>
+                                <td class="small text-muted">
+                                    @if (item.ResolutionMethod is not null)
+                                    {
+                                        @DisplayFormats.Words(item.ResolutionMethod)@(string.IsNullOrWhiteSpace(item.ResolutionNote) ? string.Empty : ": " + item.ResolutionNote)
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}

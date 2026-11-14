@@ -1,0 +1,44 @@
+@* A month box for a filter form that has date inputs with the ids "from" and "to". Choosing a month fills both with its first and last day and applies the filter.
+   The model is the dates now in the filter, so the box shows the month when they are exactly one calendar month. *@
+@model (DateTime? From, DateTime? To)
+@{
+    var isMonth = Model.From is { Day: 1 } first && Model.To is { } last && last.Date == first.AddMonths(1).AddDays(-1).Date;
+}
+
+<div class="col-auto">
+    <label class="form-label small mb-0" for="month">Month</label>
+    <input id="month" type="month" class="form-control" value="@(isMonth ? Model.From!.Value.ToString("yyyy-MM") : string.Empty)" />
+</div>
+
+<script>
+    (function () {
+        // This script sits before the From and To inputs in the form, so they are looked up when needed, not now.
+        var two = function (n) { return (n < 10 ? '0' : '') + n; };
+        var month = document.getElementById('month');
+        month.addEventListener('change', function () {
+            var from = document.getElementById('from');
+            var to = document.getElementById('to');
+            var parts = month.value.split('-');
+            if (!from || !to || parts.length !== 2) {
+                return;
+            }
+
+            var year = parseInt(parts[0], 10);
+            var number = parseInt(parts[1], 10);
+            var lastDay = new Date(year, number, 0).getDate();
+            from.value = year + '-' + two(number) + '-01';
+            to.value = year + '-' + two(number) + '-' + two(lastDay);
+            month.form.requestSubmit();
+        });
+
+        // Changing a date by hand means it is no longer that month.
+        document.addEventListener('DOMContentLoaded', function () {
+            ['from', 'to'].forEach(function (id) {
+                var input = document.getElementById(id);
+                if (input) {
+                    input.addEventListener('change', function () { month.value = ''; });
+                }
+            });
+        });
+    })();
+</script>
