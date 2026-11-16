@@ -89,7 +89,7 @@ public sealed class RulesWebTests
     {
         var (result, _) = await EditAsync(Model(Rule("A")), "publish");
 
-        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Equal("Advanced", Assert.IsType<RedirectToActionResult>(result).ActionName);
         Assert.Equal((1, 1), (_api.Saved!.Rules.Count, _api.Published));
     }
 
@@ -115,7 +115,7 @@ public sealed class RulesWebTests
 
         var result = await controller.Manage(5, 3, 2, RuleChangeOperations.Disable, CancellationToken.None);
 
-        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Equal("Advanced", Assert.IsType<RedirectToActionResult>(result).ActionName);
         Assert.Equal((5, 3, 2, RuleChangeOperations.Disable), (_api.Changed!.TimeScheduleId, _api.Changed.ExpectedVersion, _api.Changed.Position, _api.Changed.Operation));
         Assert.True(controller.TempData.ContainsKey("StatusMessage"));
     }
@@ -128,7 +128,7 @@ public sealed class RulesWebTests
 
         var result = await controller.Manage(null, 3, 2, RuleChangeOperations.Delete, CancellationToken.None);
 
-        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Equal("Advanced", Assert.IsType<RedirectToActionResult>(result).ActionName);
         Assert.Contains("changed since", (string)controller.TempData["ErrorMessage"]!);
     }
 
@@ -142,7 +142,7 @@ public sealed class RulesWebTests
 
         var saved = await controller.EditRule(null, 4, 2, new RulesEditViewModel { Rules = [rule] }, "save", CancellationToken.None);
 
-        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(saved).ActionName);
+        Assert.Equal("Advanced", Assert.IsType<RedirectToActionResult>(saved).ActionName);
         Assert.Equal((RuleChangeOperations.Replace, 4, 2, "Interpretation"), (_api.Changed!.Operation, _api.Changed.Position, _api.Changed.ExpectedVersion, _api.Changed.Rule!.Stage));
         Assert.Null(_api.Changed.Rule.Finding);
 
@@ -163,6 +163,60 @@ public sealed class RulesWebTests
 
         Assert.Single(Assert.IsType<RulesEditViewModel>(Assert.IsType<ViewResult>(result).Model).Rules[0].Conditions);
         Assert.Null(_api.Changed);
+    }
+
+    [Fact]
+    public async Task TheSimpleSettingsPage_ShowsTheSettingsOfTheScope_AndWhyWhenTheyCantBeShown()
+    {
+        _api.Settings = new RuleSettingsDto { TimeScheduleId = 3, ScopeTitle = "Night shift", Version = 2, IsStandard = true, Settings = new RuleSettings { LongBreakMinutesOver = 5 } };
+
+        var result = await NewController().Index(3, CancellationToken.None);
+
+        var model = Assert.IsType<RulesSettingsViewModel>(Assert.IsType<ViewResult>(result).Model);
+        Assert.Equal(("Night shift", 2, true, 5), (model.ScopeTitle, model.Version, model.IsStandard, model.Settings.LongBreakMinutesOver));
+
+        _api.Settings = null;
+        Assert.IsType<NotFoundResult>(await NewController().Index(99, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SavingTheSettings_SendsThemWithTheVersionSeen_AndGoesBackToTheSimplePage()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings { LongBreakMinutesOver = 5 } };
+        var controller = NewController();
+
+        var result = await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = new RuleSettings { LongBreakMinutesOver = 8 } }, CancellationToken.None);
+
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Equal((2, 8), (_api.SavedSettings!.ExpectedVersion, _api.SavedSettings.Settings.LongBreakMinutesOver));
+        Assert.Contains("new version", (string)controller.TempData["StatusMessage"]!);
+    }
+
+    [Fact]
+    public async Task SavingSettingsThatAreTheSame_SaysSo_WithoutPublishingAVersion()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings { LongBreakMinutesOver = 5 } };
+        var controller = NewController();
+
+        var result = await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = new RuleSettings { LongBreakMinutesOver = 5 } }, CancellationToken.None);
+
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Null(_api.SavedSettings);
+        Assert.Equal("Nothing was changed.", (string)controller.TempData["StatusMessage"]!);
+    }
+
+    [Fact]
+    public async Task ARefusedSettingsSave_ShowsTheErrorsOnTheirFields_AndKeepsWhatWasTyped()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings { LongBreakMinutesOver = 5 } };
+        _api.SettingsErrors = new Dictionary<string, string> { ["Settings.LongBreakMinutesOver"] = "Use between 0 and 1440 minutes." };
+        var controller = NewController();
+
+        var result = await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = new RuleSettings { LongBreakMinutesOver = 5000 } }, CancellationToken.None);
+
+        var model = Assert.IsType<RulesSettingsViewModel>(Assert.IsType<ViewResult>(result).Model);
+        Assert.Equal(5000, model.Settings.LongBreakMinutesOver);
+        Assert.Equal("Use between 0 and 1440 minutes.", controller.ModelState["Settings.LongBreakMinutesOver"]!.Errors.Single().ErrorMessage);
     }
 
     private static RulesEditViewModel Model(params RuleDto[] rules) => new() { Rules = [.. rules] };
@@ -199,6 +253,25 @@ public sealed class RulesWebTests
         public RuleChangeRequest? Changed { get; private set; }
 
         public Dictionary<string, string>? ChangeErrors { get; set; }
+
+        public RuleSettingsDto? Settings { get; set; }
+
+        public RuleSettingsSaveRequest? SavedSettings { get; private set; }
+
+        public Dictionary<string, string>? SettingsErrors { get; set; }
+
+        public Task<RuleSettingsDto?> GetSettingsAsync(int? scheduleId, CancellationToken cancellationToken) => Task.FromResult(Settings);
+
+        public Task<ApiSaveResult> SaveSettingsAsync(RuleSettingsSaveRequest request, CancellationToken cancellationToken)
+        {
+            if (SettingsErrors is not null)
+            {
+                return Task.FromResult(ApiSaveResult.Invalid(SettingsErrors));
+            }
+
+            SavedSettings = request;
+            return Task.FromResult(ApiSaveResult.Success(null));
+        }
 
         public Task<IReadOnlyList<RuleScopeDto>> ListScopesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RuleScopeDto>>([]);
 

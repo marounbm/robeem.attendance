@@ -9,7 +9,6 @@ public sealed class PolicyInput
     public const int MaxGraceMinutes = 240;
     public const int MaxOvertimeThresholdMinutes = 480;
     public const int MaxDuplicateWindowSeconds = 3600;
-    public const int MaxMissingPunchGraceMinutes = 1440;
     public const int MaxHourlySpanHours = 24;
 
     /// <summary>The workflows a correction can follow, as the policy's <c>CorrectionApprovalWorkflow</c> names them.</summary>
@@ -57,10 +56,6 @@ public sealed class PolicyInput
     [Range(1, MaxDuplicateWindowSeconds)]
     [Display(Name = "Duplicate window (seconds)")]
     public int DuplicateTimeWindowSeconds { get; set; } = 120;
-
-    [Range(0, MaxMissingPunchGraceMinutes)]
-    [Display(Name = "Missing check-out grace (minutes)")]
-    public int MissingPunchGraceMinutes { get; set; } = 120;
 
     [Range(1, MaxHourlySpanHours)]
     [Display(Name = "Longest hourly shift (hours)")]

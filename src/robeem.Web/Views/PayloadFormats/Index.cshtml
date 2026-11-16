@@ -63,7 +63,7 @@ else
                     @foreach (var item in Model.Formats)
                     {
                         <tr>
-                            <td>@item.Name@if (item.Version > 1) { <span class="badge text-bg-light border" title="Changed after punches were read by an earlier version. The earlier versions are kept for those punches.">v@item.Version</span> }<div class="small text-muted">@item.Description</div></td>
+                            <td>@item.Name@if (item.Version > 1) { <span class="badge text-bg-light border" title="Changed after punches were read by an earlier version. The earlier versions are kept for those punches.">@($"v{item.Version}")</span> }<div class="small text-muted">@item.Description</div></td>
                             <td>@item.PayloadKind</td>
                             <td>@item.Delimiter</td>
                             <td class="text-end">@item.EventCodeCount</td>

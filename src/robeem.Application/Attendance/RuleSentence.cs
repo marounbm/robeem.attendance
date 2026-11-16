@@ -37,6 +37,7 @@ public static class RuleSentence
         RuleFinding.EarlyBreak => "an early break",
         RuleFinding.NoBreak => "a shift worked with no break",
         RuleFinding.NoShow => "a no-show",
+        RuleFinding.MissingCheckOut => "a missing check-out",
         _ => "a finding",
     };
 

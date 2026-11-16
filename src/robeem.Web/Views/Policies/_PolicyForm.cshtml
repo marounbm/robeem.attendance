@@ -74,20 +74,6 @@
     </div>
 </div>
 
-<partial name="_PunchOrder" />
-
-<div class="card mb-3">
-    <div class="card-header">Breaks</div>
-    <div class="card-body row g-3">
-        <p class="small text-muted mb-0">
-            Every day is checked against its shift's scheduled break. Everything about breaks is set in
-            <a asp-controller="Rules" asp-action="Index" asp-route-scheduleId="@Model.Input.TimeScheduleId">Rules</a>, not here: <strong>how short a break may be before
-            it counts as work</strong>, <strong>what counts as a long, late or early break</strong> (how many minutes over or from the scheduled start),
-            <strong>whether a finding raises an exception</strong> and <strong>whether a gap between a check-out and a check-in is read as the break</strong>.
-        </p>
-    </div>
-</div>
-
 <div class="card mb-3">
     <div class="card-header">Corrections and unlabeled punches</div>
     <div class="card-body row g-3">
@@ -121,15 +107,6 @@
             <input asp-for="Input.HourlyMaxSpanHours" type="number" min="1" max="@PolicyInput.MaxHourlySpanHours" class="form-control" />
             <div class="form-text">For staff paid by the hour: a check-in is paired with a check-out within this many hours, even after midnight.</div>
             <span asp-validation-for="Input.HourlyMaxSpanHours" class="text-danger small"></span>
-        </div>
-        <div class="col-md-2">
-            <label asp-for="Input.MissingPunchGraceMinutes" class="form-label"></label>
-            <input asp-for="Input.MissingPunchGraceMinutes" type="number" min="0" max="@PolicyInput.MaxMissingPunchGraceMinutes" class="form-control" />
-            <div class="form-text">
-                How long after a shift ends a missing check-out or break-in waits before it becomes an exception. How long a shift with no punch at all
-                waits before it is a no-show is set in <a asp-controller="Rules" asp-action="Index" asp-route-scheduleId="@Model.Input.TimeScheduleId">Rules</a>.
-            </div>
-            <span asp-validation-for="Input.MissingPunchGraceMinutes" class="text-danger small"></span>
         </div>
     </div>
 </div>

@@ -1,0 +1,106 @@
+@* All the explanation of the Rules page, in one place below the rules. Sections open and close on their own. *@
+<h2 class="h5" id="help">Help</h2>
+<div class="card mb-4">
+    <div class="list-group list-group-flush">
+        <details class="list-group-item" open>
+            <summary class="fw-semibold">What these rules do</summary>
+            <div class="small mt-2">
+                <p class="mb-2">
+                    The rules decide everything about <strong>breaks</strong> and the <strong>exceptions</strong> that follow from them, for everyone on a schedule or for the whole company:
+                </p>
+                <ul class="mb-2">
+                    <li>how short a break may be before it counts as work (a toilet visit);</li>
+                    <li>
+                        whether a gap between a check-out and the next check-in in the middle of the day is read as the break (a break-out and a break-in), for a machine that sends no break types.
+                        What a machine sends is set on each <a asp-controller="Devices" asp-action="Index">device</a>: on a machine that sends break types a check-out and a check-in are a real exit and are never read as a break;
+                    </li>
+                    <li>what counts as a finding: a long, late or early break, a shift worked with no break, a no-show, a missing check-out;</li>
+                    <li>whether a finding becomes an exception for a person to settle, and how long to wait before it does.</li>
+                </ul>
+                <p class="mb-0">
+                    Until a set is published, the <em>starting rules</em> apply: they are written from the numbers on the attendance policy, so nothing changes until you change a rule.
+                    A rule can never invent a punch.
+                </p>
+            </div>
+        </details>
+
+        <details class="list-group-item">
+            <summary class="fw-semibold">Changing the rules</summary>
+            <ul class="small mt-2 mb-0">
+                <li>
+                    <strong>One rule at a time:</strong> <em>Modify</em>, <em>Disable</em> or <em>Enable</em>, <em>Delete</em> and the arrows on a row change just that rule and publish the
+                    rules at once as a new version. The first change to the starting rules publishes them, with your change, as the first version.
+                </li>
+                <li>
+                    <strong>Several changes together, or a new rule:</strong> use <em>Change these rules</em>. It opens a draft, a copy of the rules in force, that nothing uses until you
+                    publish it. While a draft is open, the buttons on the rows are off.
+                </li>
+                <li>A published set is never edited. Every change is a new version, and every earlier version stays under <em>Versions</em> to read.</li>
+                <li>A change applies to days calculated from then on; the nightly look-back calculates again the days last checked with another set.</li>
+                <li>Publishing is recorded in the audit log, with the reason of every rule that stops an exception being raised.</li>
+            </ul>
+        </details>
+
+        <details class="list-group-item">
+            <summary class="fw-semibold">How a rule is read</summary>
+            <ul class="small mt-2 mb-0">
+                <li>
+                    <strong>For a finding, the first rule that is on and whose conditions all hold decides.</strong> A rule that raises an exception raises it; a rule that does not raise one
+                    stops it. Put a rule that stops an exception before the rule it overrides: use the arrows.
+                </li>
+                <li>A rule with no conditions always applies. A finding no rule matches is not raised, so leaving a finding out of a published set switches it off (a missing check-out is the exception: see below).</li>
+                <li>
+                    A rule that is <strong>off</strong> raises nothing, but its conditions still say when the finding is noted on the day (a long break over 5 minutes, say).
+                    Delete the rule and the finding is not noted at all.
+                </li>
+                <li>
+                    <strong>What a condition can look at:</strong> the minutes a finding is over what is allowed (a long break: past the scheduled break; a late or early break: from its scheduled start);
+                    the minutes since the shift ended (no-show and missing check-out rules only); the length of a break (rules that count a short break as work); the length of a gap, how far
+                    from the scheduled break it starts and how much of it is on approved leave (rules that read a gap as the break); whether the shift has a break or ends after midnight; and the minutes
+                    of the shift on approved leave.
+                </li>
+                <li>
+                    <strong>Which rules apply to an employee:</strong> if the employee's schedule has a policy of its own, that schedule's rules; otherwise the company's. Rules published for the
+                    company do not reach a schedule that has its own policy: give that schedule its own set.
+                </li>
+            </ul>
+        </details>
+
+        <details class="list-group-item">
+            <summary class="fw-semibold">The policy and the rules</summary>
+            <ul class="small mt-2 mb-0">
+                <li>
+                    <strong>The <a asp-controller="Policies" asp-action="Index">policy</a> holds the numbers that are not about breaks or exceptions:</strong> rounding, late and early-departure
+                    grace, the overtime threshold and whether overtime needs approval first, who approves a correction, how punches the device didn't label are read, the duplicate window and the
+                    longest hourly shift.
+                </li>
+                <li>
+                    <strong>The rules hold everything else.</strong> The numbers that decide a finding are conditions of its rule, so change them on the rule: how many minutes over the scheduled break
+                    is a long break, how many minutes from its start is a late or early one, how long a shift with no punch waits before it is a no-show, how long a missing check-out waits, how
+                    short a break may be before it counts as work.
+                </li>
+            </ul>
+        </details>
+
+        <details class="list-group-item">
+            <summary class="fw-semibold">Always applied: what no rule can change</summary>
+            <div class="small mt-2">
+                <p class="mb-2">
+                    The checks listed under <em>Always applied</em> are not rules. Without the punch the hours of a day cannot be calculated, and a day is corrected only through an open exception,
+                    so none of them can be switched off or made less strict.
+                </p>
+                <p class="mb-0">
+                    <strong>A missing check-out is always raised in the end.</strong> Its rule only says how long to wait after the shift ends, and the same wait applies to a break-out with no break-in,
+                    to a shift with a break and no break punches, and to hourly staff. Whatever the rules say, it is raised 24 hours after the shift ended, and a rule can't leave it unraised.
+                </p>
+            </div>
+        </details>
+
+        <details class="list-group-item">
+            <summary class="fw-semibold">The order the punches are expected in</summary>
+            <div class="mt-2">
+                <partial name="_PunchOrder" />
+            </div>
+        </details>
+    </div>
+</div>

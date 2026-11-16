@@ -1,0 +1,56 @@
+@model robeem.Contracts.Attendance.AttendanceDataSummary
+@{
+    ViewData["Title"] = "Delete all attendance data";
+}
+
+<h1 class="h3 mb-3">Delete all attendance data</h1>
+
+<p class="text-muted">
+    Deletes everything that was imported or calculated for <strong>@Model.TenantId</strong>, so that the data can be imported again. It can't be undone.
+    The configuration stays as it is, so the same files can be uploaded again.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100 border-danger">
+            <div class="card-header text-danger">Deleted</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var item in Model.Deletes)
+                {
+                    <li class="list-group-item d-flex justify-content-between"><span>@item.Name</span><span class="text-muted">@item.Count</span></li>
+                }
+            </ul>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">Kept</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var item in Model.Keeps)
+                {
+                    <li class="list-group-item d-flex justify-content-between"><span>@item.Name</span><span class="text-muted">@item.Count</span></li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@if (!Model.Enabled)
+{
+    <div class="alert alert-secondary">
+        Deleting all attendance data is not turned on for this host. It is turned on by the setting <code>Attendance:DataReset:Enabled</code>, which is off unless a host chooses it.
+    </div>
+}
+else
+{
+    <form method="post" asp-action="Reset" class="card card-body border-danger" style="max-width: 36rem;">
+        <label for="confirmation" class="form-label">Type the tenant id <code>@Model.TenantId</code> to confirm</label>
+        <input id="confirmation" name="confirmation" class="form-control mb-3" autocomplete="off" />
+        <div>
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete all attendance data of @Model.TenantId? This can not be undone.');">Delete all attendance data</button>
+        </div>
+        <div class="form-text mt-2">The deletion is recorded in the audit log, which is kept.</div>
+    </form>
+}

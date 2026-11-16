@@ -496,6 +496,13 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("PunchTypes")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("InOut");
+
                     b.Property<string>("SdkVersion")
                         .IsRequired()
                         .HasMaxLength(50)

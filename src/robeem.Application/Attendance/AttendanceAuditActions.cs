@@ -33,6 +33,9 @@ public static class AttendanceAuditActions
     /// <summary>A failed or repeated upload was deleted with its never-processed punches. The only time raw attendance is deleted.</summary>
     public const string UploadDeleted = "UploadDeleted";
 
+    /// <summary>An administrator deleted all of a tenant's attendance data to import it again. The widest deletion of raw attendance; the entry lists how much of each kind went and is itself kept.</summary>
+    public const string AttendanceDataReset = "AttendanceDataReset";
+
     /// <summary>Raw or normalized attendance read outside normalization and processing.</summary>
     public const string AttendanceDataRead = "AttendanceDataRead";
 

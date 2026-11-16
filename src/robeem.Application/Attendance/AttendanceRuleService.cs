@@ -199,27 +199,74 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         return SaveResult.Success(draft.Id);
     }
 
+    public async Task<RuleSettingsDto?> GetSettingsAsync(int? timeScheduleId, CancellationToken cancellationToken)
+    {
+        if (await GetCurrentAsync(timeScheduleId, cancellationToken) is not { } current)
+        {
+            return null;
+        }
+
+        var settings = RuleSettingsMapper.TryRead(current.Rules, out var reason);
+        return new RuleSettingsDto
+        {
+            TimeScheduleId = timeScheduleId,
+            ScopeTitle = current.ScopeTitle,
+            Version = current.Version,
+            IsStandard = settings is not null,
+            NotStandardReason = reason,
+            Settings = settings ?? new RuleSettings(),
+        };
+    }
+
+    public async Task<SaveResult> SaveSettingsAsync(RuleSettingsSaveRequest request, CancellationToken cancellationToken)
+    {
+        var errors = RuleSettingsMapper.Validate(request.Settings);
+        if (errors.Count > 0)
+        {
+            return SaveResult.Invalid(errors);
+        }
+
+        var (refused, title, current) = await ReadyToChangeAsync(request.TimeScheduleId, request.ExpectedVersion, cancellationToken);
+        if (refused is not null)
+        {
+            return refused;
+        }
+
+        var before = RuleSettingsMapper.TryRead(current!.Rules, out var reason);
+        if (before is null)
+        {
+            return SaveResult.Invalid("id", reason!);
+        }
+
+        var change = RuleSettingsMapper.Describe(before, request.Settings);
+        if (change.Length == 0)
+        {
+            return SaveResult.Invalid("id", "Nothing was changed.");
+        }
+
+        var rules = RuleSettingsMapper.Apply(current.Rules, request.Settings)!;
+        var invalid = RuleValidator.Validate(rules);
+        if (invalid.Count > 0)
+        {
+            return SaveResult.Invalid(invalid);
+        }
+
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
+        _db.AttendanceRuleSets.Add(set);
+        AddRules(set, rules);
+        await PublishSetAsync(set, rules, title!, change, change, cancellationToken);
+        return SaveResult.Success(set.Id);
+    }
+
     public async Task<SaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken)
     {
-        var title = await ScopeTitleAsync(request.TimeScheduleId, cancellationToken);
-        if (title is null)
+        var (refused, title, current) = await ReadyToChangeAsync(request.TimeScheduleId, request.ExpectedVersion, cancellationToken);
+        if (refused is not null)
         {
-            return SaveResult.Invalid(nameof(RuleScopeDto.TimeScheduleId), "Rules can be set for the whole company, or for a schedule that has a policy of its own.");
+            return refused;
         }
 
-        // The change is published at once, so an open draft would be left behind the rules in force.
-        if (await _db.AttendanceRuleSets.AnyAsync(s => s.Status == RuleSetStatus.Draft && s.TimeScheduleId == request.TimeScheduleId, cancellationToken))
-        {
-            return SaveResult.Invalid("id", "There is a draft of these rules. Continue it or throw it away first.");
-        }
-
-        var current = (await GetCurrentAsync(request.TimeScheduleId, cancellationToken))!;
-        if (current.Version != request.ExpectedVersion)
-        {
-            return SaveResult.Invalid("id", "The rules were changed since this page was shown. Look at them again and repeat the change.");
-        }
-
-        var rules = current.Rules;
+        var rules = current!.Rules;
         var position = request.Position;
         if (position < 0 || position >= rules.Count)
         {
@@ -279,7 +326,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
         _db.AttendanceRuleSets.Add(set);
         AddRules(set, rules);
-        await PublishSetAsync(set, rules, title, string.IsNullOrWhiteSpace(request.Notes) ? change : request.Notes, change, cancellationToken);
+        await PublishSetAsync(set, rules, title!, string.IsNullOrWhiteSpace(request.Notes) ? change : request.Notes, change, cancellationToken);
         return SaveResult.Success(set.Id);
     }
 
@@ -392,6 +439,30 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
 
     private IQueryable<AttendanceRuleSet> LoadSetsQuery() =>
         _db.AttendanceRuleSets.Include(s => s.Rules).ThenInclude(r => r.Conditions);
+
+    /// <summary>
+    /// What a change to the rules in force needs before it is published at once: the scope exists, it has no draft that would be left behind, and the
+    /// rules are still the version the person saw. Returns the refusal, or the scope's title and the rules in force.
+    /// </summary>
+    private async Task<(SaveResult? Refused, string? Title, RuleSetDto? Current)> ReadyToChangeAsync(int? timeScheduleId, int expectedVersion, CancellationToken cancellationToken)
+    {
+        var title = await ScopeTitleAsync(timeScheduleId, cancellationToken);
+        if (title is null)
+        {
+            return (SaveResult.Invalid(nameof(RuleScopeDto.TimeScheduleId), "Rules can be set for the whole company, or for a schedule that has a policy of its own."), null, null);
+        }
+
+        // The change is published at once, so an open draft would be left behind the rules in force.
+        if (await _db.AttendanceRuleSets.AnyAsync(s => s.Status == RuleSetStatus.Draft && s.TimeScheduleId == timeScheduleId, cancellationToken))
+        {
+            return (SaveResult.Invalid("id", "There is a draft of these rules. Continue it or throw it away first."), null, null);
+        }
+
+        var current = (await GetCurrentAsync(timeScheduleId, cancellationToken))!;
+        return current.Version != expectedVersion
+            ? (SaveResult.Invalid("id", "The rules were changed since this page was shown. Look at them again and repeat the change."), null, null)
+            : (null, title, current);
+    }
 
     /// <summary>The policy of a scope, whose own numbers start the rules and which a set made before the thresholds moved into the rules still takes its thresholds from; the defaults when there is none.</summary>
     private async Task<AttendancePolicy> PolicyOfAsync(int? timeScheduleId, CancellationToken cancellationToken) =>

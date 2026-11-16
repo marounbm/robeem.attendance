@@ -31,6 +31,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IChangeAuditTrail, AttendanceChangeAuditTrail>();
         services.AddScoped<IIngestionService, IngestionService>();
         services.AddScoped<IUploadDeletionService, UploadDeletionService>();
+        services.AddScoped<IAttendanceDataResetService, AttendanceDataResetService>();
+        services.AddOptions<AttendanceDataResetOptions>();
         services.AddScoped<IWebhookReceiver, WebhookReceiver>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
         services.AddOptions<SampleDataOptions>();

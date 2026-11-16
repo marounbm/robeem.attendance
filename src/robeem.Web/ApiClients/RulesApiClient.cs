@@ -25,6 +25,20 @@ public sealed class RulesApiClient : IRulesApiClient
 
     public Task<RuleSetDto?> GetCurrentAsync(int? scheduleId, CancellationToken cancellationToken) => GetSetAsync("current", scheduleId, cancellationToken);
 
+    public async Task<RuleSettingsDto?> GetSettingsAsync(int? scheduleId, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(WithSchedule($"{Path}/settings", scheduleId), cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<RuleSettingsDto>(response, cancellationToken);
+    }
+
+    public async Task<ApiSaveResult> SaveSettingsAsync(RuleSettingsSaveRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PutAsJsonAsync($"{Path}/settings", request, cancellationToken);
+
+        // A refused number comes back keyed Settings.Field, which RuleSettingsSaveRequest names.
+        return await ApiResponses.SaveAsync<RuleSettingsSaveRequest>(response, null, cancellationToken, keepNestedPaths: true);
+    }
+
     public Task<RuleSetDto?> GetDraftAsync(int? scheduleId, CancellationToken cancellationToken) => GetSetAsync("draft", scheduleId, cancellationToken);
 
     public async Task<RuleSetDto?> GetAsync(int id, CancellationToken cancellationToken)

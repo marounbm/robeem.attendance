@@ -23,6 +23,7 @@ public sealed class RulesEditViewModel
         ("EarlyBreak", "an early break"),
         ("NoBreak", "a shift worked with no break"),
         ("NoShow", "a no-show"),
+        ("MissingCheckOut", "a missing check-out (it can only be raised, never left out)"),
     ];
 
     /// <summary>Gets the facts a condition can look at, with the words the form shows and the stage each belongs to.</summary>
@@ -30,7 +31,7 @@ public sealed class RulesEditViewModel
     [
         ("MinutesOver", "Minutes over what is allowed (exception rules)"),
         ("ExcusedMinutes", "Minutes of the shift on approved leave (exception rules)"),
-        ("MinutesAfterShiftEnd", "Minutes since the shift ended (no-show rules only)"),
+        ("MinutesAfterShiftEnd", "Minutes since the shift ended (no-show and missing check-out rules only)"),
         ("BreakMinutes", "Length of the break, minutes (counting a short break as work)"),
         ("GapMinutes", "Length of the gap, minutes (reading a break)"),
         ("GapStartOffsetMinutes", "Gap start from the scheduled break, minutes (reading a break)"),

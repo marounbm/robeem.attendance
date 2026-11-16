@@ -34,6 +34,20 @@ public sealed class AttendanceRulesController : ControllerBase
     public async Task<ActionResult<RuleSetDto>> Current(int? scheduleId, CancellationToken cancellationToken) =>
         await _rules.GetCurrentAsync(scheduleId, cancellationToken) is { } set ? set : NotFound();
 
+    /// <summary>The rules in force as plain settings, or the reason they can't be shown that way.</summary>
+    /// <param name="scheduleId">The schedule; none is the whole tenant.</param>
+    [HttpGet("settings")]
+    public async Task<ActionResult<RuleSettingsDto>> Settings(int? scheduleId, CancellationToken cancellationToken) =>
+        await _rules.GetSettingsAsync(scheduleId, cancellationToken) is { } settings ? settings : NotFound();
+
+    /// <summary>Writes the settings into the standard rules and publishes the result as the next version.</summary>
+    [HttpPut("settings")]
+    public async Task<IActionResult> SaveSettings(RuleSettingsSaveRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _rules.SaveSettingsAsync(request, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
     [HttpGet("draft")]
     public async Task<ActionResult<RuleSetDto>> Draft(int? scheduleId, CancellationToken cancellationToken) =>
         await _rules.GetDraftAsync(scheduleId, cancellationToken) is { } set ? set : NotFound();

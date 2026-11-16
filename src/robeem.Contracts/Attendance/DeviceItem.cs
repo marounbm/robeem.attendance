@@ -35,6 +35,9 @@ public sealed class DeviceItem
     /// <summary>Gets the version of the vendor SDK the software uses; empty when not recorded.</summary>
     public string SdkVersion { get; init; } = string.Empty;
 
+    /// <summary>Gets what the machine puts on each punch: <c>InOut</c>, <c>InOutAndBreak</c> or <c>None</c>.</summary>
+    public string PunchTypes { get; init; } = "InOut";
+
     /// <summary>Gets the IANA time zone the device's local punch times are in, e.g. Asia/Beirut.</summary>
     public string TimeZoneId { get; init; } = string.Empty;
 

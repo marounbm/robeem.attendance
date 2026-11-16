@@ -807,6 +807,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         device.Model = (input.Model ?? string.Empty).Trim();
         device.SoftwareVersion = (input.SoftwareVersion ?? string.Empty).Trim();
         device.SdkVersion = (input.SdkVersion ?? string.Empty).Trim();
+        device.PunchTypes = Enum.Parse<PunchTypeSupport>(input.PunchTypes);
         device.TimeZoneId = input.TimeZoneId.Trim();
     }
 
@@ -968,6 +969,7 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
                 Model = d.Model,
                 SoftwareVersion = d.SoftwareVersion,
                 SdkVersion = d.SdkVersion,
+                PunchTypes = d.PunchTypes.ToString(),
                 TimeZoneId = d.TimeZoneId,
                 LastSeenAt = d.LastSeenAt,
             })
@@ -1083,6 +1085,11 @@ public sealed class AttendanceIntegrationService : IAttendanceIntegrationService
         if ((input.SdkVersion ?? string.Empty).Trim().Length > 50)
         {
             errors[nameof(DeviceInput.SdkVersion)] = "The SDK version can be at most 50 characters.";
+        }
+
+        if (!DeviceInput.PunchTypeOptions.Any(o => o.Value == input.PunchTypes))
+        {
+            errors[nameof(DeviceInput.PunchTypes)] = $"Choose what the machine sends: {string.Join(", ", DeviceInput.PunchTypeOptions.Select(o => o.Value))}.";
         }
 
         var zone = (input.TimeZoneId ?? string.Empty).Trim();

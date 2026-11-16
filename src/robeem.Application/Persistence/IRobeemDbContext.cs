@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using robeem.Contracts.Attendance;
 using robeem.DataModel;
 
 namespace robeem.Application.Persistence;
@@ -81,6 +82,14 @@ public interface IRobeemDbContext
     /// immutable and insert-only. A row that was normalized, skipped or retained is still refused. Valid for one save, then forgotten.
     /// </summary>
     void AllowUnprocessedUploadDeletion(int batchId);
+
+    /// <summary>
+    /// Deletes every row of the current tenant's attendance data (raw and normalized punches, batches, uploads, calculated days, exceptions,
+    /// corrections, approvals, job runs) and returns how many of each. It keeps the configuration, the employees and the audit log. This is the one
+    /// bulk path that deletes raw attendance, and only <c>AttendanceDataResetService</c> uses it: the caller must have a transaction open (so it is
+    /// all or nothing), checks that the host allows it, and audits it. It throws when there is no transaction.
+    /// </summary>
+    Task<IReadOnlyList<AttendanceDataCount>> DeleteAllAttendanceDataAsync(CancellationToken cancellationToken);
 
     void AddRange(params object[] entities);
 

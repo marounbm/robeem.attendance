@@ -354,6 +354,31 @@ public sealed class AttendanceIntegrationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task WhatAMachineSends_IsKeptWithTheDevice_ChecksInAndOutUnlessSaidOtherwise_AndIsRefusedWhenUnknown()
+    {
+        var integrationId = (await CreateAsync(Input())).Id!.Value;
+        var withBreaks = Device("DEV-B", name: "With breaks");
+        withBreaks.PunchTypes = "InOutAndBreak";
+        var noTypes = Device("DEV-N", name: "No types");
+        noTypes.PunchTypes = "None";
+
+        Assert.True((await AddDeviceAsync(integrationId, withBreaks)).Succeeded);
+        Assert.True((await AddDeviceAsync(integrationId, noTypes)).Succeeded);
+        Assert.True((await AddDeviceAsync(integrationId, Device("DEV-D", name: "Default"))).Succeeded);
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var listed = (await CreateService(db).ListDevicesAsync(integrationId, CancellationToken.None))!;
+        Assert.Equal(
+            [("DEV-B", "InOutAndBreak"), ("DEV-D", "InOut"), ("DEV-N", "None")],
+            listed.OrderBy(d => d.ExternalDeviceId, StringComparer.Ordinal).Select(d => (d.ExternalDeviceId, d.PunchTypes)));
+
+        var unknown = Device("DEV-X");
+        unknown.PunchTypes = "Everything";
+        var refused = await AddDeviceAsync(integrationId, unknown);
+        Assert.Contains("Choose what the machine sends", refused.Errors[nameof(DeviceInput.PunchTypes)]);
+    }
+
+    [Fact]
     public async Task ADeviceId_IsUniqueWithinAnIntegration_NotAcrossThem()
     {
         var first = (await CreateAsync(Input(name: "One"))).Id!.Value;

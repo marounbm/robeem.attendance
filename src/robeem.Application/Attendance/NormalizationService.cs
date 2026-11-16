@@ -180,11 +180,11 @@ public sealed class NormalizationService : INormalizationService
         EventConfidenceStatus confidence;
         if (string.IsNullOrWhiteSpace(raw.TransactionTypeRaw) && string.IsNullOrWhiteSpace(raw.DirectionRaw))
         {
-            // An unlabeled punch is kept for interpretation only when the policy allows it
-            // (CLAUDE.md §1.6); processing then assigns the type and marks it Inferred.
-            if (policy.UnlabeledPunchInterpretationMode == UnlabeledPunchInterpretationMode.Off)
+            // An unlabeled punch is kept for interpretation only when the policy allows it, or its machine is
+            // one that sends no types (CLAUDE.md §1.6); processing then assigns the type and marks it Inferred.
+            if (policy.UnlabeledPunchInterpretationMode == UnlabeledPunchInterpretationMode.Off && device?.PunchTypes != PunchTypeSupport.None)
             {
-                await FailAsync(raw, "The punch has no event type or direction, and the attendance policy does not interpret unlabeled punches.", run, cancellationToken);
+                await FailAsync(raw, "The punch has no event type or direction, and neither the attendance policy nor the device (set to send no types) interprets unlabeled punches.", run, cancellationToken);
                 return;
             }
 

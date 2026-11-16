@@ -108,6 +108,14 @@ public abstract class AttendanceEngineTestBase : IDisposable
         db.SaveChanges();
     }
 
+    /// <summary>Sets what the test device puts on a punch: check-in and check-out only (the default), those and break types, or no types.</summary>
+    protected void SetDevicePunchTypes(PunchTypeSupport types)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        db.AttendanceDevices.Single().PunchTypes = types;
+        db.SaveChanges();
+    }
+
     /// <summary>A Unique normalized punch from a device in UTC, so local and UTC times coincide.</summary>
     protected void AddPunch(NormalizedEventType type, DateTime local)
     {

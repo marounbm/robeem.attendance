@@ -318,11 +318,24 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 && n.ExceptionStatus != TransactionExceptionStatus.FlaggedUnrecognizedDevice
                 && n.EventTimestampLocal >= from
                 && n.EventTimestampLocal < to)
-            .Select(n => new { n.Id, n.NormalizedEventType, n.EventTimestampUtc, n.EventTimestampLocal })
+            .Select(n => new { n.Id, n.NormalizedEventType, n.EventTimestampUtc, n.EventTimestampLocal, n.DeviceId })
             .ToListAsync(cancellationToken);
 
+        // What each machine puts on a punch: it decides whether a check-out and a check-in may be read as a break, and whether unlabeled punches are typed in order.
+        var deviceIds = rows.Where(n => n.DeviceId != null).Select(n => n.DeviceId!.Value).Distinct().ToList();
+        var support = deviceIds.Count == 0
+            ? new Dictionary<int, PunchTypeSupport>()
+            : await _db.AttendanceDevices.AsNoTracking().Where(d => deviceIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.PunchTypes, cancellationToken);
+
         return rows
-            .Select(n => new AttendancePunch(n.Id, n.NormalizedEventType, n.EventTimestampUtc, n.EventTimestampLocal, AttendancePunchSource.Normalized))
+            .Select(n => new AttendancePunch(
+                n.Id,
+                n.NormalizedEventType,
+                n.EventTimestampUtc,
+                n.EventTimestampLocal,
+                AttendancePunchSource.Normalized,
+                null,
+                n.DeviceId is { } deviceId && support.TryGetValue(deviceId, out var types) ? types : PunchTypeSupport.InOut))
             .ToList();
     }
 

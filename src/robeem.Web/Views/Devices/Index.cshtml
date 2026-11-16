@@ -53,6 +53,7 @@
                         <th scope="col">Connection</th>
                         <th scope="col">Type</th>
                         <th scope="col">Model</th>
+                        <th scope="col">Sends</th>
                         <th scope="col">Time zone</th>
                         <th scope="col">Software</th>
                         <th scope="col">SDK</th>
@@ -71,6 +72,7 @@
                             <td>@(device.ConnectionName.Length == 0 ? "—" : device.ConnectionName)@(device.ConnectionId is null ? string.Empty : " ")@if (device.ConnectionId is null && device.ConnectionName.Length > 0) { <span class="text-muted small">(default)</span> }</td>
                             <td>@(device.DeviceType.Length == 0 ? "—" : device.DeviceType)</td>
                             <td>@(device.Model.Length == 0 ? "—" : device.Model)</td>
+                            <td class="text-nowrap">@(device.PunchTypes switch { "InOutAndBreak" => "In, out and break", "None" => "No types", _ => "In and out" })</td>
                             <td class="text-nowrap"><code>@device.TimeZoneId</code></td>
                             <td>@(device.SoftwareVersion.Length == 0 ? "—" : device.SoftwareVersion)</td>
                             <td>@(device.SdkVersion.Length == 0 ? "—" : device.SdkVersion)</td>

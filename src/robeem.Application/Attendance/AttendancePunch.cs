@@ -9,4 +9,5 @@ namespace robeem.Application.Attendance;
 /// <param name="Local">The local wall-clock time; compared with the schedule.</param>
 /// <param name="Source">Whether the type came from the vendor, was inferred, or comes from a correction.</param>
 /// <param name="CorrectionId">The applied correction it comes from; null for any other source.</param>
-internal sealed record AttendancePunch(int? NormalizedTransactionId, NormalizedEventType Type, DateTimeOffset Utc, DateTime Local, AttendancePunchSource Source, int? CorrectionId = null);
+/// <param name="Device">What the machine that recorded it puts on a punch. A punch with no machine (a correction's) counts as check-in and check-out only, so it never stops a gap being read as a break.</param>
+internal sealed record AttendancePunch(int? NormalizedTransactionId, NormalizedEventType Type, DateTimeOffset Utc, DateTime Local, AttendancePunchSource Source, int? CorrectionId = null, PunchTypeSupport Device = PunchTypeSupport.InOut);

@@ -1,0 +1,165 @@
+@model RulesIndexViewModel
+@{
+    ViewData["Title"] = "Advanced rules";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Advanced rules</h1>
+    <a class="btn btn-outline-secondary btn-sm" asp-action="Index" asp-route-scheduleId="@Model.ScheduleId">Back to the simple settings</a>
+</div>
+
+<partial name="_StatusMessage" />
+
+<ul class="nav nav-pills mb-3">
+    @foreach (var scope in Model.Scopes)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(scope.TimeScheduleId == Model.ScheduleId ? "active" : string.Empty)" asp-action="Advanced" asp-route-scheduleId="@scope.TimeScheduleId">
+                @scope.Title
+                @if (scope.HasDraft)
+                {
+                    <span class="badge text-bg-warning ms-1">draft</span>
+                }
+            </a>
+        </li>
+    }
+</ul>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <strong>@Model.Current.ScopeTitle</strong>:
+            @if (Model.Current.Status == "Policy")
+            {
+                <span class="text-muted">the starting rules (nothing published yet)</span>
+            }
+            else
+            {
+                <span class="text-muted">published version @Model.Current.Version@(Model.Current.PublishedAt is { } at ? " on " + at.ToString("yyyy-MM-dd HH:mm") : string.Empty)</span>
+            }
+        </span>
+        <form method="post" asp-action="StartDraft" asp-route-scheduleId="@Model.ScheduleId">
+            <button type="submit" class="btn btn-sm btn-primary">@(Model.HasDraft ? "Continue the draft" : "Change these rules")</button>
+        </form>
+    </div>
+    @if (Model.Current.Rules.Count == 0)
+    {
+        <partial name="_RulesTable" model="Model.Current" />
+    }
+    else
+    {
+        @if (Model.HasDraft)
+        {
+            <div class="alert alert-warning small rounded-0 border-0 border-bottom mb-0">
+                A draft of these rules is open, so a rule can't be changed one by one. Continue the draft or throw it away first.
+            </div>
+        }
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Rule</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="text-end">Manage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < Model.Current.Rules.Count; i++)
+                    {
+                        var rule = Model.Current.Rules[i];
+                        <tr>
+                            <td>@(i + 1)</td>
+                            <td>
+                                <div class="fw-semibold">@rule.Name</div>
+                                <div class="@(rule.IsEnabled ? string.Empty : "text-muted text-decoration-line-through")">@rule.Sentence</div>
+                            </td>
+                            <td><span class="badge text-bg-@(rule.IsEnabled ? "success" : "secondary")">@(rule.IsEnabled ? "On" : "Off")</span></td>
+                            <td class="text-end text-nowrap">
+                                <form method="post" asp-action="Manage" asp-route-scheduleId="@Model.ScheduleId" class="d-inline">
+                                    <input type="hidden" name="version" value="@Model.Current.Version" />
+                                    <input type="hidden" name="position" value="@i" />
+                                    <button type="submit" name="operation" value="MoveUp" class="btn btn-sm btn-outline-secondary" title="Look at this rule earlier" disabled="@(Model.HasDraft || i == 0)">↑</button>
+                                    <button type="submit" name="operation" value="MoveDown" class="btn btn-sm btn-outline-secondary" title="Look at this rule later" disabled="@(Model.HasDraft || i == Model.Current.Rules.Count - 1)">↓</button>
+                                    <a class="btn btn-sm btn-outline-primary @(Model.HasDraft ? "disabled" : string.Empty)" asp-action="EditRule" asp-route-scheduleId="@Model.ScheduleId" asp-route-position="@i" asp-route-version="@Model.Current.Version">Modify</a>
+                                    <button type="submit" name="operation" value="@(rule.IsEnabled ? "Disable" : "Enable")" class="btn btn-sm btn-outline-warning" disabled="@Model.HasDraft">@(rule.IsEnabled ? "Disable" : "Enable")</button>
+                                    <button type="submit" name="operation" value="Delete" class="btn btn-sm btn-outline-danger" disabled="@Model.HasDraft" onclick="return confirm('Delete this rule? The rules are published at once without it.');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<h2 class="h5">Always applied</h2>
+<div class="card mb-4">
+    <ul class="list-group list-group-flush">
+        <li class="list-group-item">
+            <div class="fw-semibold">A check-in is missing</div>
+            <div>When there are punches for a shift but no check-in, raise an exception for a missing check-in. A person supplies the punch; it is never invented.</div>
+        </li>
+        <li class="list-group-item">
+            <div class="fw-semibold">A check-out is missing</div>
+            <div>
+                When the shift is over and the wait has passed, and the person is still checked in, raise an exception for a missing check-out. The wait is the rule
+                <em>Raise an exception for a missing check-out</em> above; after 24 hours it is raised whatever the rules say.
+            </div>
+        </li>
+        <li class="list-group-item">
+            <div class="fw-semibold">A break punch is missing</div>
+            <div>When a break-out has no break-in, or a break-in has no break-out, on a shift with a break, raise an exception for the missing break punch.</div>
+        </li>
+        <li class="list-group-item">
+            <div class="fw-semibold">The punches are out of order</div>
+            <div>
+                The expected order is check-in, break-out, break-in, check-out. A check-in after a check-in, a break during no work, a check-out before a check-in and the like raise an
+                exception for an invalid sequence, which the person settles by changing the type of a punch.
+            </div>
+        </li>
+    </ul>
+</div>
+
+<h2 class="h5">Versions</h2>
+<div class="card">
+    @if (Model.History.Count == 0)
+    {
+        <div class="card-body text-muted">No set has been published for this scope yet.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Version</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Published</th>
+                        <th scope="col">By</th>
+                        <th scope="col">Rules</th>
+                        <th scope="col">Notes</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var set in Model.History)
+                    {
+                        <tr>
+                            <td>@set.Version</td>
+                            <td><span class="badge text-bg-@(set.Status == "Published" ? "success" : "secondary")">@set.Status</span></td>
+                            <td class="text-nowrap">@(set.PublishedAt?.ToString("yyyy-MM-dd HH:mm"))</td>
+                            <td>@(set.PublishedByName ?? "—")</td>
+                            <td>@set.RuleCount</td>
+                            <td>@set.Notes</td>
+                            <td class="text-end"><a class="btn btn-sm btn-outline-primary" asp-action="Version" asp-route-id="@set.Id">View</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<partial name="_RulesHelp" />

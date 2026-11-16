@@ -10,8 +10,8 @@ namespace robeem.Application.Attendance;
 /// <remarks>
 /// A missing punch is raised at once when later punches prove it was due, for instance a
 /// check-out with no check-in. When nothing proves it, it might simply not have happened yet, so
-/// it waits until the shift has ended and the policy's
-/// <see cref="AttendancePolicy.MissingPunchGraceMinutes"/> have passed.
+/// it waits until the shift has ended and the rules' wait for a missing check-out
+/// (<see cref="RuleSetSnapshot.RaisesMissingCheckOut"/>) has passed.
 /// </remarks>
 internal static class AttendanceExceptionDetector
 {
@@ -35,7 +35,10 @@ internal static class AttendanceExceptionDetector
         var found = new List<DetectedException>();
 
         var expectedEnd = shift?.EndsAt ?? day.AddDays(1);
-        var graceOver = now >= expectedEnd.AddMinutes(policy.MissingPunchGraceMinutes);
+
+        // How long to wait after the shift ends before an absent punch is raised is the rules' (at most a day: RaisesMissingCheckOut).
+        var minutesSinceEnd = (int)Math.Floor((now - expectedEnd).TotalMinutes);
+        var graceOver = rules.RaisesMissingCheckOut(ShiftFacts.For(shift, 0, calculation.ExcusedMinutes, minutesSinceEnd));
 
         // A scheduled shift without a single punch is a no-show: one exception, not two missing punches, because a person is not
         // asked to supply a punch for a day they may have been away. Nothing is expected on a day off, for hourly staff, or when no

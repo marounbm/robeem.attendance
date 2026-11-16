@@ -57,15 +57,14 @@ public sealed class AttendancePolicyServiceTests : IDisposable
         input.CorrectionApprovalWorkflow = "Both";
         input.UnlabeledPunchInterpretationMode = "Sequential";
         input.DuplicateTimeWindowSeconds = 60;
-        input.MissingPunchGraceMinutes = 45;
 
         var id = (await CreateAsync(input)).Id!.Value;
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var back = await Service(db).GetInputAsync(id, CancellationToken.None);
         Assert.Equal(
-            (15, 5, 10, 30, true, "Both", "Sequential", 60, 45),
-            (back!.RoundingRuleMinutes, back.LateGraceMinutes, back.EarlyDepartureGraceMinutes, back.OvertimeThresholdMinutes, back.RequiresOvertimePreApproval, back.CorrectionApprovalWorkflow, back.UnlabeledPunchInterpretationMode, back.DuplicateTimeWindowSeconds, back.MissingPunchGraceMinutes));
+            (15, 5, 10, 30, true, "Both", "Sequential", 60),
+            (back!.RoundingRuleMinutes, back.LateGraceMinutes, back.EarlyDepartureGraceMinutes, back.OvertimeThresholdMinutes, back.RequiresOvertimePreApproval, back.CorrectionApprovalWorkflow, back.UnlabeledPunchInterpretationMode, back.DuplicateTimeWindowSeconds));
         var stored = db.AttendancePolicies.Single();
         Assert.Equal((CorrectionApprovalWorkflow.Both, UnlabeledPunchInterpretationMode.Sequential), (stored.CorrectionApprovalWorkflow, stored.UnlabeledPunchInterpretationMode));
     }
@@ -119,7 +118,6 @@ public sealed class AttendancePolicyServiceTests : IDisposable
     [InlineData(nameof(PolicyInput.OvertimeThresholdMinutes), 481)]
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 0)]
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 3601)]
-    [InlineData(nameof(PolicyInput.MissingPunchGraceMinutes), 1441)]
     public async Task ASettingOutsideItsRange_IsRefusedByName(string field, int value)
     {
         var input = Input("Bad");

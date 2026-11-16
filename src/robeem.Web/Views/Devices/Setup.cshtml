@@ -167,6 +167,20 @@
                 <input asp-for="Input.Device.SdkVersion" class="form-control" autocomplete="off" maxlength="50" placeholder="e.g. 6.2.5.5" />
                 <span asp-validation-for="Input.Device.SdkVersion" class="text-danger small"></span>
             </div>
+            <div class="col-md-12">
+                <label asp-for="Input.Device.PunchTypes" class="form-label"></label>
+                <select asp-for="Input.Device.PunchTypes" class="form-select">
+                    @foreach (var (value, label) in DeviceInput.PunchTypeOptions)
+                    {
+                        <option value="@value" selected="@(Model.Input.Device.PunchTypes == value)">@label</option>
+                    }
+                </select>
+                <div class="form-text">
+                    Only a machine without break types has a check-out and the next check-in read as a break (when that rule is on in Rules); on a machine with break types
+                    they are a real exit. A machine with no types has its punches typed in order.
+                </div>
+                <span asp-validation-for="Input.Device.PunchTypes" class="text-danger small"></span>
+            </div>
             <div class="col-12 form-text">
                 The time zone is the one the device's clock runs in: a punch without a UTC offset is read in it. After saving, you map the
                 device's employee ids to your employees.

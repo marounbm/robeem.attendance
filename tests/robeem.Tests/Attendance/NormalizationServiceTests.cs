@@ -281,6 +281,22 @@ public sealed class NormalizationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UnlabeledPunch_IsKeptWhenItsMachineSendsNoTypes_EvenThoughThePolicyDoesNotInterpret()
+    {
+        using (var db = _database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDevices.Single(d => d.ExternalDeviceId == "DEV-1").PunchTypes = PunchTypeSupport.None;
+            db.SaveChanges();
+        }
+
+        AddRaw("EXT-1", "DEV-1", "2026-10-04 09:00:00", null);
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 0), await NormalizeAsync());
+        using var check = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(NormalizedEventType.Unknown, check.NormalizedAttendanceTransactions.Single().NormalizedEventType);
+    }
+
+    [Fact]
     public async Task UnrecognizedEventType_FailsTheRawRow()
     {
         AddRaw("EXT-1", "DEV-1", "2026-10-04 09:00:00", "LUNCH?");

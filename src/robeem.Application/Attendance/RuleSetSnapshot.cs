@@ -8,6 +8,9 @@ namespace robeem.Application.Attendance;
 /// </summary>
 public sealed class RuleSetSnapshot
 {
+    /// <summary>How long after a shift ends a missing check-out is raised at the latest, whatever the rules say: 24 hours.</summary>
+    public const int MissingCheckOutBackstopMinutes = 1440;
+
     public RuleSetSnapshot(int version, string source, IReadOnlyList<RuleSnapshot> rules)
     {
         Version = version;
@@ -54,6 +57,7 @@ public sealed class RuleSetSnapshot
             Raise("Raise an exception for an early break", 40, RuleFinding.EarlyBreak, policy.RaiseExceptionOnEarlyBreak, policy),
             Raise("Raise an exception when no break was taken", 50, RuleFinding.NoBreak, policy.RaiseExceptionOnNoBreak, policy),
             Raise("Raise an exception for a no-show", 60, RuleFinding.NoShow, true, policy),
+            Raise("Raise an exception for a missing check-out", 65, RuleFinding.MissingCheckOut, true, policy),
             ShortBreak(70, policy),
         };
 
@@ -77,8 +81,22 @@ public sealed class RuleSetSnapshot
             rules.Add(ShortBreak(int.MaxValue, policy));
         }
 
+        // Nor has it a rule for how long a missing check-out waits: the policy's wait is added the same way.
+        if (!rules.Any(r => r.Finding == RuleFinding.MissingCheckOut))
+        {
+            rules.Add(Raise("Raise an exception for a missing check-out", int.MaxValue - 1, RuleFinding.MissingCheckOut, true, policy));
+        }
+
         return new RuleSetSnapshot(Version, Source, rules);
     }
+
+    /// <summary>
+    /// Whether a missing check-out (or an open break at the end of the shift) is raised yet: the rules for it say how long to wait after the shift
+    /// ended, but they can only delay it. A missing check-out is raised at the latest <see cref="MissingCheckOutBackstopMinutes"/> after the shift
+    /// ended, whatever the rules are, so a day always has the exception it needs to be corrected.
+    /// </summary>
+    public bool RaisesMissingCheckOut(RuleFacts facts) =>
+        facts.MinutesAfterShiftEnd >= MissingCheckOutBackstopMinutes || Raises(RuleFinding.MissingCheckOut, facts);
 
     /// <summary>
     /// Whether the finding becomes an exception. The rules for the finding are looked at in priority order and the first whose
@@ -124,7 +142,7 @@ public sealed class RuleSetSnapshot
     {
         RuleFinding.LongBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.LongBreakGraceMinutes),
         RuleFinding.LateBreak or RuleFinding.EarlyBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.BreakStartGraceMinutes),
-        RuleFinding.NoShow => new ConditionSnapshot(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual, policy.MissingPunchGraceMinutes),
+        RuleFinding.NoShow or RuleFinding.MissingCheckOut => new ConditionSnapshot(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual, policy.MissingPunchGraceMinutes),
         _ => null,
     };
 }

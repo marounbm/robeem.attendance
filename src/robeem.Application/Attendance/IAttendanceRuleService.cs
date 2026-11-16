@@ -36,6 +36,18 @@ public interface IAttendanceRuleService
     Task<SaveResult> PublishAsync(int draftId, string? notes, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the rules in force for the scope as plain settings (a switch and a number for each thing HR usually changes), or says why they can't be
+    /// shown that way (they were customised). <c>null</c> when it is not a scope.
+    /// </summary>
+    Task<RuleSettingsDto?> GetSettingsAsync(int? timeScheduleId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Writes the settings into the standard rules and publishes the result at once as the next version. Refused when the rules are customised, when
+    /// the scope has a draft, when the version seen is stale, when a number is out of range or when nothing changed. Audited like any publication.
+    /// </summary>
+    Task<SaveResult> SaveSettingsAsync(RuleSettingsSaveRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Changes one rule of the rules in force (replace it, switch it on or off, delete it, move it) and publishes the result as the next version at once,
     /// every other rule as it was. Refused when the scope has a draft, or when the rules in force are not the version the request was made against.
     /// Audited like any publication, saying what was changed.

@@ -45,7 +45,6 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 CorrectionApprovalWorkflow = r.Policy.CorrectionApprovalWorkflow.ToString(),
                 UnlabeledPunchInterpretationMode = r.Policy.UnlabeledPunchInterpretationMode.ToString(),
                 DuplicateTimeWindowSeconds = r.Policy.DuplicateTimeWindowSeconds,
-                MissingPunchGraceMinutes = r.Policy.MissingPunchGraceMinutes,
                 HourlyMaxSpanHours = r.Policy.HourlyMaxSpanHours,
             })
             .ToList();
@@ -68,7 +67,6 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 CorrectionApprovalWorkflow = policy.CorrectionApprovalWorkflow.ToString(),
                 UnlabeledPunchInterpretationMode = policy.UnlabeledPunchInterpretationMode.ToString(),
                 DuplicateTimeWindowSeconds = policy.DuplicateTimeWindowSeconds,
-                MissingPunchGraceMinutes = policy.MissingPunchGraceMinutes,
                 HourlyMaxSpanHours = policy.HourlyMaxSpanHours,
             };
     }
@@ -176,7 +174,6 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         Range(errors, nameof(PolicyInput.EarlyDepartureGraceMinutes), input.EarlyDepartureGraceMinutes, 0, PolicyInput.MaxGraceMinutes, "minutes");
         Range(errors, nameof(PolicyInput.OvertimeThresholdMinutes), input.OvertimeThresholdMinutes, 0, PolicyInput.MaxOvertimeThresholdMinutes, "minutes");
         Range(errors, nameof(PolicyInput.DuplicateTimeWindowSeconds), input.DuplicateTimeWindowSeconds, 1, PolicyInput.MaxDuplicateWindowSeconds, "seconds");
-        Range(errors, nameof(PolicyInput.MissingPunchGraceMinutes), input.MissingPunchGraceMinutes, 0, PolicyInput.MaxMissingPunchGraceMinutes, "minutes");
         Range(errors, nameof(PolicyInput.HourlyMaxSpanHours), input.HourlyMaxSpanHours, 1, PolicyInput.MaxHourlySpanHours, "hours");
 
         if (!PolicyInput.Workflows.Contains(input.CorrectionApprovalWorkflow, StringComparer.Ordinal))
@@ -211,11 +208,10 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         policy.CorrectionApprovalWorkflow = Enum.Parse<CorrectionApprovalWorkflow>(input.CorrectionApprovalWorkflow);
         policy.UnlabeledPunchInterpretationMode = Enum.Parse<UnlabeledPunchInterpretationMode>(input.UnlabeledPunchInterpretationMode);
         policy.DuplicateTimeWindowSeconds = input.DuplicateTimeWindowSeconds;
-        policy.MissingPunchGraceMinutes = input.MissingPunchGraceMinutes;
         policy.HourlyMaxSpanHours = input.HourlyMaxSpanHours;
     }
 
     private static string Summary(AttendancePolicy p) => string.Create(
         CultureInfo.InvariantCulture,
-        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, missing-punch grace {p.MissingPunchGraceMinutes} min, hourly shifts up to {p.HourlyMaxSpanHours} h.");
+        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, hourly shifts up to {p.HourlyMaxSpanHours} h.");
 }

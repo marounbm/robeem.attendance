@@ -123,7 +123,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         Assert.Equal("When the shift has a break and the gap lasts at most 120 minutes, read the gap as the break (marked as inferred).", infer);
         Assert.Equal("Always do not raise an exception for a no-show (reason: Unannounced days are fine.).", suppress);
         Assert.Equal("When the shift ends the same day, raise an exception for a long break.", always);
-        Assert.Equal(7, current.Rules.Count);
+        Assert.Equal(8, current.Rules.Count);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var service = Service(db);
 
         var current = (await service.GetCurrentAsync(null, CancellationToken.None))!;
-        Assert.Equal(("Policy", 0, 7, null), (current.Status, current.Version, current.Rules.Count, current.Id));
+        Assert.Equal(("Policy", 0, 8, null), (current.Status, current.Version, current.Rules.Count, current.Id));
         Assert.Contains("read the gap as the break", current.Rules[0].Sentence);
         Assert.Equal(["The whole company (the default policy)"], (await service.ListScopesAsync(CancellationToken.None)).Select(s => s.Title));
 
@@ -488,6 +488,10 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var condition = Assert.Single(current.Rules.Single(r => r.Finding == "LongBreak").Conditions);
         Assert.Equal(("MinutesOver", "GreaterThan", 5), (condition.Fact, condition.Operator, condition.Value));
 
+        // So is the policy's wait for a missing check-out, which the set had no rule for.
+        var wait = current.Rules.Single(r => r.Finding == "MissingCheckOut");
+        Assert.Equal(("MinutesAfterShiftEnd", "GreaterOrEqual", 120), (wait.Conditions[0].Fact, wait.Conditions[0].Operator, wait.Conditions[0].Value));
+
         // The policy's minimum for a break is a rule of the set too, since the set has none of its own.
         var shortBreak = current.Rules.Single(r => r.Action == "IgnoreShortBreak");
         Assert.Equal(("BreakMinutes", "LessThan", 10), (shortBreak.Conditions[0].Fact, shortBreak.Conditions[0].Operator, shortBreak.Conditions[0].Value));
@@ -634,6 +638,217 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         Assert.Contains("Rules[0].Finding", RuleValidator.Validate([new RuleDto { Name = "x", Stage = "Interpretation", Action = "IgnoreShortBreak", Finding = "NoShow" }]).Keys);
         Assert.Contains("Rules[0].Stage", RuleValidator.Validate([new RuleDto { Name = "x", Stage = "Exception", Action = "IgnoreShortBreak" }]).Keys);
         Assert.Equal("When the break lasts less than 10 minutes, count the break as work (its two punches are left out).", RuleSentence.Describe(Rule("IgnoreShortBreak", "BreakMinutes")));
+    }
+
+    [Fact]
+    public void AMissingCheckOutWaitsAsTheRulesSay_AndIsAlwaysRaisedAfterADay()
+    {
+        var rules = RuleSetSnapshot.FromPolicy(new AttendancePolicy());
+        Assert.False(rules.RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 119 }));
+        Assert.True(rules.RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 120 }));
+
+        // Rules that are switched off, or none at all, only delay it: after 24 hours it is raised whatever they say.
+        var none = new RuleSetSnapshot(1, "published version 1", []);
+        Assert.False(none.RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 1439 }));
+        Assert.True(none.RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 1440 }));
+        Assert.False(RuleSetSnapshot.FromPolicy(new AttendancePolicy { MissingPunchGraceMinutes = 45 }).RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 44 }));
+        Assert.True(RuleSetSnapshot.FromPolicy(new AttendancePolicy { MissingPunchGraceMinutes = 45 }).RaisesMissingCheckOut(new RuleFacts { MinutesAfterShiftEnd = 45 }));
+    }
+
+    [Fact]
+    public async Task HowLongAMissingCheckOutWaits_IsAConditionOfItsRule_NotThePolicy()
+    {
+        AssignSchedule(StandardDay);
+        await PublishAsync(rules => rules.Single(r => r.Finding == "MissingCheckOut").Conditions = [new ConditionDto { Fact = "MinutesAfterShiftEnd", Operator = "GreaterOrEqual", Value = 30 }]);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+
+        // The shift ends at 17:00 and the policy waits two hours, but the rule waits half an hour.
+        Clock.Local = Monday.At(17, 29);
+        await ProcessAsync(Monday);
+        using (var early = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.DoesNotContain(early.AttendanceExceptions, e => e.MissingEventType == NormalizedEventType.CheckOut);
+        }
+
+        Clock.Local = Monday.At(17, 30);
+        await ProcessAsync(Monday);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.MissingPunch && e.MissingEventType == NormalizedEventType.CheckOut);
+    }
+
+    [Fact]
+    public async Task ARuleThatIsOff_CannotKeepAMissingCheckOutFromBeingRaised_BeyondADay()
+    {
+        AssignSchedule(StandardDay);
+        await PublishAsync(rules => rules.Single(r => r.Finding == "MissingCheckOut").IsEnabled = false);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+
+        // With its rule off nothing raises it, until the shift ended a day ago.
+        Clock.Local = Monday.At(16, 59).AddDays(1);
+        await ProcessAsync(Monday);
+        using (var before = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.DoesNotContain(before.AttendanceExceptions, e => e.MissingEventType == NormalizedEventType.CheckOut);
+        }
+
+        Clock.Local = Monday.At(17, 0).AddDays(1);
+        await ProcessAsync(Monday);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.MissingPunch && e.MissingEventType == NormalizedEventType.CheckOut);
+    }
+
+    [Fact]
+    public void AMissingCheckOut_CanBeRaisedWithAWait_ButNeverLeftOutByARule()
+    {
+        RuleDto Rule(string action) => new()
+        {
+            Name = "Missing check-out",
+            Stage = "Exception",
+            Action = action,
+            Finding = "MissingCheckOut",
+            Reason = "Because.",
+            Conditions = [new ConditionDto { Fact = "MinutesAfterShiftEnd", Operator = "GreaterOrEqual", Value = 60 }],
+        };
+
+        Assert.Empty(RuleValidator.Validate([Rule("RaiseException")]));
+        Assert.Contains("Rules[0].Finding", RuleValidator.Validate([Rule("SuppressException")]).Keys);
+        Assert.Equal("When the shift ended at least 60 minutes ago, raise an exception for a missing check-out.", RuleSentence.Describe(Rule("RaiseException")));
+    }
+
+    [Fact]
+    public async Task TheStartingRules_AreShownAsSettings_FromThePolicysNumbers()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+
+        var shown = (await Service(db).GetSettingsAsync(null, CancellationToken.None))!;
+
+        Assert.Equal((true, null, 0), (shown.IsStandard, shown.NotStandardReason, shown.Version));
+        Assert.Equal(
+            new RuleSettings
+            {
+                LongBreakRaises = false,
+                LongBreakMinutesOver = 5,
+                LateBreakRaises = false,
+                LateBreakMinutesOver = 15,
+                EarlyBreakRaises = false,
+                EarlyBreakMinutesOver = 15,
+                NoBreakRaises = true,
+                NoShowRaises = true,
+                NoShowWaitMinutes = 120,
+                MissingCheckOutWaitMinutes = 120,
+                ShortBreakIsWork = true,
+                ShortBreakMinutes = 10,
+                GapIsBreak = false,
+                GapWindowMinutes = 90,
+                GapMaxMinutes = 120,
+            },
+            shown.Settings);
+    }
+
+    [Fact]
+    public async Task SavingSettings_PublishesTheStandardRulesWithThemAsTheNextVersion_AndSaysWhatChanged()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        var shown = (await service.GetSettingsAsync(null, CancellationToken.None))!;
+        var settings = shown.Settings with { };
+        settings.LongBreakRaises = true;
+        settings.LongBreakMinutesOver = 20;
+        settings.NoShowWaitMinutes = 30;
+        settings.GapIsBreak = true;
+        settings.GapWindowMinutes = 45;
+
+        var saved = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { ExpectedVersion = 0, Settings = settings }, CancellationToken.None);
+
+        Assert.True(saved.Succeeded);
+        var back = (await service.GetSettingsAsync(null, CancellationToken.None))!;
+        Assert.Equal((1, true, settings), (back.Version, back.IsStandard, back.Settings));
+
+        // Only the standard rules changed, in the same order, and the history and the audit log say what was done.
+        var rules = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal(8, rules.Rules.Count);
+        Assert.Contains("long break on", rules.Notes);
+        Assert.Contains("long break over 5 → 20 min", rules.Notes);
+        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.RuleSetPublished && a.Details!.Contains("no-show wait 120 → 30 min"));
+
+        // The same settings again change nothing; and a page that is out of date is refused.
+        var same = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { ExpectedVersion = 1, Settings = settings }, CancellationToken.None);
+        Assert.Equal("Nothing was changed.", same.Errors["id"]);
+        var stale = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { ExpectedVersion = 0, Settings = shown.Settings }, CancellationToken.None);
+        Assert.Contains("changed since", stale.Errors["id"]);
+        Assert.Single(await service.ListHistoryAsync(null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ASettingOutOfRange_IsRefusedOnItsField_AndNothingIsPublished()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        var settings = (await service.GetSettingsAsync(null, CancellationToken.None))!.Settings with { };
+        settings.LongBreakMinutesOver = -1;
+        settings.GapMaxMinutes = 1441;
+
+        var refused = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { Settings = settings }, CancellationToken.None);
+
+        Assert.Equal(["Settings.GapMaxMinutes", "Settings.LongBreakMinutesOver"], refused.Errors.Keys.Order());
+        Assert.Empty(await service.ListHistoryAsync(null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CustomisedRules_CantBeShownAsSettings_NorSaved()
+    {
+        await PublishAsync(rules => rules.Insert(0, new RuleDto { Name = "Away without notice is fine", Stage = "Exception", Action = "SuppressException", Finding = "NoShow", Reason = "Casual staff." }));
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+
+        var shown = (await service.GetSettingsAsync(null, CancellationToken.None))!;
+        Assert.False(shown.IsStandard);
+        Assert.Contains("customised", shown.NotStandardReason);
+        var refused = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { ExpectedVersion = shown.Version, Settings = new RuleSettings() }, CancellationToken.None);
+        Assert.Contains("customised", refused.Errors["id"]);
+
+        // A rule given other conditions, or taken out, is a customisation too.
+        Assert.Null(RuleSettingsMapper.TryRead([], out _));
+    }
+
+    [Fact]
+    public async Task AnOpenDraft_StopsTheSettingsBeingSaved()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        await service.CreateDraftAsync(null, CancellationToken.None);
+        var open = (await service.GetSettingsAsync(null, CancellationToken.None))!;
+
+        var refused = await service.SaveSettingsAsync(new RuleSettingsSaveRequest { ExpectedVersion = open.Version, Settings = open.Settings with { LongBreakRaises = true } }, CancellationToken.None);
+
+        Assert.Contains("draft", refused.Errors["id"]);
+        Assert.Empty(await service.ListHistoryAsync(null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheSavedSettings_AreWhatTheCalculationUses()
+    {
+        AssignSchedule(StandardDay);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var service = Service(db);
+            var settings = (await service.GetSettingsAsync(null, CancellationToken.None))!.Settings with { };
+            settings.NoShowWaitMinutes = 30;
+            Assert.True((await service.SaveSettingsAsync(new RuleSettingsSaveRequest { Settings = settings }, CancellationToken.None)).Succeeded);
+        }
+
+        // The shift ends at 17:00; the policy waits two hours, the saved setting half an hour.
+        Clock.Local = Monday.At(17, 29);
+        await ProcessAsync(Monday);
+        using (var early = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Empty(early.AttendanceExceptions);
+        }
+
+        Clock.Local = Monday.At(17, 30);
+        await ProcessAsync(Monday);
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(AttendanceExceptionType.NoShow, Assert.Single(check.AttendanceExceptions).ExceptionType);
     }
 
     private AttendanceRuleService Service(RobeemDbContext db) => new(db, CreateAudit(db), new SystemCurrentUser(), Clock);

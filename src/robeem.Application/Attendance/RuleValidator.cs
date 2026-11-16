@@ -125,6 +125,11 @@ public static class RuleValidator
             errors[$"{key}.Finding"] = $"Choose what the rule is about: {string.Join(", ", Enum.GetNames<RuleFinding>())}.";
         }
 
+        if (action == RuleAction.SuppressException && rule.Finding == nameof(RuleFinding.MissingCheckOut))
+        {
+            errors[$"{key}.Finding"] = "A missing check-out can't be left unraised: the day could not be corrected. Change how long it waits instead.";
+        }
+
         if (action == RuleAction.SuppressException)
         {
             var reason = rule.Reason?.Trim() ?? string.Empty;
@@ -149,10 +154,10 @@ public static class RuleValidator
             return null;
         }
 
-        // How long a shift has been over is known when a no-show is looked for; the other findings are measured when the day is calculated.
-        if (fact == RuleFact.MinutesAfterShiftEnd && finding != RuleFinding.NoShow)
+        // How long a shift has been over is known when a no-show or a missing check-out is looked for; the other findings are measured when the day is calculated.
+        if (fact == RuleFact.MinutesAfterShiftEnd && finding is not (RuleFinding.NoShow or RuleFinding.MissingCheckOut))
         {
-            errors[$"{key}.Fact"] = "\"MinutesAfterShiftEnd\" can only be used in a rule about a no-show.";
+            errors[$"{key}.Fact"] = "\"MinutesAfterShiftEnd\" can only be used in a rule about a no-show or a missing check-out.";
             return null;
         }
 

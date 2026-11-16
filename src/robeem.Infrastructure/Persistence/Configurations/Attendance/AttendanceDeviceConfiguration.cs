@@ -8,6 +8,9 @@ public sealed class AttendanceDeviceConfiguration : IEntityTypeConfiguration<Att
 {
     public void Configure(EntityTypeBuilder<AttendanceDevice> builder)
     {
+        // What the machine puts on each punch; check-in and check-out only unless said otherwise, which is how every device was read before it was a setting.
+        builder.Property(d => d.PunchTypes).HasConversion<string>().HasMaxLength(16).HasDefaultValue(PunchTypeSupport.InOut);
+
         // The device type is a catalog row of the prime tenant, referred to by name: there is no foreign key across databases.
         builder.HasIndex(d => d.DeviceTypeName);
 

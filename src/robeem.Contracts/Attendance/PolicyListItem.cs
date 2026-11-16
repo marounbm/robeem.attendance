@@ -30,7 +30,5 @@ public sealed class PolicyListItem
 
     public int DuplicateTimeWindowSeconds { get; init; }
 
-    public int MissingPunchGraceMinutes { get; init; }
-
     public int HourlyMaxSpanHours { get; init; }
 }

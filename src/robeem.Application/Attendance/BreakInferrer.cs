@@ -11,7 +11,7 @@ namespace robeem.Application.Attendance;
 internal static class BreakInferrer
 {
     /// <summary>
-    /// On a shift with a scheduled break, a day whose punches are all check-ins and check-outs, alternating from a check-in and ending
+    /// On a shift with a scheduled break, a day whose punches, all from machines that send no break types, are all check-ins and check-outs, alternating from a check-in and ending
     /// with a check-out, has its internal check-out / check-in gaps looked at. A gap the rules count as a short break is retyped as one, so
     /// the rule that leaves a short break out keeps the time as work. A gap the rules read as the break is retyped when
     /// exactly one gap is. Otherwise nothing is read.
@@ -22,7 +22,8 @@ internal static class BreakInferrer
     /// <param name="excused">The part-day leave that overlaps the shift.</param>
     public static List<AttendancePunch> Infer(List<AttendancePunch> typed, ResolvedShift? shift, RuleSetSnapshot rules, IReadOnlyList<ExcusedPeriod> excused)
     {
-        if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart } || !IsAlternatingInOut(typed))
+        // A machine that sends break types records a break as one: a check-out and a check-in from it are a real exit, never read as a break.
+        if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart } || !IsAlternatingInOut(typed) || typed.Any(p => p.Device == PunchTypeSupport.InOutAndBreak))
         {
             return typed;
         }

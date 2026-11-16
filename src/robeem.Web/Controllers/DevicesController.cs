@@ -128,6 +128,7 @@ public sealed class DevicesController : Controller
                 Model = device.Model,
                 SoftwareVersion = device.SoftwareVersion,
                 SdkVersion = device.SdkVersion,
+                PunchTypes = device.PunchTypes,
                 TimeZoneId = device.TimeZoneId,
             },
         };

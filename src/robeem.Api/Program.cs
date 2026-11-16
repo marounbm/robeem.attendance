@@ -25,6 +25,7 @@ builder.Services.Configure<RawPayloadSanitizerOptions>(builder.Configuration.Get
 builder.Services.Configure<SampleDataOptions>(builder.Configuration.GetSection(SampleDataOptions.SectionName));
 builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration.GetSection(AttendanceNormalizationOptions.SectionName));
 builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSection(AttendanceSyncOptions.SectionName));
+builder.Services.Configure<AttendanceDataResetOptions>(builder.Configuration.GetSection(AttendanceDataResetOptions.SectionName));
 builder.Services.Configure<AttendanceLookbackOptions>(builder.Configuration.GetSection(AttendanceLookbackOptions.SectionName));
 
 // The scheduler decision is in CLAUDE.md §2.8: one in-process host runs these jobs.

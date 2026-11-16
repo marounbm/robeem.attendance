@@ -42,7 +42,7 @@
 
     <button type="submit" name="command" value="save" class="btn btn-primary">Save the draft</button>
     <button type="submit" name="command" value="publish" class="btn btn-success" onclick="return confirm('Publish these rules? Days are calculated with them from now on.');">Save and publish</button>
-    <a class="btn btn-link" asp-action="Index" asp-route-scheduleId="@Model.ScheduleId">Back</a>
+    <a class="btn btn-link" asp-action="Advanced" asp-route-scheduleId="@Model.ScheduleId">Back</a>
 </form>
 
 <form method="post" asp-action="Discard" class="mt-3">

@@ -19,6 +19,7 @@ public static class AuditActionCatalog
         "DayReprocessed",
         "ScheduleChanged",
         "UploadDeleted",
+        "AttendanceDataReset",
         "AttendanceDataRead",
         "RuleSetPublished",
     ];

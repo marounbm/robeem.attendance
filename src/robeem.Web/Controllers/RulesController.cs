@@ -23,8 +23,53 @@ public sealed class RulesController : Controller
         _rules = rules;
     }
 
+    /// <summary>The rules as plain settings: a switch and a number for each thing HR usually changes. Saving publishes them as the next version.</summary>
     [HttpGet]
     public async Task<IActionResult> Index(int? scheduleId, CancellationToken cancellationToken)
+    {
+        var settings = await _rules.GetSettingsAsync(scheduleId, cancellationToken);
+        return settings is null ? NotFound() : View(await SettingsModelAsync(settings, settings.Settings, cancellationToken));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> SaveSettings(int? scheduleId, int version, RulesSettingsViewModel model, CancellationToken cancellationToken)
+    {
+        var current = await _rules.GetSettingsAsync(scheduleId, cancellationToken);
+        if (current is null)
+        {
+            return NotFound();
+        }
+
+        if (current.IsStandard && current.Version == version && current.Settings == model.Settings)
+        {
+            TempData[StatusMessageKey] = "Nothing was changed.";
+            return RedirectToAction(nameof(Index), new { scheduleId });
+        }
+
+        var result = await _rules.SaveSettingsAsync(new RuleSettingsSaveRequest { TimeScheduleId = scheduleId, ExpectedVersion = version, Settings = model.Settings }, cancellationToken);
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (result.Succeeded)
+        {
+            TempData[StatusMessageKey] = "The settings were saved and published as a new version. Days are calculated with them from now on.";
+            return RedirectToAction(nameof(Index), new { scheduleId });
+        }
+
+        foreach (var (field, message) in result.Errors)
+        {
+            ModelState.AddModelError(field, message);
+        }
+
+        // Shown again as the person left it, on the version the rules are at now.
+        return View(nameof(Index), await SettingsModelAsync(current, model.Settings, cancellationToken));
+    }
+
+    /// <summary>The rules one by one, with what each does in words: change one, move it, switch it off, or make a draft of several changes.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Advanced(int? scheduleId, CancellationToken cancellationToken)
     {
         var current = await _rules.GetCurrentAsync(scheduleId, cancellationToken);
         if (current is null)
@@ -60,7 +105,7 @@ public sealed class RulesController : Controller
             if (!created.Succeeded)
             {
                 TempData[ErrorMessageKey] = created.MessageText;
-                return RedirectToAction(nameof(Index), new { scheduleId });
+                return RedirectToAction(nameof(Advanced), new { scheduleId });
             }
         }
 
@@ -73,7 +118,7 @@ public sealed class RulesController : Controller
         var draft = await _rules.GetDraftAsync(scheduleId, cancellationToken);
         if (draft is null)
         {
-            return RedirectToAction(nameof(Index), new { scheduleId });
+            return RedirectToAction(nameof(Advanced), new { scheduleId });
         }
 
         return View(new RulesEditViewModel { DraftId = draft.Id!.Value, ScheduleId = scheduleId, ScopeTitle = draft.ScopeTitle, Notes = draft.Notes, Rules = draft.Rules });
@@ -103,7 +148,7 @@ public sealed class RulesController : Controller
             if (result.Succeeded)
             {
                 TempData[StatusMessageKey] = command == "publish" ? "The rules were published. Days are calculated with them from now on, and the nightly look-back brings recent days up to date." : "The draft was saved.";
-                return command == "publish" ? RedirectToAction(nameof(Index), new { scheduleId }) : RedirectToAction(nameof(Edit), new { scheduleId });
+                return command == "publish" ? RedirectToAction(nameof(Advanced), new { scheduleId }) : RedirectToAction(nameof(Edit), new { scheduleId });
             }
 
             foreach (var (field, message) in result.Errors)
@@ -137,7 +182,7 @@ public sealed class RulesController : Controller
         }
 
         TempData[result.Succeeded ? StatusMessageKey : ErrorMessageKey] = result.Succeeded ? ChangedMessage : result.MessageText;
-        return RedirectToAction(nameof(Index), new { scheduleId });
+        return RedirectToAction(nameof(Advanced), new { scheduleId });
     }
 
     /// <summary>One rule of the rules in force, on a page of its own.</summary>
@@ -153,7 +198,7 @@ public sealed class RulesController : Controller
         if (current.Version != version)
         {
             TempData[ErrorMessageKey] = StaleMessage;
-            return RedirectToAction(nameof(Index), new { scheduleId });
+            return RedirectToAction(nameof(Advanced), new { scheduleId });
         }
 
         return View(new RulesEditViewModel { ScheduleId = scheduleId, ScopeTitle = current.ScopeTitle, Position = position, ExpectedVersion = version, Rules = [current.Rules[position]] });
@@ -185,7 +230,7 @@ public sealed class RulesController : Controller
             if (result.Succeeded)
             {
                 TempData[StatusMessageKey] = ChangedMessage;
-                return RedirectToAction(nameof(Index), new { scheduleId });
+                return RedirectToAction(nameof(Advanced), new { scheduleId });
             }
 
             foreach (var (field, message) in result.Errors)
@@ -208,7 +253,7 @@ public sealed class RulesController : Controller
     {
         var result = await _rules.DiscardDraftAsync(draftId, cancellationToken);
         TempData[result.Succeeded ? StatusMessageKey : ErrorMessageKey] = result.Succeeded ? "The draft was thrown away." : result.MessageText;
-        return RedirectToAction(nameof(Index), new { scheduleId });
+        return RedirectToAction(nameof(Advanced), new { scheduleId });
     }
 
     /// <summary>A rule's stage and finding follow from its action, and a reason belongs only to a suppression. The sentence is the server's to write.</summary>
@@ -266,6 +311,22 @@ public sealed class RulesController : Controller
                 rules[i].Conditions.RemoveAt(j);
                 break;
         }
+    }
+
+    private async Task<RulesSettingsViewModel> SettingsModelAsync(RuleSettingsDto current, RuleSettings shown, CancellationToken cancellationToken)
+    {
+        var scopes = await _rules.ListScopesAsync(cancellationToken);
+        return new RulesSettingsViewModel
+        {
+            Scopes = scopes,
+            ScheduleId = current.TimeScheduleId,
+            ScopeTitle = current.ScopeTitle,
+            Version = current.Version,
+            IsStandard = current.IsStandard,
+            NotStandardReason = current.NotStandardReason,
+            HasDraft = scopes.Any(s => s.TimeScheduleId == current.TimeScheduleId && s.HasDraft),
+            Settings = shown,
+        };
     }
 
     private async Task FillTitleAsync(RulesEditViewModel model, CancellationToken cancellationToken) =>

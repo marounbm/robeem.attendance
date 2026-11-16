@@ -2,7 +2,7 @@
 
 @if (Model.Rules.Count == 0)
 {
-    <div class="card-body text-muted">This set has no rules, so nothing is read from a gap and no finding is raised as an exception.</div>
+    <div class="card-body text-muted">This set has no rules, so nothing is read from a gap, no break or no-show finding is raised as an exception, and every break is kept. A missing check-out is still raised, 24 hours after the shift ends.</div>
 }
 else
 {

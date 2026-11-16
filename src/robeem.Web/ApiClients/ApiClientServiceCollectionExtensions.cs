@@ -36,6 +36,7 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IIntegrationsApiClient, IntegrationsApiClient>(services);
         AddClient<IUploadsApiClient, UploadsApiClient>(services);
         AddClient<IJobsApiClient, JobsApiClient>(services);
+        AddClient<IDataResetApiClient, DataResetApiClient>(services);
         AddClient<IPayloadFormatsApiClient, PayloadFormatsApiClient>(services);
         AddClient<IVendorsApiClient, VendorsApiClient>(services);
         AddClient<IConnectorsApiClient, ConnectorsApiClient>(services);

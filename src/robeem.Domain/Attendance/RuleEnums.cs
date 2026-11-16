@@ -51,6 +51,12 @@ namespace robeem.DataModel
 
         /// <summary>A scheduled shift passed without a single punch.</summary>
         NoShow,
+
+        /// <summary>
+        /// A shift is over and the employee is still checked in (or a break is still open). The rules say how long to wait after the shift ends before it
+        /// is raised, but never whether: it is always raised 24 hours after the shift ended, so a day can always be corrected.
+        /// </summary>
+        MissingCheckOut,
     }
 
     /// <summary>
@@ -83,7 +89,7 @@ namespace robeem.DataModel
         /// <summary>The minutes of the shift covered by part-day approved leave. Exception only.</summary>
         ExcusedMinutes,
 
-        /// <summary>How long ago the shift ended, in minutes. Only a rule about a no-show can use it: it is how long to wait before a shift with no punch is a no-show.</summary>
+        /// <summary>How long ago the shift ended, in minutes. Only a rule about a no-show or a missing check-out can use it: it is how long to wait before a shift is one of those.</summary>
         MinutesAfterShiftEnd,
 
         /// <summary>How long a break lasted, in whole minutes (a gap between a check-out and a check-in, or a break-out and its break-in). Only a rule that counts a short break as work can use it.</summary>

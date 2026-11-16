@@ -63,6 +63,12 @@ namespace robeem.DataModel
         [MaxLength(64)]
         public string TimeZoneId { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Gets or sets what the machine puts on each punch: check-in and check-out only (the default), those and the break types, or no types
+        /// at all. How its punches are read follows from it: see <see cref="PunchTypeSupport"/>.
+        /// </summary>
+        public PunchTypeSupport PunchTypes { get; set; } = PunchTypeSupport.InOut;
+
         public DateTime? LastSeenAt { get; set; }
 
         #region not mapped

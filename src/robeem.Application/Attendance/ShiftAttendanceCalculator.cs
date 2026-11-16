@@ -284,9 +284,10 @@ internal static class ShiftAttendanceCalculator
     /// </summary>
     private static List<AttendancePunch> InterpretUnlabeled(List<AttendancePunch> ordered, ResolvedShift? shift, AttendancePolicy policy)
     {
-        if (policy.UnlabeledPunchInterpretationMode != UnlabeledPunchInterpretationMode.Sequential
-            || ordered.Count == 0
-            || ordered.Any(p => p.Type != NormalizedEventType.Unknown))
+        // The policy asks for it, or every punch is from a machine that sends no types at all (its punches are typed in order whatever the policy says).
+        var interpret = policy.UnlabeledPunchInterpretationMode == UnlabeledPunchInterpretationMode.Sequential
+            || (ordered.Count > 0 && ordered.All(p => p.Device == PunchTypeSupport.None));
+        if (!interpret || ordered.Count == 0 || ordered.Any(p => p.Type != NormalizedEventType.Unknown))
         {
             return ordered;
         }

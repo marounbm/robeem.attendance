@@ -80,6 +80,7 @@ public static class NavigationMenu
         [
             new NavItem("Background jobs", "Jobs", "Index", "When the jobs that normalize punches, calculate days and sync integrations run next, how each run ended, and run one now.", Integration, Hr),
             new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr),
+            new NavItem("Delete all data", "DataReset", "Index", "Delete everything imported or calculated for this tenant so that it can be imported again. The configuration is kept.", Integration),
         ]);
 
     public static IReadOnlyList<NavSection> Sections { get; } = [People, MyWork, DevicesSection, Transactions, Catalog, PayrollSection, Settings, SystemSection];

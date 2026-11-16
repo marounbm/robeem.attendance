@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using robeem.Application.Persistence;
 using robeem.Application.Tenancy;
+using robeem.Contracts.Attendance;
 using robeem.DataModel;
 using robeem.Infrastructure.Tenancy;
 
@@ -95,6 +96,39 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
     public string CurrentTenantId => _tenantContext.TenantId ?? throw new TenantNotResolvedException();
 
     public void AllowUnprocessedUploadDeletion(int batchId) => _uploadDeletionBatchIds.Add(batchId);
+
+    /// <summary>
+    /// The sanctioned bulk delete of a tenant's attendance data (see <see cref="IRobeemDbContext.DeleteAllAttendanceDataAsync"/>). It runs only inside a
+    /// transaction the caller owns. The query filter keeps it to the current tenant. The three tables that point at themselves are cleared of those
+    /// references first, because a restricting foreign key refuses a row that another row of the same statement still points at. Children go before
+    /// the rows they point to, so no foreign key is ever broken; if one were, the transaction rolls back.
+    /// </summary>
+    public async Task<IReadOnlyList<AttendanceDataCount>> DeleteAllAttendanceDataAsync(CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("Deleting all attendance data must run in a transaction, so that it is all or nothing.");
+        }
+
+        var deleted = new List<AttendanceDataCount>();
+        async Task DeleteAsync<T>(string name, IQueryable<T> rows) =>
+            deleted.Add(new AttendanceDataCount { Name = name, Count = await rows.ExecuteDeleteAsync(cancellationToken) });
+
+        await AttendanceCorrections.ExecuteUpdateAsync(s => s.SetProperty(c => c.CancelsCorrectionId, (int?)null), cancellationToken);
+        await DeleteAsync("Corrections", AttendanceCorrections);
+        await DeleteAsync("Exceptions", AttendanceExceptions);
+        await DeleteAsync("Approvals", AttendanceApprovals);
+        await AttendanceRecords.ExecuteUpdateAsync(s => s.SetProperty(r => r.SupersededByRecordId, (int?)null), cancellationToken);
+        await DeleteAsync("Attendance records", AttendanceRecords);
+        await DeleteAsync("Day summaries", AttendanceDaySummaries);
+        await NormalizedAttendanceTransactions.ExecuteUpdateAsync(s => s.SetProperty(n => n.DuplicateOfTransactionId, (int?)null), cancellationToken);
+        await DeleteAsync("Normalized transactions", NormalizedAttendanceTransactions);
+        await DeleteAsync("Raw transactions", RawAttendanceTransactions);
+        await DeleteAsync("Uploaded files", AttendanceUploadedFiles);
+        await DeleteAsync("Processing batches", AttendanceProcessingBatches);
+        await DeleteAsync("Job runs", AttendanceJobRuns);
+        return deleted;
+    }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
