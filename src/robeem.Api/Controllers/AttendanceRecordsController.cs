@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using robeem.Api.Security;
 using robeem.Application.Attendance;
 using robeem.Application.Security;
@@ -21,11 +22,15 @@ public sealed class AttendanceRecordsController : ControllerBase
     private const int DefaultPageSize = 20;
 
     private readonly IAttendanceRecordService _records;
+    private readonly IAttendanceLookbackService _lookback;
+    private readonly IOptions<AttendanceLookbackOptions> _lookbackOptions;
     private readonly ICurrentUser _user;
 
-    public AttendanceRecordsController(IAttendanceRecordService records, ICurrentUser user)
+    public AttendanceRecordsController(IAttendanceRecordService records, IAttendanceLookbackService lookback, IOptions<AttendanceLookbackOptions> lookbackOptions, ICurrentUser user)
     {
         _records = records;
+        _lookback = lookback;
+        _lookbackOptions = lookbackOptions;
         _user = user;
     }
 
@@ -101,6 +106,41 @@ public sealed class AttendanceRecordsController : ControllerBase
     [Authorize(Roles = AttendanceRoles.HRAdministrator)]
     public async Task<ActionResult<ReprocessResponse>> Reprocess(int employeeId, DateTime date, CancellationToken cancellationToken) =>
         await _records.ReprocessAsync(employeeId, date, cancellationToken) is { } result ? result : NotFound();
+
+    /// <summary>
+    /// Looks for missing days in a period (of one employee, or of everyone) the way the nightly run does for the last days, so that a no-show is
+    /// raised for every scheduled day nobody punched on. The nightly run reaches only the last days; this is for a period imported later. At most
+    /// a year at a time, ending yesterday; the days beyond one run's limit are reported as deferred.
+    /// </summary>
+    [HttpPost("check-missing")]
+    [Authorize(Roles = AttendanceRoles.HRAdministrator)]
+    public async Task<ActionResult<CheckMissingDaysResponse>> CheckMissing(CheckMissingDaysRequest request, CancellationToken cancellationToken)
+    {
+        if (request.To.Date < request.From.Date)
+        {
+            ModelState.AddModelError(nameof(CheckMissingDaysRequest.To), "The last day can't be before the first.");
+        }
+        else if ((request.To.Date - request.From.Date).Days + 1 > CheckMissingDaysRequest.MaxDays)
+        {
+            ModelState.AddModelError(nameof(CheckMissingDaysRequest.To), $"Look at at most {CheckMissingDaysRequest.MaxDays} days at a time.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        var result = await _lookback.CheckPeriodAsync(request.EmployeeId, request.From, request.To, _lookbackOptions.Value.EffectiveMaxDaysPerRun, cancellationToken);
+        return new CheckMissingDaysResponse
+        {
+            From = result.From,
+            To = result.To,
+            DaysCalculated = result.DaysCalculated,
+            DaysFailed = result.DaysFailed,
+            DaysDeferred = result.DaysDeferred,
+            DatesWithoutData = result.DatesWithoutData.ToList(),
+        };
+    }
 
     private ObjectResult NotLinked() =>
         Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim). Only HR can see attendance without one.");

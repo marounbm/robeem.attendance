@@ -15,11 +15,37 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
     private static readonly string Hr = TestApi.As(1, AttendanceRoles.HRAdministrator);
 
     private readonly FakeRecords _records = new();
+    private readonly FakeLookback _lookback = new();
     private readonly TestApi _api;
 
     public RecordsEndpointTests()
     {
-        _api = TestApi.Start(services => services.AddSingleton<IAttendanceRecordService>(_records));
+        _api = TestApi.Start(services =>
+        {
+            services.AddSingleton<IAttendanceRecordService>(_records);
+            services.AddSingleton<IAttendanceLookbackService>(_lookback);
+            services.AddOptions<AttendanceLookbackOptions>();
+        });
+    }
+
+    [Fact]
+    public async Task LookingForMissingDays_IsForHrOnly_AndTakesAPeriodOfAtMostAYear()
+    {
+        foreach (var role in new[] { AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.PayrollAdministrator, AttendanceRoles.IntegrationAdministrator })
+        {
+            var refused = await _api.Send(HttpMethod.Post, "api/attendance/records/check-missing", TestApi.As(7, role), new CheckMissingDaysRequest { From = new DateTime(2026, 4, 1), To = new DateTime(2026, 4, 30) });
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+
+        var ok = await _api.Send(HttpMethod.Post, "api/attendance/records/check-missing", Hr, new CheckMissingDaysRequest { From = new DateTime(2026, 4, 1), To = new DateTime(2026, 4, 30), EmployeeId = 2 });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var body = (await ok.Content.ReadFromJsonAsync<CheckMissingDaysResponse>())!;
+        Assert.Equal((21, 2, new DateTime(2026, 4, 1), new DateTime(2026, 4, 30)), (body.DaysCalculated, _lookback.EmployeeAsked, _lookback.FromAsked, _lookback.ToAsked));
+        Assert.Equal([new DateTime(2026, 4, 3)], body.DatesWithoutData);
+
+        var backwards = await _api.Send(HttpMethod.Post, "api/attendance/records/check-missing", Hr, new CheckMissingDaysRequest { From = new DateTime(2026, 4, 30), To = new DateTime(2026, 4, 1) });
+        var tooLong = await _api.Send(HttpMethod.Post, "api/attendance/records/check-missing", Hr, new CheckMissingDaysRequest { From = new DateTime(2025, 1, 1), To = new DateTime(2026, 4, 1) });
+        Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest), (backwards.StatusCode, tooLong.StatusCode));
     }
 
     public async ValueTask DisposeAsync() => await _api.DisposeAsync();
@@ -150,6 +176,26 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
         Assert.Equal(7, (await day.Content.ReadFromJsonAsync<RecordDayDetail>())!.EmployeeId);
         Assert.Equal((7, new DateTime(2026, 10, 5)), _records.Reprocessed.Single());
         Assert.Equal(2, (await reprocess.Content.ReadFromJsonAsync<ReprocessResponse>())!.RecordsWritten);
+    }
+
+    private sealed class FakeLookback : IAttendanceLookbackService
+    {
+        public int? EmployeeAsked { get; private set; }
+
+        public DateTime FromAsked { get; private set; }
+
+        public DateTime ToAsked { get; private set; }
+
+        public Task<LookbackResult> RunAsync(int windowDays, int maxDays, CancellationToken cancellationToken) =>
+            Task.FromResult(new LookbackResult(default, default, 0, [], 0, 0, 0, []));
+
+        public Task<LookbackResult> CheckPeriodAsync(int? employeeId, DateTime from, DateTime to, int maxDays, CancellationToken cancellationToken)
+        {
+            (EmployeeAsked, FromAsked, ToAsked) = (employeeId, from, to);
+            return Task.FromResult(new LookbackResult(from, to, 0, [], 21, 0, 0, [new DateTime(2026, 4, 3)]));
+        }
+
+        public Task<int> ReexamineAbsencesAsync(int? employeeId, DateTime from, DateTime to, CancellationToken cancellationToken) => Task.FromResult(0);
     }
 
     private sealed class FakeRecords : IAttendanceRecordService

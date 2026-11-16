@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using robeem.Contracts.Attendance;
 using robeem.Web.Actors;
@@ -50,6 +52,50 @@ public sealed class RecordsController : Controller
             OnlyWithExceptions = onlyWithExceptions,
             Sort = field,
             Descending = descending,
+            CanCheckMissing = _actor.IsInRole(NavigationMenu.Hr),
+        });
+    }
+
+    /// <summary>
+    /// Looks for the days nobody punched on in the period the list is filtered to (of the employee it is filtered to, else of everyone), so that a
+    /// no-show is raised for each scheduled day that was missed. A day is calculated when punches arrive for it, and the nightly run reaches only
+    /// the last days, so this is how a period imported later is checked.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> CheckMissing(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int pageSize, CancellationToken cancellationToken)
+    {
+        string? problem = null;
+        if (from is null || to is null)
+        {
+            problem = "Choose the first and the last day to look at, then press Find missing days.";
+        }
+        else if (to < from)
+        {
+            problem = "The last day can't be before the first.";
+        }
+        else if ((to.Value.Date - from.Value.Date).Days + 1 > CheckMissingDaysRequest.MaxDays)
+        {
+            problem = $"Look at at most {CheckMissingDaysRequest.MaxDays} days at a time.";
+        }
+
+        if (problem is not null)
+        {
+            TempData["ErrorMessage"] = problem;
+        }
+        else
+        {
+            var result = await _records.CheckMissingDaysAsync(from!.Value, to!.Value, employeeId, cancellationToken);
+            TempData["StatusMessage"] = CheckMissingMessage(result);
+        }
+
+        return RedirectToAction(nameof(Index), new
+        {
+            from = from?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            to = to?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            employeeId,
+            status,
+            onlyWithExceptions = onlyWithExceptions ? "true" : null,
+            pageSize = pageSize > 0 ? pageSize : (int?)null,
         });
     }
 
@@ -119,5 +165,29 @@ public sealed class RecordsController : Controller
             ? "The day was calculated again and nothing changed."
             : $"The day was calculated again: {result.RecordsWritten} record(s) written, {result.RecordsRetired} retired, {result.ExceptionsRaised} exception(s) raised, {result.ExceptionsResolved} resolved.";
         return RedirectToAction(nameof(Day), new { employeeId, date = date.ToString("yyyy-MM-dd") });
+    }
+
+    private static string CheckMissingMessage(CheckMissingDaysResponse result)
+    {
+        var message = new StringBuilder();
+        message.Append(CultureInfo.InvariantCulture, $"Looked for missing days from {result.From:yyyy-MM-dd} to {result.To:yyyy-MM-dd}: {result.DaysCalculated} day(s) calculated.");
+        if (result.DaysFailed > 0)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" {result.DaysFailed} could not be calculated and are tried again by the nightly run.");
+        }
+
+        if (result.DaysDeferred > 0)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" {result.DaysDeferred} more are waiting: press the button again.");
+        }
+
+        if (result.DatesWithoutData.Count > 0)
+        {
+            var shown = string.Join(", ", result.DatesWithoutData.Take(5).Select(d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+            message.Append(CultureInfo.InvariantCulture, $" Nobody punched at all on {result.DatesWithoutData.Count} working date(s) ({shown}{(result.DatesWithoutData.Count > 5 ? ", …" : string.Empty)}); those are skipped, because the import is more likely to be missing than everyone away.");
+        }
+
+        message.Append(" The no-shows are on the Exceptions tab.");
+        return message.ToString();
     }
 }

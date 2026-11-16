@@ -10,6 +10,7 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
     options.Filters.Add<TenantSelectionRequiredFilter>();
     options.Filters.Add<DatabaseUnavailableFilter>();
+    options.Filters.Add<RequestAbortedFilter>();
     options.Filters.Add<ApiAccessDeniedFilter>();
     options.Filters.Add<ActorAccessFilter>();
 });

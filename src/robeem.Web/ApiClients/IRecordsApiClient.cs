@@ -21,4 +21,7 @@ public interface IRecordsApiClient
 
     /// <summary>Runs the day through the processing engine again (HR only); null when there is no such employee.</summary>
     Task<ReprocessResponse?> ReprocessAsync(int employeeId, DateTime date, CancellationToken cancellationToken);
+
+    /// <summary>Looks for missing days in a period (HR only), so that a no-show is raised for each scheduled day nobody punched on.</summary>
+    Task<CheckMissingDaysResponse> CheckMissingDaysAsync(DateTime from, DateTime to, int? employeeId, CancellationToken cancellationToken);
 }

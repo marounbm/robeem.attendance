@@ -35,6 +35,9 @@ public sealed class RecordsIndexViewModel
     /// <summary>Gets the one employee shown, or null for everyone the user may see.</summary>
     public int? EmployeeId { get; init; }
 
+    /// <summary>Gets a value indicating whether the user may ask for missing days to be looked for in the period (HR).</summary>
+    public bool CanCheckMissing { get; init; }
+
     /// <summary>Gets the employees the user can narrow the list to.</summary>
     public IReadOnlyList<EmployeeOption> Employees { get; init; } = Array.Empty<EmployeeOption>();
 

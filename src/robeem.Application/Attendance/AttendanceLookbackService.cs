@@ -61,6 +61,44 @@ public sealed class AttendanceLookbackService : IAttendanceLookbackService
         return new LookbackResult(from, to, checkedDevices, silent, calculated, failed, Math.Max(0, work.Count - Math.Max(1, maxDays)), datesWithoutData);
     }
 
+    public async Task<LookbackResult> CheckPeriodAsync(int? employeeId, DateTime from, DateTime to, int maxDays, CancellationToken cancellationToken)
+    {
+        // Today is not over, so the last day that can be missing is yesterday.
+        var yesterday = _clock.GetLocalNow().DateTime.Date.AddDays(-1);
+        var first = DateTime.SpecifyKind(from.Date, DateTimeKind.Unspecified);
+        var last = DateTime.SpecifyKind(to.Date > yesterday ? yesterday : to.Date, DateTimeKind.Unspecified);
+        if (first > last)
+        {
+            return new LookbackResult(first, last, 0, [], 0, 0, 0, []);
+        }
+
+        var employees = await _db.Profiles.AsNoTracking()
+            .Where(p => p.IsActive && (employeeId == null || p.Id == employeeId))
+            .Select(p => new EmployeeInfo(p.Id, p.HireDate, p.TerminationDate, p.PayBasis))
+            .ToListAsync(cancellationToken);
+        var calendar = await _absences.GetAsync(employees.Select(e => e.Id).ToList(), first, last, cancellationToken);
+
+        // The same finders as the nightly run, over the period asked for instead of the last days.
+        var work = new SortedSet<(DateTime Date, int EmployeeId)>();
+        var datesWithoutData = await AddMissingDaysAsync(work, employees, calendar, first, last, cancellationToken);
+        await AddIncompleteDaysAsync(work, first, last, cancellationToken);
+        await AddAbsenceDaysAsync(work, calendar, employeeId, first, last, cancellationToken);
+        if (employeeId is not null)
+        {
+            work.RemoveWhere(w => w.EmployeeId != employeeId);
+        }
+
+        var limit = Math.Max(1, maxDays);
+        var (calculated, failed) = await ProcessAsync(work.Take(limit).ToList(), cancellationToken);
+        _audit.Record(
+            AttendanceAuditActions.DayReprocessed,
+            "Period",
+            employeeId,
+            $"Looked for missing days from {first:yyyy-MM-dd} to {last:yyyy-MM-dd} ({(employeeId is null ? "everyone" : $"employee {employeeId}")}): {calculated} day(s) calculated, {failed} failed, {Math.Max(0, work.Count - limit)} left for another run.");
+        await _db.SaveChangesAsync(cancellationToken);
+        return new LookbackResult(first, last, 0, [], calculated, failed, Math.Max(0, work.Count - limit), datesWithoutData);
+    }
+
     public async Task<int> ReexamineAbsencesAsync(int? employeeId, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         var first = DateTime.SpecifyKind(from.Date, DateTimeKind.Unspecified);

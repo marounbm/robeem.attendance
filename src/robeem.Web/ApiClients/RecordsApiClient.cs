@@ -75,6 +75,12 @@ public sealed class RecordsApiClient : IRecordsApiClient
         return response.StatusCode == HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<RecordDayDetail>(response, cancellationToken);
     }
 
+    public async Task<CheckMissingDaysResponse> CheckMissingDaysAsync(DateTime from, DateTime to, int? employeeId, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/check-missing", new CheckMissingDaysRequest { From = from.Date, To = to.Date, EmployeeId = employeeId }, cancellationToken);
+        return await ApiResponses.ReadAsync<CheckMissingDaysResponse>(response, cancellationToken);
+    }
+
     public async Task<ReprocessResponse?> ReprocessAsync(int employeeId, DateTime date, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsync($"{DayPath(employeeId, date)}/reprocess", null, cancellationToken);

@@ -11,6 +11,14 @@ public interface IAttendanceLookbackService
     Task<LookbackResult> RunAsync(int windowDays, int maxDays, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Looks for missing days in any period (of one employee, or of everyone), the way the nightly run does for the last days: the scheduled days
+    /// with no calculation yet, on dates when somebody punched, and the days still lacking a check-out. A day is calculated when punches arrive for
+    /// it, and the nightly run reaches only the last days, so a period imported later has no no-show for the days nobody punched until this is asked.
+    /// Ends at yesterday; calculates at most <paramref name="maxDays"/> employee-days, the rest are reported as deferred. The engine decides; this only hands it the days.
+    /// </summary>
+    Task<LookbackResult> CheckPeriodAsync(int? employeeId, DateTime from, DateTime to, int maxDays, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Calculates again the days from <paramref name="from"/> to <paramref name="to"/> (of one employee, or of everyone) whose
     /// excused time may have changed: those with an open no-show, a no-show once excused, or leave that the record does not match.
     /// Returns how many employee-days were calculated. For the leave module to call when it saves a leave.

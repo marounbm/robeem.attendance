@@ -85,6 +85,23 @@
     </div>
 </form>
 
+@if (Model.CanCheckMissing)
+{
+    <form method="post" asp-action="CheckMissing" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <input type="hidden" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="employeeId" value="@Model.EmployeeId" />
+        <input type="hidden" name="status" value="@Model.Status" />
+        <input type="hidden" name="onlyWithExceptions" value="@(Model.OnlyWithExceptions ? "true" : "false")" />
+        <input type="hidden" name="pageSize" value="@Model.PageSize" />
+        <button type="submit" class="btn btn-outline-primary btn-sm" disabled="@(Model.From is null || Model.To is null)">Find missing days</button>
+        <span class="small text-muted">
+            A day nobody punched on has no line here until it is looked for. This looks for them in the period above (of the chosen employee, or of everyone) and raises a no-show for each
+            scheduled working day that was missed; holidays and approved leave are not. Choose a first and a last day first.
+        </span>
+    </form>
+}
+
 <div class="card">
     @if (Model.Items.Count == 0)
     {

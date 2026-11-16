@@ -187,6 +187,60 @@ public sealed class RecordsWebTests
     }
 
     [Fact]
+    public async Task AnHrAdministratorCanLookForMissingDaysInTheFilteredPeriod_AndComesBackToTheSameList()
+    {
+        var records = new FakeRecords
+        {
+            CheckResult = new CheckMissingDaysResponse
+            {
+                From = new DateTime(2026, 4, 1),
+                To = new DateTime(2026, 4, 30),
+                DaysCalculated = 21,
+                DaysDeferred = 3,
+                DatesWithoutData = [new DateTime(2026, 4, 3)],
+            },
+        };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var result = (RedirectToActionResult)await controller.CheckMissing(new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), 2, "Any", true, 50, CancellationToken.None);
+
+        Assert.Equal(("Index", "2026-04-01", "2026-04-30", 2, "true", 50), (result.ActionName, result.RouteValues!["from"], result.RouteValues["to"], result.RouteValues["employeeId"], result.RouteValues["onlyWithExceptions"], result.RouteValues["pageSize"]));
+        Assert.Equal((new DateTime(2026, 4, 1), new DateTime(2026, 4, 30), 2), (records.CheckedFrom, records.CheckedTo, records.CheckedEmployee));
+        var message = (string)controller.TempData["StatusMessage"]!;
+        Assert.Contains("21 day(s) calculated", message);
+        Assert.Contains("3 more are waiting", message);
+        Assert.Contains("2026-04-03", message);
+    }
+
+    [Fact]
+    public async Task LookingForMissingDays_NeedsAFirstAndALastDay_InOrder_AndNotMoreThanAYear()
+    {
+        var records = new FakeRecords();
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        await controller.CheckMissing(null, new DateTime(2026, 4, 30), null, null, false, 0, CancellationToken.None);
+        Assert.Contains("first and the last day", (string)controller.TempData["ErrorMessage"]!);
+
+        await controller.CheckMissing(new DateTime(2026, 4, 30), new DateTime(2026, 4, 1), null, null, false, 0, CancellationToken.None);
+        Assert.Contains("can't be before the first", (string)controller.TempData["ErrorMessage"]!);
+
+        await controller.CheckMissing(new DateTime(2025, 1, 1), new DateTime(2026, 4, 1), null, null, false, 0, CancellationToken.None);
+        Assert.Contains("at most 366 days", (string)controller.TempData["ErrorMessage"]!);
+        Assert.Null(records.CheckedFrom);
+    }
+
+    [Fact]
+    public async Task OnlyHrIsOfferedTheButtonToLookForMissingDays()
+    {
+        var records = new FakeRecords();
+
+        var asHr = (RecordsIndexViewModel)((ViewResult)await Controller(records, ["HRAdministrator"]).Index(null, null, null, false, null, 1, 20, null, null, CancellationToken.None)).Model!;
+        var asManager = (RecordsIndexViewModel)((ViewResult)await Controller(records, ["Manager"]).Index(null, null, null, false, null, 1, 20, null, null, CancellationToken.None)).Model!;
+
+        Assert.Equal((true, false), (asHr.CanCheckMissing, asManager.CanCheckMissing));
+    }
+
+    [Fact]
     public async Task Reprocessing_ReportsWhatChanged_AndReturnsToTheDay()
     {
         var records = new FakeRecords { Result = new ReprocessResponse { RecordsWritten = 1, RecordsRetired = 1 } };
@@ -328,6 +382,14 @@ public sealed class RecordsWebTests
 
         public ReprocessResponse Result { get; set; } = new();
 
+        public CheckMissingDaysResponse CheckResult { get; set; } = new();
+
+        public DateTime? CheckedFrom { get; private set; }
+
+        public DateTime? CheckedTo { get; private set; }
+
+        public int? CheckedEmployee { get; private set; }
+
         public int PageAsked { get; private set; }
 
         public int PageSizeAsked { get; private set; }
@@ -363,6 +425,12 @@ public sealed class RecordsWebTests
 
         public Task<ReprocessResponse?> ReprocessAsync(int employeeId, DateTime date, CancellationToken cancellationToken) =>
             Task.FromResult<ReprocessResponse?>(Missing ? null : Result);
+
+        public Task<CheckMissingDaysResponse> CheckMissingDaysAsync(DateTime from, DateTime to, int? employeeId, CancellationToken cancellationToken)
+        {
+            (CheckedFrom, CheckedTo, CheckedEmployee) = (from, to, employeeId);
+            return Task.FromResult(CheckResult);
+        }
     }
 
     private sealed class FakeExceptions : IExceptionsApiClient

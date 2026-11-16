@@ -246,6 +246,66 @@ public sealed class AttendanceLookbackServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task AnImportedPeriodOutsideTheNightlyWindow_IsCheckedOnRequest_AndBecomesNoShowsOfTheEmployeesWhoDidNotPunch()
+    {
+        // Bob worked a Monday months ago, long before the nightly window of 30 days; Ada did not come.
+        BobWorks(Monday);
+        Clock.Local = Monday.AddDays(200).At(3, 0);
+        Assert.Equal(0, (await RunAsync()).DaysCalculated);
+        Assert.Empty(Exceptions());
+
+        // One employee only: Bob's own day is calculated, and nothing is raised against Ada.
+        var bobOnly = await CheckAsync(_bob, Monday, Monday);
+        Assert.Equal((1, 0), (bobOnly.DaysCalculated, bobOnly.DaysFailed));
+        Assert.Empty(Exceptions());
+
+        // Everyone: Ada's missed day becomes a no-show.
+        var everyone = await CheckAsync(null, Monday.AddDays(-7), Monday.AddDays(30));
+        var noShow = Assert.Single(Exceptions());
+        Assert.Equal((EmployeeId, Monday, AttendanceExceptionType.NoShow), (noShow.EmployeeId, noShow.AttendanceDate, noShow.ExceptionType));
+        Assert.Equal(1, everyone.DaysCalculated);
+
+        // Asked again, nothing is raised twice.
+        await CheckAsync(null, Monday.AddDays(-7), Monday.AddDays(30));
+        Assert.Single(Exceptions());
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.DayReprocessed && a.Details!.StartsWith("Looked for missing days", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CheckingAPeriod_EndsAtYesterday_ReportsDatesNobodyPunchedOn_AndStopsAtTheCap()
+    {
+        BobWorks(Monday);
+        Clock.Local = Tuesday.At(20, 0);
+
+        // The period asked for reaches into the future: it ends yesterday, and the Mondays before that nobody punched on are named.
+        var result = await CheckAsync(null, Monday.AddDays(-14), Monday.AddDays(60));
+        Assert.Equal(Monday, result.To);
+        Assert.Equal([Monday.AddDays(-14), Monday.AddDays(-7)], result.DatesWithoutData);
+
+        // A period that is entirely ahead looks at nothing.
+        var future = await CheckAsync(null, Tuesday.AddDays(3), Tuesday.AddDays(9));
+        Assert.Equal((0, 0, 0), (future.DaysCalculated, future.DaysFailed, future.DaysDeferred));
+    }
+
+    [Fact]
+    public async Task CheckingAPeriod_StopsAtTheCap_AndTheRestWaitsForTheNextRequest()
+    {
+        BobWorks(Monday);
+        Clock.Local = Tuesday.At(20, 0);
+
+        // Ada's missed day and Bob's day wait: one at a time.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var first = await Service(db).CheckPeriodAsync(null, Monday, Monday, 1, CancellationToken.None);
+        var second = await Service(db).CheckPeriodAsync(null, Monday, Monday, 1, CancellationToken.None);
+
+        Assert.Equal((1, 1), (first.DaysCalculated, first.DaysDeferred));
+        Assert.Equal((1, 0), (second.DaysCalculated, second.DaysDeferred));
+        Assert.Equal(1, db.AttendanceExceptions.Count(e => e.ExceptionType == AttendanceExceptionType.NoShow));
+    }
+
+    [Fact]
     public async Task ADeviceOnALiveConnectionWithNoPunch_IsSilent_AndOneThatSentSomethingOrIsUploadedByHandIsNot()
     {
         AddDevice("Gate A", AttendanceTransport.RestApi, sendsPunches: true);
@@ -271,6 +331,12 @@ public sealed class AttendanceLookbackServiceTests : AttendanceEngineTestBase
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         return await Service(db).RunAsync(30, 2000, CancellationToken.None);
+    }
+
+    private async Task<LookbackResult> CheckAsync(int? employeeId, DateTime from, DateTime to)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await Service(db).CheckPeriodAsync(employeeId, from, to, 2000, CancellationToken.None);
     }
 
     private List<AttendanceException> Exceptions()
