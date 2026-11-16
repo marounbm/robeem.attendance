@@ -4,11 +4,12 @@ namespace robeem.Application.Attendance;
 internal static class ShiftFacts
 {
     /// <summary>The facts of a finding on <paramref name="shift"/> (null for work outside a shift) that goes <paramref name="minutesOver"/> past what is allowed.</summary>
-    public static RuleFacts For(ResolvedShift? shift, int minutesOver, int excusedMinutes) => new()
+    public static RuleFacts For(ResolvedShift? shift, int minutesOver, int excusedMinutes, int minutesAfterShiftEnd = 0) => new()
     {
         MinutesOver = minutesOver,
         ShiftHasBreak = shift?.BreakTime == true,
         ShiftIsOvernight = shift is not null && shift.EndsAt.Date > shift.StartsAt.Date,
         ExcusedMinutes = excusedMinutes,
+        MinutesAfterShiftEnd = minutesAfterShiftEnd,
     };
 }

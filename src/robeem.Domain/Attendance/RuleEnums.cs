@@ -29,6 +29,9 @@ namespace robeem.DataModel
 
         /// <summary>Do not raise an exception for the finding. Needs a reason, and is audited when the rule set is published.</summary>
         SuppressException,
+
+        /// <summary>Count a short break (a break-out followed at once by its break-in) as work: both punches are left out of the calculation. A stored punch is never changed.</summary>
+        IgnoreShortBreak,
     }
 
     /// <summary>What an exception rule is about. Stored as its name.</summary>
@@ -79,6 +82,12 @@ namespace robeem.DataModel
 
         /// <summary>The minutes of the shift covered by part-day approved leave. Exception only.</summary>
         ExcusedMinutes,
+
+        /// <summary>How long ago the shift ended, in minutes. Only a rule about a no-show can use it: it is how long to wait before a shift with no punch is a no-show.</summary>
+        MinutesAfterShiftEnd,
+
+        /// <summary>How long a break lasted, in whole minutes (a gap between a check-out and a check-in, or a break-out and its break-in). Only a rule that counts a short break as work can use it.</summary>
+        BreakMinutes,
     }
 
     /// <summary>How a condition compares a fact with its value. Stored as its name.</summary>

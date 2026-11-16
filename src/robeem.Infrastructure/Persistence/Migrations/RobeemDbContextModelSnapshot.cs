@@ -1252,6 +1252,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<bool>("ThresholdsInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<int?>("TimeScheduleId")
                         .HasColumnType("integer");
 

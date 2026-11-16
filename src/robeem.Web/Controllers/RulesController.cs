@@ -13,6 +13,8 @@ public sealed class RulesController : Controller
 {
     private const string StatusMessageKey = "StatusMessage";
     private const string ErrorMessageKey = "ErrorMessage";
+    private const string ChangedMessage = "The rule was changed and the rules were published as a new version. Days are calculated with them from now on.";
+    private const string StaleMessage = "The rules were changed since that page was shown. Here they are as they are now.";
 
     private readonly IRulesApiClient _rules;
 
@@ -119,6 +121,88 @@ public sealed class RulesController : Controller
         return View(model);
     }
 
+    /// <summary>
+    /// Switches one rule on or off, deletes it or moves it, straight from the grid. A published set is never edited, so the change is
+    /// published at once as the next version.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> Manage(int? scheduleId, int version, int position, string operation, CancellationToken cancellationToken)
+    {
+        var result = await _rules.ChangeRuleAsync(
+            new RuleChangeRequest { TimeScheduleId = scheduleId, ExpectedVersion = version, Position = position, Operation = operation },
+            cancellationToken);
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        TempData[result.Succeeded ? StatusMessageKey : ErrorMessageKey] = result.Succeeded ? ChangedMessage : result.MessageText;
+        return RedirectToAction(nameof(Index), new { scheduleId });
+    }
+
+    /// <summary>One rule of the rules in force, on a page of its own.</summary>
+    [HttpGet]
+    public async Task<IActionResult> EditRule(int? scheduleId, int position, int version, CancellationToken cancellationToken)
+    {
+        var current = await _rules.GetCurrentAsync(scheduleId, cancellationToken);
+        if (current is null || position < 0 || position >= current.Rules.Count)
+        {
+            return NotFound();
+        }
+
+        if (current.Version != version)
+        {
+            TempData[ErrorMessageKey] = StaleMessage;
+            return RedirectToAction(nameof(Index), new { scheduleId });
+        }
+
+        return View(new RulesEditViewModel { ScheduleId = scheduleId, ScopeTitle = current.ScopeTitle, Position = position, ExpectedVersion = version, Rules = [current.Rules[position]] });
+    }
+
+    /// <summary>Saving publishes the rule as the next version; the other buttons change the rule on the page (add or remove a condition) and show it again, unsaved.</summary>
+    [HttpPost]
+    public async Task<IActionResult> EditRule(int? scheduleId, int position, int version, RulesEditViewModel model, string command, CancellationToken cancellationToken)
+    {
+        model.ScheduleId = scheduleId;
+        model.Position = position;
+        model.ExpectedVersion = version;
+        if (model.Rules is not { Count: 1 })
+        {
+            return BadRequest();
+        }
+
+        Normalize(model);
+        if (command == "save")
+        {
+            var result = await _rules.ChangeRuleAsync(
+                new RuleChangeRequest { TimeScheduleId = scheduleId, ExpectedVersion = version, Position = position, Operation = RuleChangeOperations.Replace, Rule = model.Rules[0], Notes = model.Notes },
+                cancellationToken);
+            if (result.NotFound)
+            {
+                return NotFound();
+            }
+
+            if (result.Succeeded)
+            {
+                TempData[StatusMessageKey] = ChangedMessage;
+                return RedirectToAction(nameof(Index), new { scheduleId });
+            }
+
+            foreach (var (field, message) in result.Errors)
+            {
+                ModelState.AddModelError(field, message);
+            }
+        }
+        else
+        {
+            Change(model, command);
+            ModelState.Clear();
+        }
+
+        model.ScopeTitle = (await _rules.GetCurrentAsync(scheduleId, cancellationToken))?.ScopeTitle ?? model.ScopeTitle;
+        return View(model);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Discard(int draftId, int? scheduleId, CancellationToken cancellationToken)
     {
@@ -133,9 +217,9 @@ public sealed class RulesController : Controller
         foreach (var rule in model.Rules)
         {
             rule.Conditions ??= [];
-            rule.Stage = rule.Action == "InferBreak" ? "Interpretation" : "Exception";
+            rule.Stage = rule.Action is "InferBreak" or "IgnoreShortBreak" ? "Interpretation" : "Exception";
             rule.Sentence = string.Empty;
-            if (rule.Action == "InferBreak")
+            if (rule.Action is "InferBreak" or "IgnoreShortBreak")
             {
                 rule.Finding = null;
             }
@@ -146,6 +230,14 @@ public sealed class RulesController : Controller
             }
         }
     }
+
+    /// <summary>The fact a new condition looks at to begin with: the gap, the break, or the finding, by what the rule does.</summary>
+    private static string DefaultFact(string action) => action switch
+    {
+        "InferBreak" => "GapMinutes",
+        "IgnoreShortBreak" => "BreakMinutes",
+        _ => "MinutesOver",
+    };
 
     private static void Change(RulesEditViewModel model, string command)
     {
@@ -168,7 +260,7 @@ public sealed class RulesController : Controller
                 (rules[i + 1], rules[i]) = (rules[i], rules[i + 1]);
                 break;
             case "add-condition" when i >= 0 && i < rules.Count:
-                rules[i].Conditions.Add(new ConditionDto { Fact = rules[i].Action == "InferBreak" ? "GapMinutes" : "MinutesOver", Operator = "GreaterOrEqual", Value = 0 });
+                rules[i].Conditions.Add(new ConditionDto { Fact = DefaultFact(rules[i].Action), Operator = "GreaterOrEqual", Value = 0 });
                 break;
             case "remove-condition" when i >= 0 && i < rules.Count && Index(2) is var j && j >= 0 && j < rules[i].Conditions.Count:
                 rules[i].Conditions.RemoveAt(j);

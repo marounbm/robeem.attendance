@@ -22,12 +22,24 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var rules = RuleSetSnapshot.FromPolicy(policy);
 
         Assert.Equal((0, "the policy"), (rules.Version, rules.Source));
-        Assert.True(rules.Raises(RuleFinding.LongBreak, new RuleFacts()));
-        Assert.False(rules.Raises(RuleFinding.LateBreak, new RuleFacts()));
-        Assert.False(rules.Raises(RuleFinding.EarlyBreak, new RuleFacts()));
+        Assert.False(rules.Raises(RuleFinding.LateBreak, new RuleFacts { MinutesOver = 60 }));
+        Assert.False(rules.Raises(RuleFinding.EarlyBreak, new RuleFacts { MinutesOver = 60 }));
         Assert.False(rules.Raises(RuleFinding.NoBreak, new RuleFacts()));
-        Assert.True(rules.Raises(RuleFinding.NoShow, new RuleFacts()));
         Assert.False(rules.CanInferBreak);
+
+        // The policy's numbers are conditions of the rules: a long break is over 5 minutes past the scheduled break, a late or early one is
+        // over 15 minutes from its start, and a no-show waits 120 minutes after the shift ends.
+        Assert.False(rules.Raises(RuleFinding.LongBreak, new RuleFacts { MinutesOver = 5 }));
+        Assert.True(rules.Raises(RuleFinding.LongBreak, new RuleFacts { MinutesOver = 6 }));
+        Assert.True(rules.Notes(RuleFinding.LateBreak, new RuleFacts { MinutesOver = 16 }));
+        Assert.False(rules.Notes(RuleFinding.LateBreak, new RuleFacts { MinutesOver = 15 }));
+        Assert.False(rules.Raises(RuleFinding.NoShow, new RuleFacts { MinutesAfterShiftEnd = 119 }));
+        Assert.True(rules.Raises(RuleFinding.NoShow, new RuleFacts { MinutesAfterShiftEnd = 120 }));
+        var custom = RuleSetSnapshot.FromPolicy(new AttendancePolicy { LongBreakGraceMinutes = 10, BreakStartGraceMinutes = 30, MissingPunchGraceMinutes = 45, RaiseExceptionOnLongBreak = true });
+        Assert.False(custom.Raises(RuleFinding.LongBreak, new RuleFacts { MinutesOver = 10 }));
+        Assert.True(custom.Raises(RuleFinding.LongBreak, new RuleFacts { MinutesOver = 11 }));
+        Assert.True(custom.Notes(RuleFinding.EarlyBreak, new RuleFacts { MinutesOver = 31 }));
+        Assert.True(custom.Raises(RuleFinding.NoShow, new RuleFacts { MinutesAfterShiftEnd = 45 }));
 
         var inferring = RuleSetSnapshot.FromPolicy(new AttendancePolicy { BreakInferenceMode = BreakInferenceMode.FromGap, InferredBreakWindowMinutes = 30, InferredBreakMaxMinutes = 60 });
         Assert.True(inferring.CanInferBreak);
@@ -111,7 +123,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         Assert.Equal("When the shift has a break and the gap lasts at most 120 minutes, read the gap as the break (marked as inferred).", infer);
         Assert.Equal("Always do not raise an exception for a no-show (reason: Unannounced days are fine.).", suppress);
         Assert.Equal("When the shift ends the same day, raise an exception for a long break.", always);
-        Assert.Equal(6, current.Rules.Count);
+        Assert.Equal(7, current.Rules.Count);
     }
 
     [Fact]
@@ -121,7 +133,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var service = Service(db);
 
         var current = (await service.GetCurrentAsync(null, CancellationToken.None))!;
-        Assert.Equal(("Policy", 0, 6, null), (current.Status, current.Version, current.Rules.Count, current.Id));
+        Assert.Equal(("Policy", 0, 7, null), (current.Status, current.Version, current.Rules.Count, current.Id));
         Assert.Contains("read the gap as the break", current.Rules[0].Sentence);
         Assert.Equal(["The whole company (the default policy)"], (await service.ListScopesAsync(CancellationToken.None)).Select(s => s.Title));
 
@@ -134,10 +146,12 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var draft = (await service.GetAsync(draftId, CancellationToken.None))!;
         draft.Rules[1].Conditions.Add(new ConditionDto { Fact = "Weekend", Operator = "Equals", Value = 1 });
         var refused = await service.SaveDraftAsync(draftId, new RulesSaveRequest { Rules = draft.Rules }, CancellationToken.None);
-        Assert.Contains("Rules[1].Conditions[0].Fact", refused.Errors.Keys);
-        Assert.Empty((await service.GetAsync(draftId, CancellationToken.None))!.Rules[1].Conditions);
+        Assert.Contains("Rules[1].Conditions[1].Fact", refused.Errors.Keys);
 
-        draft.Rules[1].Conditions[0] = new ConditionDto { Fact = "MinutesOver", Operator = "GreaterOrEqual", Value = 30 };
+        // The long-break rule starts with the policy's allowance as its one condition.
+        Assert.Equal("MinutesOver", Assert.Single((await service.GetAsync(draftId, CancellationToken.None))!.Rules[1].Conditions).Fact);
+
+        draft.Rules[1].Conditions[1] = new ConditionDto { Fact = "MinutesOver", Operator = "GreaterOrEqual", Value = 30 };
         draft.Rules[1].IsEnabled = true;
         Assert.True((await service.SaveDraftAsync(draftId, new RulesSaveRequest { Rules = draft.Rules, Notes = "Long breaks over half an hour." }, CancellationToken.None)).Succeeded);
         Assert.Equal(("Draft", 0), ((await service.GetAsync(draftId, CancellationToken.None))!.Status, (await service.GetAsync(draftId, CancellationToken.None))!.Version));
@@ -220,6 +234,18 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         await PublishAsync(rules =>
         {
             var rule = rules.Single(r => r.Finding == "LongBreak");
+            var index = rules.IndexOf(rule);
+
+            // The rule raises from 30 minutes over; a rule that is off after it keeps noting a long break from 5 minutes over, as the policy did.
+            rules.Insert(index + 1, new RuleDto
+            {
+                Name = "Note a long break",
+                Stage = "Exception",
+                Action = "RaiseException",
+                Finding = "LongBreak",
+                IsEnabled = false,
+                Conditions = [new ConditionDto { Fact = "MinutesOver", Operator = "GreaterThan", Value = 5 }],
+            });
             rule.IsEnabled = true;
             rule.Conditions = [new ConditionDto { Fact = "MinutesOver", Operator = "GreaterOrEqual", Value = 30 }];
         });
@@ -297,6 +323,317 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         using var check = Database.CreateContext(TestDatabase.TenantA);
         var record = Assert.Single(check.AttendanceRecords);
         Assert.Equal((1, 1, true), (record.Version, record.RuleSetVersion, record.IsCurrent));
+    }
+
+    [Fact]
+    public async Task OneRuleCanBeSwitchedOff_MovedChangedAndDeleted_EachPublishedAsTheNextVersionWithTheOthersAsTheyWere()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        var start = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        var names = start.Rules.Select(r => r.Name).ToList();
+        Assert.Equal(0, start.Version);
+        var p = start.Rules.FindIndex(r => r.IsEnabled);
+        Assert.InRange(p, 0, start.Rules.Count - 2);
+
+        // Switch the first rule that is on off: the starting rules are published as version 1 with that one change.
+        var off = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Disable, Position = p }, CancellationToken.None);
+        Assert.True(off.Succeeded);
+        var v1 = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal(("Published", 1), (v1.Status, v1.Version));
+        Assert.Equal(names, v1.Rules.Select(r => r.Name));
+        Assert.Equal(start.Rules.Select((r, i) => i != p && r.IsEnabled), v1.Rules.Select(r => r.IsEnabled));
+        Assert.Contains($"Switched off rule {p + 1}", v1.Notes);
+        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.RuleSetPublished && a.Details!.Contains("version 1 published") && a.Details.Contains($"Switched off rule {p + 1}"));
+
+        // A change made against the version before is refused, and so is a change that changes nothing.
+        var stale = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Disable, Position = 2, ExpectedVersion = 0 }, CancellationToken.None);
+        Assert.Contains("changed since", stale.Errors["id"]);
+        var again = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Disable, Position = p, ExpectedVersion = 1 }, CancellationToken.None);
+        Assert.Contains("off already", again.Errors["id"]);
+
+        // Move it down; the first rule can't go earlier.
+        Assert.True((await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.MoveDown, Position = p, ExpectedVersion = 1 }, CancellationToken.None)).Succeeded);
+        var moved = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal((2, names[p]), (moved.Version, moved.Rules[p + 1].Name));
+        Assert.Equal(names[p + 1], moved.Rules[p].Name);
+        Assert.False(moved.Rules[p + 1].IsEnabled);
+        var first = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.MoveUp, Position = 0, ExpectedVersion = 2 }, CancellationToken.None);
+        Assert.Contains("first already", first.Errors["id"]);
+
+        // Change one rule: a refused one publishes nothing, with the error keyed as on the form.
+        var edited = moved.Rules[0];
+        edited.Name = " ";
+        var refused = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Replace, Position = 0, ExpectedVersion = 2, Rule = edited }, CancellationToken.None);
+        Assert.Contains("Rules[0].Name", refused.Errors.Keys);
+        Assert.Equal(2, (await service.GetCurrentAsync(null, CancellationToken.None))!.Version);
+        edited.Name = "Read the break from the gap";
+        Assert.True((await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Replace, Position = 0, ExpectedVersion = 2, Rule = edited, Notes = "Renamed." }, CancellationToken.None)).Succeeded);
+        var renamed = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal((3, "Read the break from the gap", "Renamed."), (renamed.Version, renamed.Rules[0].Name, renamed.Notes));
+
+        // Delete one; the rest keep their order.
+        var count = renamed.Rules.Count;
+        Assert.True((await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Delete, Position = 1, ExpectedVersion = 3 }, CancellationToken.None)).Succeeded);
+        var deleted = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal(count - 1, deleted.Rules.Count);
+        Assert.Equal(renamed.Rules.Where((_, i) => i != 1).Select(r => r.Name), deleted.Rules.Select(r => r.Name));
+
+        // Nothing was edited: every version is in the history, the earlier ones retired.
+        var history = await service.ListHistoryAsync(null, CancellationToken.None);
+        Assert.Equal([(4, "Published"), (3, "Retired"), (2, "Retired"), (1, "Retired")], history.Select(h => (h.Version, h.Status)));
+        Assert.Equal(start.Rules.Count, history[^1].RuleCount);
+
+        var nowhere = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Delete, Position = 99, ExpectedVersion = 4 }, CancellationToken.None);
+        Assert.Contains("no such rule", nowhere.Errors["id"]);
+        var unknown = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = "Explode", Position = 0, ExpectedVersion = 4 }, CancellationToken.None);
+        Assert.Contains(nameof(RuleChangeRequest.Operation), unknown.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task ARuleCannotBeChangedOneByOne_WhileTheScopeHasADraft()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        await service.CreateDraftAsync(null, CancellationToken.None);
+
+        var result = await service.ChangeRuleAsync(new RuleChangeRequest { Operation = RuleChangeOperations.Disable, Position = 1 }, CancellationToken.None);
+
+        Assert.Contains("draft", result.Errors["id"]);
+        Assert.Empty(await service.ListHistoryAsync(null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task HowLongANoShowWaits_IsAConditionOfItsRule_NotThePolicysMissingPunchGrace()
+    {
+        AssignSchedule(StandardDay);
+        await PublishAsync(rules => rules.Single(r => r.Finding == "NoShow").Conditions = [new ConditionDto { Fact = "MinutesAfterShiftEnd", Operator = "GreaterOrEqual", Value = 30 }]);
+
+        // The shift ends at 17:00 and the policy waits two hours, but the rule waits half an hour.
+        Clock.Local = Monday.At(17, 29);
+        await ProcessAsync(Monday);
+        using (var early = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Empty(early.AttendanceExceptions);
+        }
+
+        Clock.Local = Monday.At(17, 30);
+        await ProcessAsync(Monday);
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(AttendanceExceptionType.NoShow, Assert.Single(db.AttendanceExceptions).ExceptionType);
+    }
+
+    [Fact]
+    public async Task ABreakThresholdIsAConditionOfTheRule_SoARuleCanBeMoreSensitiveThanThePolicyWas()
+    {
+        AssignSchedule(StandardDay);
+        await PublishAsync(rules =>
+        {
+            var rule = rules.Single(r => r.Finding == "LongBreak");
+            rule.IsEnabled = true;
+            rule.Conditions = [new ConditionDto { Fact = "MinutesOver", Operator = "GreaterThan", Value = 2 }];
+        });
+        Clock.Local = Monday.At(23, 0);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+        AddPunch(NormalizedEventType.BreakOut, Monday.At(12, 0));
+        AddPunch(NormalizedEventType.BreakIn, Monday.At(13, 3));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(17, 0));
+
+        await ProcessAsync(Monday);
+
+        // Three minutes over: the policy's allowance of 5 would have called it fine.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(AttendanceExceptionType.LongBreak, Assert.Single(db.AttendanceExceptions).ExceptionType);
+        Assert.True(Assert.Single(db.AttendanceRecords).BreakFindings.HasFlag(BreakFindings.LongBreak));
+    }
+
+    [Fact]
+    public async Task ASetPublishedBeforeTheThresholdsMovedIntoTheRules_StillUsesThePolicysNumbers_AndShowsThemAsConditions()
+    {
+        AssignSchedule(StandardDay);
+        using (var seed = Database.CreateContext(TestDatabase.TenantA))
+        {
+            seed.AttendanceRuleSets.Add(new AttendanceRuleSet
+            {
+                Title = "Rules version 1",
+                Status = RuleSetStatus.Published,
+                Version = 1,
+                ThresholdsInRules = false,
+                Rules =
+                {
+                    new AttendanceRule { Title = "Long breaks", Priority = 10, IsEnabled = true, Stage = RuleStage.Exception, Action = RuleAction.RaiseException, Finding = RuleFinding.LongBreak },
+                },
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        Clock.Local = Monday.AddDays(8).At(0, 0);
+        var nextMonday = Monday.AddDays(7);
+        foreach (var (date, back) in new[] { (Monday, 3), (nextMonday, 8) })
+        {
+            AddPunch(NormalizedEventType.CheckIn, date.At(8, 0));
+            AddPunch(NormalizedEventType.BreakOut, date.At(12, 0));
+            AddPunch(NormalizedEventType.BreakIn, date.At(13, 0).AddMinutes(back));
+            AddPunch(NormalizedEventType.CheckOut, date.At(17, 0));
+        }
+
+        await ProcessAsync(Monday);
+        await ProcessAsync(nextMonday);
+
+        // The rule has no condition of its own, but the policy's allowance of 5 minutes still applies to it, as when it was published.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(nextMonday, Assert.Single(db.AttendanceExceptions).AttendanceDate);
+
+        var current = (await Service(db).GetCurrentAsync(null, CancellationToken.None))!;
+        var condition = Assert.Single(current.Rules.Single(r => r.Finding == "LongBreak").Conditions);
+        Assert.Equal(("MinutesOver", "GreaterThan", 5), (condition.Fact, condition.Operator, condition.Value));
+
+        // The policy's minimum for a break is a rule of the set too, since the set has none of its own.
+        var shortBreak = current.Rules.Single(r => r.Action == "IgnoreShortBreak");
+        Assert.Equal(("BreakMinutes", "LessThan", 10), (shortBreak.Conditions[0].Fact, shortBreak.Conditions[0].Operator, shortBreak.Conditions[0].Value));
+    }
+
+    [Fact]
+    public async Task ADraftStartedBeforeTheThresholdsMoved_MustBeSavedAgainBeforeItIsPublished_SoNoThresholdIsDropped()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var draft = new AttendanceRuleSet
+        {
+            Title = "Draft rules",
+            Status = RuleSetStatus.Draft,
+            ThresholdsInRules = false,
+            Rules =
+            {
+                new AttendanceRule { Title = "Long breaks", Priority = 10, IsEnabled = true, Stage = RuleStage.Exception, Action = RuleAction.RaiseException, Finding = RuleFinding.LongBreak },
+            },
+        };
+        db.AttendanceRuleSets.Add(draft);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        var refused = await service.PublishAsync(draft.Id, null, CancellationToken.None);
+        Assert.Contains("started before", refused.Errors["id"]);
+
+        // Opened, it shows the threshold; saved, it keeps it; then it can be published.
+        var shown = (await service.GetAsync(draft.Id, CancellationToken.None))!;
+        Assert.Equal("MinutesOver", Assert.Single(shown.Rules.Single(r => r.Finding == "LongBreak").Conditions).Fact);
+        Assert.True((await service.SaveDraftAsync(draft.Id, new RulesSaveRequest { Rules = shown.Rules }, CancellationToken.None)).Succeeded);
+        Assert.True((await service.PublishAsync(draft.Id, null, CancellationToken.None)).Succeeded);
+
+        var published = (await service.GetCurrentAsync(null, CancellationToken.None))!;
+        Assert.Equal("MinutesOver", Assert.Single(published.Rules.Single(r => r.Finding == "LongBreak").Conditions).Fact);
+        Assert.Single(published.Rules, r => r.Action == "IgnoreShortBreak");
+    }
+
+    [Fact]
+    public void HowLongAgoTheShiftEnded_CanOnlyBeUsedByARuleAboutANoShow()
+    {
+        RuleDto Rule(string finding) => new()
+        {
+            Name = "Wait",
+            Stage = "Exception",
+            Action = "RaiseException",
+            Finding = finding,
+            Conditions = [new ConditionDto { Fact = "MinutesAfterShiftEnd", Operator = "GreaterOrEqual", Value = 30 }],
+        };
+
+        Assert.Empty(RuleValidator.Validate([Rule("NoShow")]));
+        Assert.Contains("Rules[0].Conditions[0].Fact", RuleValidator.Validate([Rule("LongBreak")]).Keys);
+        Assert.Contains("the shift ended at least 30 minutes ago", RuleSentence.Describe(Rule("NoShow")));
+    }
+
+    [Fact]
+    public void ABreakIsShort_WhenItsWholeMinutesAreBelowTheRulesLimit_AndAZeroLimitSwitchesTheRuleOff()
+    {
+        var rules = RuleSetSnapshot.FromPolicy(new AttendancePolicy());
+        Assert.True(rules.IgnoresShortBreak(new RuleFacts { BreakMinutes = 9 }));
+        Assert.False(rules.IgnoresShortBreak(new RuleFacts { BreakMinutes = 10 }));
+
+        var off = RuleSetSnapshot.FromPolicy(new AttendancePolicy { IgnoreBreaksShorterThanMinutes = 0 });
+        Assert.False(off.IgnoresShortBreak(new RuleFacts { BreakMinutes = 0 }));
+        Assert.Contains(off.Rules, r => r.Action == RuleAction.IgnoreShortBreak && !r.IsEnabled);
+    }
+
+    [Fact]
+    public async Task ABreakOfNineMinutesFiftyNineSeconds_IsAToiletVisit_ButTenMinutesIsABreak()
+    {
+        AssignSchedule(StandardDay);
+        Clock.Local = Monday.AddDays(8).At(0, 0);
+        var nextMonday = Monday.AddDays(7);
+        foreach (var (date, back) in new[] { (Monday, TimeSpan.FromSeconds((9 * 60) + 59)), (nextMonday, TimeSpan.FromMinutes(10)) })
+        {
+            AddPunch(NormalizedEventType.CheckIn, date.At(8, 0));
+            AddPunch(NormalizedEventType.BreakOut, date.At(12, 0));
+            AddPunch(NormalizedEventType.BreakIn, date.At(12, 0) + back);
+            AddPunch(NormalizedEventType.CheckOut, date.At(17, 0));
+        }
+
+        await ProcessAsync(Monday);
+        await ProcessAsync(nextMonday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var records = db.AttendanceRecords.OrderBy(r => r.AttendanceDate).ToList();
+        Assert.Equal([TimeSpan.Zero, TimeSpan.FromMinutes(10)], records.Select(r => r.BreakDuration));
+    }
+
+    [Fact]
+    public async Task ThePublishedLimitForAShortBreak_DecidesWhichBreaksAreKept()
+    {
+        AssignSchedule(StandardDay);
+        await PublishAsync(rules => rules.Single(r => r.Action == "IgnoreShortBreak").Conditions = [new ConditionDto { Fact = "BreakMinutes", Operator = "LessThan", Value = 3 }]);
+        Clock.Local = Monday.At(18, 0);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+        AddPunch(NormalizedEventType.BreakOut, Monday.At(10, 0));
+        AddPunch(NormalizedEventType.BreakIn, Monday.At(10, 7));
+        AddPunch(NormalizedEventType.BreakOut, Monday.At(12, 0));
+        AddPunch(NormalizedEventType.BreakIn, Monday.At(13, 0));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(17, 0));
+
+        await ProcessAsync(Monday);
+
+        // Seven minutes is over the rule's limit of 3, so the first trip is the day's break (the policy's 10 would have ignored it).
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((TimeSpan.FromMinutes(67), Monday.At(10, 0)), (record.BreakDuration, record.ActualBreakOut));
+    }
+
+    [Fact]
+    public async Task ARuleThatIsOff_LetsEveryBreakBeKept_AndTheLimitAppliesToAGapReadAsABreakToo()
+    {
+        AddDefaultPolicy(p => p.BreakInferenceMode = BreakInferenceMode.FromGap);
+        AssignSchedule(StandardDay);
+        Clock.Local = Monday.At(18, 0);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(8, 0));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(12, 0));
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(12, 5));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(17, 0));
+
+        // With the short-break rule off, the five-minute gap is no toilet visit: it is the one gap near the scheduled break, so it is read as the break.
+        await PublishAsync(rules => rules.Single(r => r.Action == "IgnoreShortBreak").IsEnabled = false);
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((TimeSpan.FromMinutes(5), Monday.At(12, 0), AttendancePunchSource.Inferred), (record.BreakDuration, record.ActualBreakOut, record.ActualBreakOutSource));
+    }
+
+    [Fact]
+    public void ACountShortBreakRule_CanOnlyLookAtTheBreak_AndAReadTheBreakRuleOnlyAtTheGap()
+    {
+        RuleDto Rule(string action, string fact) => new()
+        {
+            Name = "Break",
+            Stage = "Interpretation",
+            Action = action,
+            Conditions = [new ConditionDto { Fact = fact, Operator = "LessThan", Value = 10 }],
+        };
+
+        Assert.Empty(RuleValidator.Validate([Rule("IgnoreShortBreak", "BreakMinutes")]));
+        Assert.Contains("Rules[0].Conditions[0].Fact", RuleValidator.Validate([Rule("IgnoreShortBreak", "GapMinutes")]).Keys);
+        Assert.Contains("Rules[0].Conditions[0].Fact", RuleValidator.Validate([Rule("InferBreak", "BreakMinutes")]).Keys);
+        Assert.Contains("Rules[0].Finding", RuleValidator.Validate([new RuleDto { Name = "x", Stage = "Interpretation", Action = "IgnoreShortBreak", Finding = "NoShow" }]).Keys);
+        Assert.Contains("Rules[0].Stage", RuleValidator.Validate([new RuleDto { Name = "x", Stage = "Exception", Action = "IgnoreShortBreak" }]).Keys);
+        Assert.Equal("When the break lasts less than 10 minutes, count the break as work (its two punches are left out).", RuleSentence.Describe(Rule("IgnoreShortBreak", "BreakMinutes")));
     }
 
     private AttendanceRuleService Service(RobeemDbContext db) => new(db, CreateAudit(db), new SystemCurrentUser(), Clock);

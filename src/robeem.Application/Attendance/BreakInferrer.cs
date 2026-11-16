@@ -12,16 +12,15 @@ internal static class BreakInferrer
 {
     /// <summary>
     /// On a shift with a scheduled break, a day whose punches are all check-ins and check-outs, alternating from a check-in and ending
-    /// with a check-out, has its internal check-out / check-in gaps looked at. A gap shorter than <paramref name="minMinutes"/> is a short
-    /// break (its punches are retyped so the existing rule leaves the time as work). A gap the rules read as the break is retyped when
+    /// with a check-out, has its internal check-out / check-in gaps looked at. A gap the rules count as a short break is retyped as one, so
+    /// the rule that leaves a short break out keeps the time as work. A gap the rules read as the break is retyped when
     /// exactly one gap is. Otherwise nothing is read.
     /// </summary>
     /// <param name="typed">The punches in time order, without repeats.</param>
     /// <param name="shift">The scheduled shift; null (work outside a shift) infers nothing.</param>
-    /// <param name="rules">The rules that say whether a gap is the break.</param>
-    /// <param name="minMinutes">The shortest gap that is a break; a shorter one is a toilet visit (0: none is).</param>
+    /// <param name="rules">The rules that say whether a gap is the break, and whether it is too short to be one (a toilet visit).</param>
     /// <param name="excused">The part-day leave that overlaps the shift.</param>
-    public static List<AttendancePunch> Infer(List<AttendancePunch> typed, ResolvedShift? shift, RuleSetSnapshot rules, int minMinutes, IReadOnlyList<ExcusedPeriod> excused)
+    public static List<AttendancePunch> Infer(List<AttendancePunch> typed, ResolvedShift? shift, RuleSetSnapshot rules, IReadOnlyList<ExcusedPeriod> excused)
     {
         if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart } || !IsAlternatingInOut(typed))
         {
@@ -40,7 +39,8 @@ internal static class BreakInferrer
                 continue;
             }
 
-            if (minMinutes > 0 && length < TimeSpan.FromMinutes(minMinutes))
+            var isOvernight = shift.EndsAt.Date > shift.StartsAt.Date;
+            if (rules.IgnoresShortBreak(new RuleFacts { ShiftHasBreak = true, ShiftIsOvernight = isOvernight, BreakMinutes = (int)Math.Floor(length.TotalMinutes) }))
             {
                 shortGaps.Add(i);
                 continue;
@@ -49,7 +49,7 @@ internal static class BreakInferrer
             var facts = new RuleFacts
             {
                 ShiftHasBreak = true,
-                ShiftIsOvernight = shift.EndsAt.Date > shift.StartsAt.Date,
+                ShiftIsOvernight = isOvernight,
                 GapMinutes = (int)Math.Ceiling(length.TotalMinutes),
                 GapStartOffsetMinutes = (int)Math.Ceiling(Math.Abs((leaving.Local - scheduledStart).TotalMinutes)),
                 GapExcusedPercent = excusedPercent,

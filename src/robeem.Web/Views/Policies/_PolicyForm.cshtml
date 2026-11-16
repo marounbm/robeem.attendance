@@ -69,90 +69,22 @@
                 <input asp-for="Input.RequiresOvertimePreApproval" class="form-check-input" />
                 <label asp-for="Input.RequiresOvertimePreApproval" class="form-check-label"></label>
             </div>
-            <div class="form-text">When on, a day with overtime reaches payroll only after a manager or HR approves it on the Reviews screen.</div>
+            <div class="form-text">When on, a day with overtime reaches payroll only after a manager or HR approves it on the Approvals screen.</div>
         </div>
     </div>
 </div>
+
+<partial name="_PunchOrder" />
 
 <div class="card mb-3">
     <div class="card-header">Breaks</div>
     <div class="card-body row g-3">
         <p class="small text-muted mb-0">
-            Every day is checked against its shift's scheduled break, and what is found is shown on the day either way. Tick a rule below to also
-            raise an exception for it, which a manager or HR then accepts with a reason. Left unticked, the finding is only recorded and the day
-            can still be approved.
+            Every day is checked against its shift's scheduled break. Everything about breaks is set in
+            <a asp-controller="Rules" asp-action="Index" asp-route-scheduleId="@Model.Input.TimeScheduleId">Rules</a>, not here: <strong>how short a break may be before
+            it counts as work</strong>, <strong>what counts as a long, late or early break</strong> (how many minutes over or from the scheduled start),
+            <strong>whether a finding raises an exception</strong> and <strong>whether a gap between a check-out and a check-in is read as the break</strong>.
         </p>
-        <div class="col-md-4">
-            <label asp-for="Input.IgnoreBreaksShorterThanMinutes" class="form-label"></label>
-            <input asp-for="Input.IgnoreBreaksShorterThanMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
-            <div class="form-text">A break shorter than this is a toilet visit, not a break: it counts as work and is ignored by every rule below. 0 turns this off.</div>
-            <span asp-validation-for="Input.IgnoreBreaksShorterThanMinutes" class="text-danger small"></span>
-        </div>
-        <div class="col-md-4">
-            <label asp-for="Input.BreakStartGraceMinutes" class="form-label"></label>
-            <input asp-for="Input.BreakStartGraceMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
-            <div class="form-text">How many minutes before or after the scheduled start a break may begin without being early or late.</div>
-            <span asp-validation-for="Input.BreakStartGraceMinutes" class="text-danger small"></span>
-        </div>
-        <div class="col-md-4">
-            <label asp-for="Input.LongBreakGraceMinutes" class="form-label"></label>
-            <input asp-for="Input.LongBreakGraceMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
-            <div class="form-text">How many minutes the breaks together may run past the scheduled break without being long.</div>
-            <span asp-validation-for="Input.LongBreakGraceMinutes" class="text-danger small"></span>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check">
-                <input asp-for="Input.RaiseExceptionOnLongBreak" class="form-check-input" />
-                <label asp-for="Input.RaiseExceptionOnLongBreak" class="form-check-label"></label>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check">
-                <input asp-for="Input.RaiseExceptionOnLateBreak" class="form-check-input" />
-                <label asp-for="Input.RaiseExceptionOnLateBreak" class="form-check-label"></label>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check">
-                <input asp-for="Input.RaiseExceptionOnEarlyBreak" class="form-check-input" />
-                <label asp-for="Input.RaiseExceptionOnEarlyBreak" class="form-check-label"></label>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check">
-                <input asp-for="Input.RaiseExceptionOnNoBreak" class="form-check-input" />
-                <label asp-for="Input.RaiseExceptionOnNoBreak" class="form-check-label"></label>
-            </div>
-        </div>
-        <div class="col-12 form-text">
-            <strong>No break</strong> is a shift with a scheduled break that was worked with no break punches. Ticked, the break punches are reported missing so
-            someone can supply them; unticked, working through the break is allowed and the day is complete without it.
-        </div>
-        <div class="col-md-4">
-            <label asp-for="Input.BreakInferenceMode" class="form-label"></label>
-            <select asp-for="Input.BreakInferenceMode" class="form-select">
-                <option value="Off">Use the punches as the device typed them</option>
-                <option value="FromGap">Read the gap near the break as the break</option>
-            </select>
-            <div class="form-text">
-                For a device that sends only in and out. On a shift with a break, when exactly one check-out followed by a check-in starts near the
-                scheduled break, those two punches are read as the break-out and break-in and marked inferred. A gap covered by approved leave is not a break.
-                Nothing is read when several gaps fit, or when a punch is missing.
-            </div>
-            <span asp-validation-for="Input.BreakInferenceMode" class="text-danger small"></span>
-        </div>
-        <div class="col-md-4">
-            <label asp-for="Input.InferredBreakWindowMinutes" class="form-label"></label>
-            <input asp-for="Input.InferredBreakWindowMinutes" type="number" min="0" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
-            <div class="form-text">How far from the scheduled break start the gap may begin.</div>
-            <span asp-validation-for="Input.InferredBreakWindowMinutes" class="text-danger small"></span>
-        </div>
-        <div class="col-md-4">
-            <label asp-for="Input.InferredBreakMaxMinutes" class="form-label"></label>
-            <input asp-for="Input.InferredBreakMaxMinutes" type="number" min="1" max="@PolicyInput.MaxBreakMinutes" class="form-control" />
-            <div class="form-text">A longer gap is time away, not a break. The shortest is the “ignore breaks shorter than” setting above.</div>
-            <span asp-validation-for="Input.InferredBreakMaxMinutes" class="text-danger small"></span>
-        </div>
     </div>
 </div>
 
@@ -193,7 +125,10 @@
         <div class="col-md-2">
             <label asp-for="Input.MissingPunchGraceMinutes" class="form-label"></label>
             <input asp-for="Input.MissingPunchGraceMinutes" type="number" min="0" max="@PolicyInput.MaxMissingPunchGraceMinutes" class="form-control" />
-            <div class="form-text">How long after a shift ends an absent punch waits before it becomes an exception.</div>
+            <div class="form-text">
+                How long after a shift ends a missing check-out or break-in waits before it becomes an exception. How long a shift with no punch at all
+                waits before it is a no-show is set in <a asp-controller="Rules" asp-action="Index" asp-route-scheduleId="@Model.Input.TimeScheduleId">Rules</a>.
+            </div>
             <span asp-validation-for="Input.MissingPunchGraceMinutes" class="text-danger small"></span>
         </div>
     </div>

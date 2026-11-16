@@ -16,6 +16,10 @@ public sealed record RuleFacts
 
     public int ExcusedMinutes { get; init; }
 
+    public int MinutesAfterShiftEnd { get; init; }
+
+    public int BreakMinutes { get; init; }
+
     public int GapMinutes { get; init; }
 
     public int GapStartOffsetMinutes { get; init; }
@@ -31,6 +35,8 @@ public sealed record RuleFacts
         RuleFact.ShiftHasBreak => ShiftHasBreak ? 1 : 0,
         RuleFact.ShiftIsOvernight => ShiftIsOvernight ? 1 : 0,
         RuleFact.ExcusedMinutes => ExcusedMinutes,
+        RuleFact.MinutesAfterShiftEnd => MinutesAfterShiftEnd,
+        RuleFact.BreakMinutes => BreakMinutes,
         _ => 0,
     };
 }

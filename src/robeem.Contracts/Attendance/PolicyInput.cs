@@ -10,7 +10,6 @@ public sealed class PolicyInput
     public const int MaxOvertimeThresholdMinutes = 480;
     public const int MaxDuplicateWindowSeconds = 3600;
     public const int MaxMissingPunchGraceMinutes = 1440;
-    public const int MaxBreakMinutes = 240;
     public const int MaxHourlySpanHours = 24;
 
     /// <summary>The workflows a correction can follow, as the policy's <c>CorrectionApprovalWorkflow</c> names them.</summary>
@@ -18,9 +17,6 @@ public sealed class PolicyInput
 
     /// <summary>The interpretation modes an administrator can choose. <c>RulesEngine</c> exists in the model but has no engine yet.</summary>
     public static readonly IReadOnlyList<string> InterpretationModes = ["Off", "Sequential"];
-
-    /// <summary>The ways a break can be inferred for a device that sends no break type, as the policy's <c>BreakInferenceMode</c> names them.</summary>
-    public static readonly IReadOnlyList<string> BreakInferenceModes = ["Off", "FromGap"];
 
     [Required]
     [StringLength(255)]
@@ -63,44 +59,8 @@ public sealed class PolicyInput
     public int DuplicateTimeWindowSeconds { get; set; } = 120;
 
     [Range(0, MaxMissingPunchGraceMinutes)]
-    [Display(Name = "Missing-punch grace (minutes)")]
+    [Display(Name = "Missing check-out grace (minutes)")]
     public int MissingPunchGraceMinutes { get; set; } = 120;
-
-    [Range(0, MaxBreakMinutes)]
-    [Display(Name = "Ignore breaks shorter than (minutes)")]
-    public int IgnoreBreaksShorterThanMinutes { get; set; } = 10;
-
-    [Range(0, MaxBreakMinutes)]
-    [Display(Name = "Break start allowance (minutes)")]
-    public int BreakStartGraceMinutes { get; set; } = 15;
-
-    [Range(0, MaxBreakMinutes)]
-    [Display(Name = "Long break allowance (minutes)")]
-    public int LongBreakGraceMinutes { get; set; } = 5;
-
-    [Display(Name = "Long break raises an exception")]
-    public bool RaiseExceptionOnLongBreak { get; set; }
-
-    [Display(Name = "Late break raises an exception")]
-    public bool RaiseExceptionOnLateBreak { get; set; }
-
-    [Display(Name = "Early break raises an exception")]
-    public bool RaiseExceptionOnEarlyBreak { get; set; }
-
-    [Display(Name = "No break raises an exception")]
-    public bool RaiseExceptionOnNoBreak { get; set; } = true;
-
-    [Required]
-    [Display(Name = "Breaks on devices with no break type")]
-    public string BreakInferenceMode { get; set; } = "Off";
-
-    [Range(0, MaxBreakMinutes)]
-    [Display(Name = "Break window (minutes)")]
-    public int InferredBreakWindowMinutes { get; set; } = 90;
-
-    [Range(1, MaxBreakMinutes)]
-    [Display(Name = "Longest gap read as a break (minutes)")]
-    public int InferredBreakMaxMinutes { get; set; } = 120;
 
     [Range(1, MaxHourlySpanHours)]
     [Display(Name = "Longest hourly shift (hours)")]

@@ -22,5 +22,8 @@ public interface IRulesApiClient
 
     Task<ApiSaveResult> PublishAsync(int draftId, string? notes, CancellationToken cancellationToken);
 
+    /// <summary>Changes one rule of the rules in force and publishes the result as the next version.</summary>
+    Task<ApiSaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken);
+
     Task<ApiSaveResult> DiscardDraftAsync(int draftId, CancellationToken cancellationToken);
 }

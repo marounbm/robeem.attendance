@@ -16,11 +16,14 @@ public static class RuleValidator
     private static readonly RuleFact[] InterpretationFacts =
         [RuleFact.GapMinutes, RuleFact.GapStartOffsetMinutes, RuleFact.GapExcusedPercent, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
 
-    private static readonly RuleFact[] ExceptionFacts =
-        [RuleFact.MinutesOver, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight, RuleFact.ExcusedMinutes];
+    private static readonly RuleFact[] ShortBreakFacts = [RuleFact.BreakMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
 
-    /// <summary>Gets the facts a condition of a rule of <paramref name="stage"/> may use.</summary>
-    public static IReadOnlyList<RuleFact> FactsOf(RuleStage stage) => stage == RuleStage.Interpretation ? InterpretationFacts : ExceptionFacts;
+    private static readonly RuleFact[] ExceptionFacts =
+        [RuleFact.MinutesOver, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight, RuleFact.ExcusedMinutes, RuleFact.MinutesAfterShiftEnd];
+
+    /// <summary>Gets the facts a condition of a rule of <paramref name="stage"/> may use; a rule that counts a short break as work looks at the break, not at a gap.</summary>
+    public static IReadOnlyList<RuleFact> FactsOf(RuleStage stage, RuleAction? action = null) =>
+        stage == RuleStage.Exception ? ExceptionFacts : action == RuleAction.IgnoreShortBreak ? ShortBreakFacts : InterpretationFacts;
 
     public static Dictionary<string, string> Validate(IReadOnlyList<RuleDto> rules)
     {
@@ -75,10 +78,12 @@ public static class RuleValidator
             return;
         }
 
+        RuleFinding? finding = Enum.TryParse<RuleFinding>(rule.Finding, out var parsedFinding) && Enum.IsDefined(parsedFinding) ? parsedFinding : null;
+        RuleAction? ruleAction = actionOk ? action : null;
         var parsed = new List<(RuleFact Fact, RuleOperator Operator, int Value)>();
         for (var j = 0; j < rule.Conditions.Count; j++)
         {
-            if (ValidateCondition(rule.Conditions[j], $"{key}.Conditions[{j}]", stage, errors) is { } condition)
+            if (ValidateCondition(rule.Conditions[j], $"{key}.Conditions[{j}]", stage, ruleAction, finding, errors) is { } condition)
             {
                 parsed.Add(condition);
             }
@@ -95,11 +100,11 @@ public static class RuleValidator
 
     private static void ValidateAction(RuleDto rule, string key, RuleStage stage, RuleAction action, Dictionary<string, string> errors)
     {
-        if (action == RuleAction.InferBreak)
+        if (action is RuleAction.InferBreak or RuleAction.IgnoreShortBreak)
         {
             if (stage != RuleStage.Interpretation)
             {
-                errors[$"{key}.Stage"] = "Reading a break from a gap is an interpretation rule.";
+                errors[$"{key}.Stage"] = "Reading a break from a gap, or counting a short break as work, is an interpretation rule.";
             }
 
             if (!string.IsNullOrWhiteSpace(rule.Finding))
@@ -130,7 +135,7 @@ public static class RuleValidator
         }
     }
 
-    private static (RuleFact, RuleOperator, int)? ValidateCondition(ConditionDto condition, string key, RuleStage stage, Dictionary<string, string> errors)
+    private static (RuleFact, RuleOperator, int)? ValidateCondition(ConditionDto condition, string key, RuleStage stage, RuleAction? action, RuleFinding? finding, Dictionary<string, string> errors)
     {
         if (!Enum.TryParse<RuleFact>(condition.Fact, out var fact) || !Enum.IsDefined(fact))
         {
@@ -138,9 +143,16 @@ public static class RuleValidator
             return null;
         }
 
-        if (!FactsOf(stage).Contains(fact))
+        if (!FactsOf(stage, action).Contains(fact))
         {
-            errors[$"{key}.Fact"] = $"\"{fact}\" can't be used in a rule of the {stage} stage. Use: {string.Join(", ", FactsOf(stage))}.";
+            errors[$"{key}.Fact"] = $"\"{fact}\" can't be used in this rule. Use: {string.Join(", ", FactsOf(stage, action))}.";
+            return null;
+        }
+
+        // How long a shift has been over is known when a no-show is looked for; the other findings are measured when the day is calculated.
+        if (fact == RuleFact.MinutesAfterShiftEnd && finding != RuleFinding.NoShow)
+        {
+            errors[$"{key}.Fact"] = "\"MinutesAfterShiftEnd\" can only be used in a rule about a no-show.";
             return null;
         }
 

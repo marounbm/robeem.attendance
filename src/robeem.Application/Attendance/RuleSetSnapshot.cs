@@ -28,7 +28,8 @@ public sealed class RuleSetSnapshot
 
     /// <summary>
     /// The policy's settings as rules: one to read the break from a gap (on when the policy's break inference is), and one to raise each
-    /// finding the policy raises. The thresholds of the policy that decide whether there is a finding at all stay in the policy.
+    /// finding the policy raises. The numbers that decide whether there is a finding at all (how far over a break may go, how far from its
+    /// scheduled start, how long a no-show waits) are written into those rules as conditions, so they are changed in the rules.
     /// </summary>
     public static RuleSetSnapshot FromPolicy(AttendancePolicy policy)
     {
@@ -48,14 +49,35 @@ public sealed class RuleSetSnapshot
                     new ConditionSnapshot(RuleFact.GapMinutes, RuleOperator.LessOrEqual, policy.InferredBreakMaxMinutes),
                     new ConditionSnapshot(RuleFact.GapExcusedPercent, RuleOperator.LessOrEqual, 50),
                 ]),
-            Raise("Raise an exception for a long break", 20, RuleFinding.LongBreak, policy.RaiseExceptionOnLongBreak),
-            Raise("Raise an exception for a late break", 30, RuleFinding.LateBreak, policy.RaiseExceptionOnLateBreak),
-            Raise("Raise an exception for an early break", 40, RuleFinding.EarlyBreak, policy.RaiseExceptionOnEarlyBreak),
-            Raise("Raise an exception when no break was taken", 50, RuleFinding.NoBreak, policy.RaiseExceptionOnNoBreak),
-            Raise("Raise an exception for a no-show", 60, RuleFinding.NoShow, true),
+            Raise("Raise an exception for a long break", 20, RuleFinding.LongBreak, policy.RaiseExceptionOnLongBreak, policy),
+            Raise("Raise an exception for a late break", 30, RuleFinding.LateBreak, policy.RaiseExceptionOnLateBreak, policy),
+            Raise("Raise an exception for an early break", 40, RuleFinding.EarlyBreak, policy.RaiseExceptionOnEarlyBreak, policy),
+            Raise("Raise an exception when no break was taken", 50, RuleFinding.NoBreak, policy.RaiseExceptionOnNoBreak, policy),
+            Raise("Raise an exception for a no-show", 60, RuleFinding.NoShow, true, policy),
+            ShortBreak(70, policy),
         };
 
         return new RuleSetSnapshot(0, "the policy", rules);
+    }
+
+    /// <summary>
+    /// The same rules with the policy's thresholds added to the conditions of every exception rule about a break finding or a no-show. It is how a
+    /// set published before the thresholds moved into the rules (<see cref="AttendanceRuleSet.ThresholdsInRules"/> false) is read, so it behaves as
+    /// it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithPolicyThresholds(AttendancePolicy policy)
+    {
+        var rules = Rules
+            .Select(r => r.Stage == RuleStage.Exception && Threshold(r.Finding, policy) is { } threshold ? r with { Conditions = [.. r.Conditions, threshold] } : r)
+            .ToList();
+
+        // Such a set has no rule that counts a short break as work, because the policy decided it: the rule is added, last.
+        if (!rules.Any(r => r.Action == RuleAction.IgnoreShortBreak))
+        {
+            rules.Add(ShortBreak(int.MaxValue, policy));
+        }
+
+        return new RuleSetSnapshot(Version, Source, rules);
     }
 
     /// <summary>
@@ -68,10 +90,41 @@ public sealed class RuleSetSnapshot
         return decided is { Action: RuleAction.RaiseException };
     }
 
+    /// <summary>
+    /// Whether the finding is worth noting on the day: some rule about it, on or off, has its conditions met. A rule that is off is how a
+    /// finding is recorded but not raised. With no rule about the finding, it is not noted.
+    /// </summary>
+    public bool Notes(RuleFinding finding, RuleFacts facts) =>
+        Rules.Any(r => r.Stage == RuleStage.Exception && r.Finding == finding && r.ConditionsHold(facts));
+
     /// <summary>Whether the gap described by <paramref name="gap"/> is read as the break: the first enabled interpretation rule whose conditions hold decides.</summary>
     public bool InfersBreak(RuleFacts gap) =>
         Rules.Any(r => r.Stage == RuleStage.Interpretation && r.Action == RuleAction.InferBreak && r.Matches(gap));
 
-    private static RuleSnapshot Raise(string name, int priority, RuleFinding finding, bool enabled) =>
-        new(name, priority, enabled, RuleStage.Exception, RuleAction.RaiseException, finding, null, []);
+    /// <summary>Whether a break that lasted as <paramref name="facts"/> says is a short one, counted as work: some enabled rule that counts a short break as work has its conditions met.</summary>
+    public bool IgnoresShortBreak(RuleFacts facts) =>
+        Rules.Any(r => r.Stage == RuleStage.Interpretation && r.Action == RuleAction.IgnoreShortBreak && r.Matches(facts));
+
+    /// <summary>The rule for a break shorter than the policy's minimum: on when the policy has one (0 turns it off, as it did).</summary>
+    private static RuleSnapshot ShortBreak(int priority, AttendancePolicy policy) => new(
+        "Count a short break as work",
+        priority,
+        policy.IgnoreBreaksShorterThanMinutes > 0,
+        RuleStage.Interpretation,
+        RuleAction.IgnoreShortBreak,
+        null,
+        null,
+        [new ConditionSnapshot(RuleFact.BreakMinutes, RuleOperator.LessThan, policy.IgnoreBreaksShorterThanMinutes > 0 ? policy.IgnoreBreaksShorterThanMinutes : 10)]);
+
+    private static RuleSnapshot Raise(string name, int priority, RuleFinding finding, bool enabled, AttendancePolicy policy) =>
+        new(name, priority, enabled, RuleStage.Exception, RuleAction.RaiseException, finding, null, Threshold(finding, policy) is { } threshold ? [threshold] : []);
+
+    /// <summary>The condition that says when the policy's numbers make a finding of this kind: past the break allowance, past the start allowance, or the wait after the shift.</summary>
+    private static ConditionSnapshot? Threshold(RuleFinding? finding, AttendancePolicy policy) => finding switch
+    {
+        RuleFinding.LongBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.LongBreakGraceMinutes),
+        RuleFinding.LateBreak or RuleFinding.EarlyBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.BreakStartGraceMinutes),
+        RuleFinding.NoShow => new ConditionSnapshot(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual, policy.MissingPunchGraceMinutes),
+        _ => null,
+    };
 }

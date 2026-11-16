@@ -58,11 +58,11 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
             .FirstOrDefaultAsync(cancellationToken);
         if (published is not null)
         {
-            return ToDto(published, title);
+            return ToDto(published, title, await PolicyOfAsync(timeScheduleId, cancellationToken));
         }
 
         // Nothing is published: the rules are the policy's own settings.
-        var policy = await _db.AttendancePolicies.AsNoTracking().FirstOrDefaultAsync(p => p.TimeScheduleId == timeScheduleId, cancellationToken) ?? new AttendancePolicy();
+        var policy = await PolicyOfAsync(timeScheduleId, cancellationToken);
         var snapshot = RuleSetSnapshot.FromPolicy(policy);
         return new RuleSetDto
         {
@@ -78,13 +78,13 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
     {
         var title = await ScopeTitleAsync(timeScheduleId, cancellationToken);
         var draft = title is null ? null : await LoadSetsQuery().FirstOrDefaultAsync(s => s.Status == RuleSetStatus.Draft && s.TimeScheduleId == timeScheduleId, cancellationToken);
-        return draft is null ? null : ToDto(draft, title!);
+        return draft is null ? null : ToDto(draft, title!, await PolicyOfAsync(timeScheduleId, cancellationToken));
     }
 
     public async Task<RuleSetDto?> GetAsync(int id, CancellationToken cancellationToken)
     {
         var set = await LoadSetsQuery().FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
-        return set is null ? null : ToDto(set, await ScopeTitleAsync(set.TimeScheduleId, cancellationToken) ?? TenantTitle);
+        return set is null ? null : ToDto(set, await ScopeTitleAsync(set.TimeScheduleId, cancellationToken) ?? TenantTitle, await PolicyOfAsync(set.TimeScheduleId, cancellationToken));
     }
 
     public async Task<IReadOnlyList<RuleSetSummaryDto>> ListHistoryAsync(int? timeScheduleId, CancellationToken cancellationToken)
@@ -124,7 +124,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         }
 
         var current = (await GetCurrentAsync(timeScheduleId, cancellationToken))!;
-        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules" };
+        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
         _db.AttendanceRuleSets.Add(draft);
         AddRules(draft, current.Rules);
         await _db.SaveChangesAsync(cancellationToken);
@@ -160,6 +160,9 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         _db.AttendanceRules.RemoveRange(draft.Rules);
         draft.Rules.Clear();
         draft.Notes = notes;
+
+        // What was sent was read from the draft with its thresholds written in, so the draft keeps them from now on.
+        draft.ThresholdsInRules = true;
         AddRules(draft, request.Rules);
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(draft.Id);
@@ -178,35 +181,106 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
             return SaveResult.Invalid("id", "Only a draft can be published.");
         }
 
+        // A draft started before the thresholds moved into the rules has none written in; publishing it as it is would drop them.
+        if (!draft.ThresholdsInRules)
+        {
+            return SaveResult.Invalid("id", "This draft was started before the break and no-show thresholds became conditions of the rules. Open it and save it again, then publish.");
+        }
+
         var title = await ScopeTitleAsync(draft.TimeScheduleId, cancellationToken) ?? TenantTitle;
-        var dto = ToDto(draft, title);
+        var dto = ToDto(draft, title, await PolicyOfAsync(draft.TimeScheduleId, cancellationToken));
         var errors = RuleValidator.Validate(dto.Rules);
         if (errors.Count > 0)
         {
             return SaveResult.Invalid(errors);
         }
 
-        var previous = await _db.AttendanceRuleSets.Where(s => s.Status == RuleSetStatus.Published && s.TimeScheduleId == draft.TimeScheduleId).ToListAsync(cancellationToken);
-        previous.ForEach(p => p.Status = RuleSetStatus.Retired);
+        await PublishSetAsync(draft, dto.Rules, title, notes, null, cancellationToken);
+        return SaveResult.Success(draft.Id);
+    }
 
-        // One sequence for the tenant, so a bigger number is always a later publication.
-        var version = (await _db.AttendanceRuleSets.MaxAsync(s => (int?)s.Version, cancellationToken) ?? 0) + 1;
-        draft.Status = RuleSetStatus.Published;
-        draft.Version = version;
-        draft.Title = $"Rules version {version}";
-        draft.PublishedAt = _clock.GetLocalNow().DateTime;
-        draft.PublishedById = _user.EmployeeId;
-        if (!string.IsNullOrWhiteSpace(notes))
+    public async Task<SaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken)
+    {
+        var title = await ScopeTitleAsync(request.TimeScheduleId, cancellationToken);
+        if (title is null)
         {
-            draft.Notes = notes.Trim();
+            return SaveResult.Invalid(nameof(RuleScopeDto.TimeScheduleId), "Rules can be set for the whole company, or for a schedule that has a policy of its own.");
         }
 
-        var suppressed = dto.Rules.Where(r => r.IsEnabled && r.Action == nameof(RuleAction.SuppressException)).Select(r => $"{r.Finding}: {r.Reason?.Trim()}").ToList();
-        var details = $"{title}: version {version} published, {dto.Rules.Count} rule(s), {dto.Rules.Count(r => r.IsEnabled)} on."
-            + (suppressed.Count == 0 ? string.Empty : " Suppresses: " + string.Join("; ", suppressed) + ".");
-        _audit.Record(AttendanceAuditActions.RuleSetPublished, nameof(AttendanceRuleSet), draft.Id, details);
-        await _db.SaveChangesAsync(cancellationToken);
-        return SaveResult.Success(draft.Id);
+        // The change is published at once, so an open draft would be left behind the rules in force.
+        if (await _db.AttendanceRuleSets.AnyAsync(s => s.Status == RuleSetStatus.Draft && s.TimeScheduleId == request.TimeScheduleId, cancellationToken))
+        {
+            return SaveResult.Invalid("id", "There is a draft of these rules. Continue it or throw it away first.");
+        }
+
+        var current = (await GetCurrentAsync(request.TimeScheduleId, cancellationToken))!;
+        if (current.Version != request.ExpectedVersion)
+        {
+            return SaveResult.Invalid("id", "The rules were changed since this page was shown. Look at them again and repeat the change.");
+        }
+
+        var rules = current.Rules;
+        var position = request.Position;
+        if (position < 0 || position >= rules.Count)
+        {
+            return SaveResult.Invalid("id", "There is no such rule.");
+        }
+
+        var rule = rules[position];
+        var label = $"rule {position + 1} \"{rule.Name}\"";
+        string change;
+        switch (request.Operation)
+        {
+            case RuleChangeOperations.Replace:
+                if (request.Rule is null)
+                {
+                    return SaveResult.Invalid(nameof(RuleChangeRequest.Rule), "Send the rule.");
+                }
+
+                // Validated on its own, so an error is keyed Rules[0].Field whichever place the rule has.
+                var errors = RuleValidator.Validate([request.Rule]);
+                if (errors.Count > 0)
+                {
+                    return SaveResult.Invalid(errors);
+                }
+
+                rules[position] = request.Rule;
+                change = $"Changed {label}.";
+                break;
+            case RuleChangeOperations.Enable or RuleChangeOperations.Disable:
+                var enable = request.Operation == RuleChangeOperations.Enable;
+                if (rule.IsEnabled == enable)
+                {
+                    return SaveResult.Invalid("id", enable ? "The rule is on already." : "The rule is off already.");
+                }
+
+                rule.IsEnabled = enable;
+                change = $"{(enable ? "Switched on" : "Switched off")} {label}.";
+                break;
+            case RuleChangeOperations.Delete:
+                rules.RemoveAt(position);
+                change = $"Deleted {label}.";
+                break;
+            case RuleChangeOperations.MoveUp or RuleChangeOperations.MoveDown:
+                var up = request.Operation == RuleChangeOperations.MoveUp;
+                var other = up ? position - 1 : position + 1;
+                if (other < 0 || other >= rules.Count)
+                {
+                    return SaveResult.Invalid("id", up ? "The rule is the first already." : "The rule is the last already.");
+                }
+
+                (rules[other], rules[position]) = (rules[position], rules[other]);
+                change = $"Moved {label} {(up ? "earlier" : "later")}.";
+                break;
+            default:
+                return SaveResult.Invalid(nameof(RuleChangeRequest.Operation), $"The operation must be one of: {string.Join(", ", RuleChangeOperations.Replace, RuleChangeOperations.Enable, RuleChangeOperations.Disable, RuleChangeOperations.Delete, RuleChangeOperations.MoveUp, RuleChangeOperations.MoveDown)}.");
+        }
+
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
+        _db.AttendanceRuleSets.Add(set);
+        AddRules(set, rules);
+        await PublishSetAsync(set, rules, title, string.IsNullOrWhiteSpace(request.Notes) ? change : request.Notes, change, cancellationToken);
+        return SaveResult.Success(set.Id);
     }
 
     public async Task<SaveResult> DiscardDraftAsync(int draftId, CancellationToken cancellationToken)
@@ -245,7 +319,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         return dto;
     }
 
-    private static RuleSetDto ToDto(AttendanceRuleSet set, string scopeTitle) => new()
+    private static RuleSetDto ToDto(AttendanceRuleSet set, string scopeTitle, AttendancePolicy policy) => new()
     {
         Id = set.Id,
         TimeScheduleId = set.TimeScheduleId,
@@ -254,8 +328,34 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         Status = set.Status.ToString(),
         PublishedAt = set.PublishedAt,
         Notes = set.Notes,
-        Rules = RuleSetProvider.ToSnapshot(set).Rules.Select(ToDto).ToList(),
+        Rules = RuleSetProvider.ToSnapshot(set, policy).Rules.Select(ToDto).ToList(),
     };
+
+    /// <summary>Makes the set the one in force for its scope as the next version, retires the one before it and audits it. Saves.</summary>
+    private async Task PublishSetAsync(AttendanceRuleSet set, IReadOnlyList<RuleDto> rules, string title, string? notes, string? change, CancellationToken cancellationToken)
+    {
+        var previous = await _db.AttendanceRuleSets.Where(s => s.Status == RuleSetStatus.Published && s.TimeScheduleId == set.TimeScheduleId).ToListAsync(cancellationToken);
+        previous.ForEach(p => p.Status = RuleSetStatus.Retired);
+
+        // One sequence for the tenant, so a bigger number is always a later publication.
+        var version = (await _db.AttendanceRuleSets.MaxAsync(s => (int?)s.Version, cancellationToken) ?? 0) + 1;
+        set.Status = RuleSetStatus.Published;
+        set.Version = version;
+        set.Title = $"Rules version {version}";
+        set.PublishedAt = _clock.GetLocalNow().DateTime;
+        set.PublishedById = _user.EmployeeId;
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            set.Notes = notes.Trim();
+        }
+
+        var suppressed = rules.Where(r => r.IsEnabled && r.Action == nameof(RuleAction.SuppressException)).Select(r => $"{r.Finding}: {r.Reason?.Trim()}").ToList();
+        var details = $"{title}: version {version} published, {rules.Count} rule(s), {rules.Count(r => r.IsEnabled)} on."
+            + (change is null ? string.Empty : " " + change)
+            + (suppressed.Count == 0 ? string.Empty : " Suppresses: " + string.Join("; ", suppressed) + ".");
+        _audit.Record(AttendanceAuditActions.RuleSetPublished, nameof(AttendanceRuleSet), set.Id == 0 ? null : set.Id, details);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
 
     private void AddRules(AttendanceRuleSet set, IReadOnlyList<RuleDto> rules)
     {
@@ -271,7 +371,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
                 IsEnabled = rule.IsEnabled,
                 Stage = Enum.Parse<RuleStage>(rule.Stage),
                 Action = action,
-                Finding = action == RuleAction.InferBreak || string.IsNullOrWhiteSpace(rule.Finding) ? null : Enum.Parse<RuleFinding>(rule.Finding),
+                Finding = action is RuleAction.InferBreak or RuleAction.IgnoreShortBreak || string.IsNullOrWhiteSpace(rule.Finding) ? null : Enum.Parse<RuleFinding>(rule.Finding),
                 Reason = action == RuleAction.SuppressException ? rule.Reason?.Trim() : null,
             };
             foreach (var condition in rule.Conditions)
@@ -292,6 +392,10 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
 
     private IQueryable<AttendanceRuleSet> LoadSetsQuery() =>
         _db.AttendanceRuleSets.Include(s => s.Rules).ThenInclude(r => r.Conditions);
+
+    /// <summary>The policy of a scope, whose own numbers start the rules and which a set made before the thresholds moved into the rules still takes its thresholds from; the defaults when there is none.</summary>
+    private async Task<AttendancePolicy> PolicyOfAsync(int? timeScheduleId, CancellationToken cancellationToken) =>
+        await _db.AttendancePolicies.AsNoTracking().FirstOrDefaultAsync(p => p.TimeScheduleId == timeScheduleId, cancellationToken) ?? new AttendancePolicy();
 
     /// <summary>The title of a scope, or null when it is not one: a schedule must have a policy of its own for rules to apply to it.</summary>
     private async Task<string?> ScopeTitleAsync(int? timeScheduleId, CancellationToken cancellationToken)

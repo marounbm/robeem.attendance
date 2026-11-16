@@ -1,0 +1,28 @@
+@model RulesEditViewModel
+@{
+    ViewData["Title"] = "Change a rule";
+}
+
+<h1 class="h3 mb-1">Change rule @(Model.Position + 1)</h1>
+<p class="text-muted">
+    @Model.ScopeTitle. Saving publishes the rules at once as a new version, with every other rule as it is now. A published set is never edited:
+    the version in force stays in the history.
+</p>
+
+<partial name="_StatusMessage" />
+
+<form method="post" asp-action="EditRule" asp-route-scheduleId="@Model.ScheduleId" asp-route-position="@Model.Position" asp-route-version="@Model.ExpectedVersion">
+    <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+
+    <div class="card mb-3">
+        <partial name="_RuleFields" model="Model" view-data="@(new ViewDataDictionary(ViewData) { ["Index"] = 0 })" />
+    </div>
+
+    <div class="mb-3" style="max-width: 48rem;">
+        <label asp-for="Notes" class="form-label">Note for the history (optional; otherwise the history says which rule was changed)</label>
+        <textarea asp-for="Notes" class="form-control" rows="2" maxlength="1000"></textarea>
+    </div>
+
+    <button type="submit" name="command" value="save" class="btn btn-success" onclick="return confirm('Publish this change? Days are calculated with the new rules from now on.');">Save and publish</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-scheduleId="@Model.ScheduleId">Back</a>
+</form>

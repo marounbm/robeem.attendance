@@ -43,12 +43,12 @@ internal static class ShiftAttendanceCalculator
         // A device that sends only in and out: the gap near the scheduled break is read as the break, marked inferred (CLAUDE.md §1.6).
         if (rules.CanInferBreak)
         {
-            typed = BreakInferrer.Infer(typed, shift, rules, policy.IgnoreBreaksShorterThanMinutes, leave);
+            typed = BreakInferrer.Infer(typed, shift, rules, leave);
         }
 
-        // A break shorter than the policy's minimum is a toilet visit, not a break: both punches are left out, so
+        // A break the rules count as short is a toilet visit, not a break: both punches are left out, so
         // the time stays work and the break rules never see it.
-        typed = WithoutShortBreaks(typed, policy.IgnoreBreaksShorterThanMinutes, out var ignoredShortBreaks);
+        typed = WithoutShortBreaks(typed, shift, rules, out var ignoredShortBreaks);
         var rounding = policy.RoundingRuleMinutes;
 
         // Pair the punches in time order. Elapsed time is measured on the UTC instants, so a shift
@@ -111,7 +111,7 @@ internal static class ShiftAttendanceCalculator
             complete &= breakOut is not null && breakIn is not null;
         }
 
-        var (findings, breakExcess, breakOffset) = FindBreakIssues(shift, checkIn, checkOut, breakOut, breakIn, onBreak, policy, breakExcused);
+        var (findings, breakExcess, breakOffset) = FindBreakIssues(shift, checkIn, checkOut, breakOut, breakIn, onBreak, policy, rules, excusedMinutes, breakExcused);
 
         // Leave at the start or the end of the shift is not lateness or an early departure.
         var late = shift is not null && checkIn is not null
@@ -155,25 +155,27 @@ internal static class ShiftAttendanceCalculator
     }
 
     /// <summary>
-    /// Leaves out the two punches of a break that lasted less than <paramref name="minimumMinutes"/>: a break-out followed at once
-    /// by its break-in. A break with no break-in yet is not a short break; it is left for the sequence rules. 0 keeps every break.
+    /// Leaves out the two punches of a break the rules count as short (a rule that counts a short break as work, whose conditions look
+    /// at how long the break lasted): a break-out followed at once by its break-in. A break with no break-in yet is not a short break; it
+    /// is left for the sequence rules. With no such rule on, every break is kept.
     /// </summary>
-    private static List<AttendancePunch> WithoutShortBreaks(List<AttendancePunch> typed, int minimumMinutes, out int ignored)
+    private static List<AttendancePunch> WithoutShortBreaks(List<AttendancePunch> typed, ResolvedShift? shift, RuleSetSnapshot rules, out int ignored)
     {
         ignored = 0;
-        if (minimumMinutes <= 0)
+        if (!rules.Rules.Any(r => r.IsEnabled && r.Action == RuleAction.IgnoreShortBreak))
         {
             return typed;
         }
 
-        var minimum = TimeSpan.FromMinutes(minimumMinutes);
+        var hasBreak = shift?.BreakTime == true;
+        var overnight = shift is not null && shift.EndsAt.Date > shift.StartsAt.Date;
         var kept = new List<AttendancePunch>(typed.Count);
         for (var i = 0; i < typed.Count; i++)
         {
             if (typed[i].Type == NormalizedEventType.BreakOut
                 && i + 1 < typed.Count
                 && typed[i + 1].Type == NormalizedEventType.BreakIn
-                && typed[i + 1].Utc - typed[i].Utc < minimum)
+                && rules.IgnoresShortBreak(new RuleFacts { ShiftHasBreak = hasBreak, ShiftIsOvernight = overnight, BreakMinutes = (int)Math.Floor((typed[i + 1].Utc - typed[i].Utc).TotalMinutes) }))
             {
                 ignored++;
                 i++;
@@ -189,7 +191,8 @@ internal static class ShiftAttendanceCalculator
     /// <summary>
     /// Compares the break taken with the shift's scheduled break: how long, and when it started. A shift with a scheduled break and no
     /// break taken at all is a "no break", once the shift has both its check-in and check-out. Returns the findings, how many minutes the
-    /// breaks lasted beyond the schedule, and how many minutes from the scheduled start the break began (late is positive).
+    /// breaks lasted beyond the schedule, and how many minutes from the scheduled start the break began (late is positive). A long, late or
+    /// early break is a finding when the rules note it (<see cref="RuleSetSnapshot.Notes"/>); the policy's numbers no longer decide that.
     /// </summary>
     private static (BreakFindings Findings, int ExcessMinutes, int StartOffsetMinutes) FindBreakIssues(
         ResolvedShift? shift,
@@ -199,6 +202,8 @@ internal static class ShiftAttendanceCalculator
         AttendancePunch? breakIn,
         TimeSpan onBreak,
         AttendancePolicy policy,
+        RuleSetSnapshot rules,
+        int excusedMinutes,
         bool breakExcused)
     {
         if (shift is not { BreakTime: true, BreakStartsAt: { } scheduledStart })
@@ -218,19 +223,20 @@ internal static class ShiftAttendanceCalculator
             return (BreakFindings.None, 0, 0);
         }
 
+        // How far a break went is measured here; whether that is a finding worth noting is the rules' (how far over is allowed is a condition).
         var findings = BreakFindings.None;
         var offset = WholeMinutes(RoundedLocal(breakOut, policy.RoundingRuleMinutes) - scheduledStart);
-        if (offset > policy.BreakStartGraceMinutes)
+        if (offset > 0 && rules.Notes(RuleFinding.LateBreak, ShiftFacts.For(shift, offset, excusedMinutes)))
         {
             findings |= BreakFindings.LateBreak;
         }
-        else if (-offset > policy.BreakStartGraceMinutes)
+        else if (offset < 0 && rules.Notes(RuleFinding.EarlyBreak, ShiftFacts.For(shift, -offset, excusedMinutes)))
         {
             findings |= BreakFindings.EarlyBreak;
         }
 
         var excess = Math.Max(0, WholeMinutes(onBreak) - shift.BreakMinutes);
-        if (excess > policy.LongBreakGraceMinutes)
+        if (excess > 0 && rules.Notes(RuleFinding.LongBreak, ShiftFacts.For(shift, excess, excusedMinutes)))
         {
             findings |= BreakFindings.LongBreak;
         }

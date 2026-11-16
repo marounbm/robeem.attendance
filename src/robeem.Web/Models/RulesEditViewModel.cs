@@ -12,6 +12,7 @@ public sealed class RulesEditViewModel
         ("RaiseException", "Raise an exception"),
         ("SuppressException", "Do not raise an exception"),
         ("InferBreak", "Read the gap as the break"),
+        ("IgnoreShortBreak", "Count a short break as work"),
     ];
 
     /// <summary>Gets what a raise or suppress rule can be about.</summary>
@@ -29,6 +30,8 @@ public sealed class RulesEditViewModel
     [
         ("MinutesOver", "Minutes over what is allowed (exception rules)"),
         ("ExcusedMinutes", "Minutes of the shift on approved leave (exception rules)"),
+        ("MinutesAfterShiftEnd", "Minutes since the shift ended (no-show rules only)"),
+        ("BreakMinutes", "Length of the break, minutes (counting a short break as work)"),
         ("GapMinutes", "Length of the gap, minutes (reading a break)"),
         ("GapStartOffsetMinutes", "Gap start from the scheduled break, minutes (reading a break)"),
         ("GapExcusedPercent", "Share of the gap on approved leave, % (reading a break)"),
@@ -51,6 +54,14 @@ public sealed class RulesEditViewModel
 
     [BindNever]
     public int? ScheduleId { get; set; }
+
+    /// <summary>Gets or sets the place of the rule being changed on its own (<c>EditRule</c>), counting from 0.</summary>
+    [BindNever]
+    public int Position { get; set; }
+
+    /// <summary>Gets or sets the version of the rules in force that the single rule was read from.</summary>
+    [BindNever]
+    public int ExpectedVersion { get; set; }
 
     [BindNever]
     public string ScopeTitle { get; set; } = string.Empty;

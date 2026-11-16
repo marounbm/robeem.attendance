@@ -57,6 +57,14 @@ public sealed class RulesApiClient : IRulesApiClient
         return await ApiResponses.SaveAsync<RulesSaveRequest>(response, draftId, cancellationToken, keepNestedPaths: true);
     }
 
+    public async Task<ApiSaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/change", request, cancellationToken);
+
+        // A refused rule comes back keyed Rules[0].Field, which RulesSaveRequest names.
+        return await ApiResponses.SaveAsync<RulesSaveRequest>(response, null, cancellationToken, keepNestedPaths: true);
+    }
+
     public async Task<ApiSaveResult> DiscardDraftAsync(int draftId, CancellationToken cancellationToken)
     {
         using var response = await _http.DeleteAsync($"{Path}/drafts/{Number(draftId)}", cancellationToken);

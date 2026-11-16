@@ -41,6 +41,13 @@ namespace robeem.DataModel
         [MaxLength(1000)]
         public string? Notes { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the thresholds that decide whether there is a finding at all (how far over a break may go, how
+        /// far from its scheduled start, how long a no-show waits) are written in the rules as conditions. A set made before that has none, and
+        /// the policy's own numbers still apply to its rules, so publishing it moved nobody's behaviour. Every set published since says true.
+        /// </summary>
+        public bool ThresholdsInRules { get; set; }
+
         public ICollection<AttendanceRule> Rules { get; set; } = new List<AttendanceRule>();
     }
 }

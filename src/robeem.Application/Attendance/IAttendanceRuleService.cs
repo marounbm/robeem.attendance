@@ -35,6 +35,13 @@ public interface IAttendanceRuleService
     /// <summary>Publishes the draft as the next version, retiring the set in force. The draft must pass <see cref="RuleValidator"/>. Audited, with any suppression and its reason.</summary>
     Task<SaveResult> PublishAsync(int draftId, string? notes, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Changes one rule of the rules in force (replace it, switch it on or off, delete it, move it) and publishes the result as the next version at once,
+    /// every other rule as it was. Refused when the scope has a draft, or when the rules in force are not the version the request was made against.
+    /// Audited like any publication, saying what was changed.
+    /// </summary>
+    Task<SaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken);
+
     /// <summary>Throws the draft away.</summary>
     Task<SaveResult> DiscardDraftAsync(int draftId, CancellationToken cancellationToken);
 }

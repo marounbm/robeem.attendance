@@ -67,6 +67,14 @@ public sealed class AttendanceRulesController : ControllerBase
         return result.Succeeded ? NoContent() : Failure(result);
     }
 
+    /// <summary>Changes one rule of the rules in force and publishes the result as the next version.</summary>
+    [HttpPost("change")]
+    public async Task<IActionResult> Change(RuleChangeRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _rules.ChangeRuleAsync(request, cancellationToken);
+        return result.Succeeded ? NoContent() : Failure(result);
+    }
+
     [HttpDelete("drafts/{id:int}")]
     public async Task<IActionResult> DiscardDraft(int id, CancellationToken cancellationToken)
     {

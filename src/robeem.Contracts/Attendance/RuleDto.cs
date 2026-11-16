@@ -13,7 +13,7 @@ public sealed class RuleDto
     /// <summary>Gets or sets the stage: <c>Interpretation</c> or <c>Exception</c>.</summary>
     public string Stage { get; set; } = "Exception";
 
-    /// <summary>Gets or sets the action: <c>InferBreak</c>, <c>RaiseException</c> or <c>SuppressException</c>.</summary>
+    /// <summary>Gets or sets the action: <c>InferBreak</c>, <c>IgnoreShortBreak</c>, <c>RaiseException</c> or <c>SuppressException</c>.</summary>
     public string Action { get; set; } = "RaiseException";
 
     /// <summary>Gets or sets the finding a raise or suppress rule is about: <c>LongBreak</c>, <c>LateBreak</c>, <c>EarlyBreak</c>, <c>NoBreak</c> or <c>NoShow</c>.</summary>

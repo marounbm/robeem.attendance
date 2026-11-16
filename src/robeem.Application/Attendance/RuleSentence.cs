@@ -22,6 +22,7 @@ public static class RuleSentence
             ? action switch
             {
                 RuleAction.InferBreak => "read the gap as the break (marked as inferred)",
+                RuleAction.IgnoreShortBreak => "count the break as work (its two punches are left out)",
                 RuleAction.RaiseException => $"raise an exception for {finding}",
                 RuleAction.SuppressException => $"do not raise an exception for {finding}" + (string.IsNullOrWhiteSpace(rule.Reason) ? string.Empty : $" (reason: {rule.Reason.Trim()})"),
                 _ => "do nothing",
@@ -67,6 +68,8 @@ public static class RuleSentence
             RuleFact.GapExcusedPercent => $"approved leave covers {words} {value}% of the gap",
             RuleFact.MinutesOver => $"the finding is {words} {value} minutes over what is allowed",
             RuleFact.ExcusedMinutes => $"approved leave covers {words} {value} minutes of the shift",
+            RuleFact.BreakMinutes => $"the break lasts {words} {value} minutes",
+            RuleFact.MinutesAfterShiftEnd => $"the shift ended {words} {value} minutes ago",
             RuleFact.ShiftHasBreak => yes ? "the shift has a break" : "the shift has no break",
             RuleFact.ShiftIsOvernight => yes ? "the shift ends after midnight" : "the shift ends the same day",
             _ => "a condition holds",

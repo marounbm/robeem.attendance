@@ -40,9 +40,11 @@ internal static class AttendanceExceptionDetector
         // A scheduled shift without a single punch is a no-show: one exception, not two missing punches, because a person is not
         // asked to supply a punch for a day they may have been away. Nothing is expected on a day off, for hourly staff, or when no
         // schedule is configured, and then there is no shift to get here. The engine drops it on a day covered by approved leave.
+        // The shift has to be over; how long to wait after that is the rules' (a condition on how long ago it ended).
         if (calculation.SourceIds.Count == 0 && punches.Count == 0)
         {
-            if (shift is not null && graceOver && rules.Raises(RuleFinding.NoShow, ShiftFacts.For(shift, 0, calculation.ExcusedMinutes)))
+            if (shift is not null && now >= shift.EndsAt
+                && rules.Raises(RuleFinding.NoShow, ShiftFacts.For(shift, 0, calculation.ExcusedMinutes, (int)Math.Floor((now - shift.EndsAt).TotalMinutes))))
             {
                 found.Add(new DetectedException(AttendanceExceptionType.NoShow, null, null, "No punch was recorded for a scheduled shift."));
             }

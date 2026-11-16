@@ -13,5 +13,8 @@ public sealed record RuleSnapshot(
     string? Reason,
     IReadOnlyList<ConditionSnapshot> Conditions)
 {
-    public bool Matches(RuleFacts facts) => IsEnabled && Conditions.All(c => c.Holds(facts));
+    public bool Matches(RuleFacts facts) => IsEnabled && ConditionsHold(facts);
+
+    /// <summary>Whether every condition holds, whether the rule is on or off. A rule that is off still says what is worth noting on the day.</summary>
+    public bool ConditionsHold(RuleFacts facts) => Conditions.All(c => c.Holds(facts));
 }

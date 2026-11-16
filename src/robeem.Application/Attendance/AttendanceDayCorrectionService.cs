@@ -26,6 +26,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     private readonly IScheduleResolutionService _schedules;
     private readonly IAttendanceExceptionQuery _exceptions;
     private readonly IAttendancePolicyResolver _policies;
+    private readonly IRuleSetProvider _ruleSets;
     private readonly IAttendanceAuditTrail _audit;
     private readonly TimeProvider _clock;
 
@@ -34,6 +35,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         IScheduleResolutionService schedules,
         IAttendanceExceptionQuery exceptions,
         IAttendancePolicyResolver policies,
+        IRuleSetProvider ruleSets,
         IAttendanceAuditTrail audit,
         TimeProvider clock)
     {
@@ -41,6 +43,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         _schedules = schedules;
         _exceptions = exceptions;
         _policies = policies;
+        _ruleSets = ruleSets;
         _audit = audit;
         _clock = clock;
     }
@@ -524,8 +527,9 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         // Every shift needs a check-in and a check-out (a day with no schedule, one); a shift with a break needs the pair of break punches
         // when the policy asks for them, the same rule that makes a shift incomplete when it is calculated.
         var policy = await _policies.ResolveAsync(employeeId, cancellationToken);
+        var rules = await _ruleSets.ResolveAsync(policy, cancellationToken);
         var shiftCount = Math.Max(1, shifts.Count);
-        var breakCount = policy.RaiseExceptionOnNoBreak ? shifts.Count(s => s.BreakTime) : 0;
+        var breakCount = shifts.Count(s => s.BreakTime && rules.Raises(RuleFinding.NoBreak, ShiftFacts.For(s, 0, 0)));
         var needed = new Dictionary<NormalizedEventType, int>
         {
             [NormalizedEventType.CheckIn] = shiftCount,

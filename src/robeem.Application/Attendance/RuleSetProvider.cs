@@ -13,23 +13,30 @@ public sealed class RuleSetProvider : IRuleSetProvider
         _db = db;
     }
 
-    /// <summary>Reads a stored rule set (with its rules and conditions loaded) as the evaluator reads it.</summary>
-    public static RuleSetSnapshot ToSnapshot(AttendanceRuleSet set) => new(
-        set.Version,
-        $"published version {set.Version}",
-        set.Rules
-            .OrderBy(r => r.Priority)
-            .ThenBy(r => r.Id)
-            .Select(r => new RuleSnapshot(
-                r.Title,
-                r.Priority,
-                r.IsEnabled,
-                r.Stage,
-                r.Action,
-                r.Finding,
-                r.Reason,
-                r.Conditions.OrderBy(c => c.Id).Select(c => new ConditionSnapshot(c.Fact, c.Operator, c.Value)).ToList()))
-            .ToList());
+    /// <summary>
+    /// Reads a stored rule set (with its rules and conditions loaded) as the evaluator reads it. A set made before the thresholds moved into the
+    /// rules (<see cref="AttendanceRuleSet.ThresholdsInRules"/> false) is read with the policy's thresholds added, so it behaves as it always did.
+    /// </summary>
+    public static RuleSetSnapshot ToSnapshot(AttendanceRuleSet set, AttendancePolicy policy)
+    {
+        var snapshot = new RuleSetSnapshot(
+            set.Version,
+            $"published version {set.Version}",
+            set.Rules
+                .OrderBy(r => r.Priority)
+                .ThenBy(r => r.Id)
+                .Select(r => new RuleSnapshot(
+                    r.Title,
+                    r.Priority,
+                    r.IsEnabled,
+                    r.Stage,
+                    r.Action,
+                    r.Finding,
+                    r.Reason,
+                    r.Conditions.OrderBy(c => c.Id).Select(c => new ConditionSnapshot(c.Fact, c.Operator, c.Value)).ToList()))
+                .ToList());
+        return set.ThresholdsInRules ? snapshot : snapshot.WithPolicyThresholds(policy);
+    }
 
     public async Task<RuleSetSnapshot> ResolveAsync(AttendancePolicy policy, CancellationToken cancellationToken)
     {
@@ -40,7 +47,7 @@ public sealed class RuleSetProvider : IRuleSetProvider
             .Where(s => s.Status == RuleSetStatus.Published && s.TimeScheduleId == scope)
             .OrderByDescending(s => s.Version)
             .FirstOrDefaultAsync(cancellationToken);
-        return set is null ? RuleSetSnapshot.FromPolicy(policy) : ToSnapshot(set);
+        return set is null ? RuleSetSnapshot.FromPolicy(policy) : ToSnapshot(set, policy);
     }
 
     public async Task<IReadOnlyDictionary<int, int>> GetPublishedVersionsAsync(CancellationToken cancellationToken)

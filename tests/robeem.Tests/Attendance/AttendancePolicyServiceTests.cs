@@ -71,55 +71,44 @@ public sealed class AttendancePolicyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task TheBreakRules_AreStored_AndReadBack_AndStartWithTheDefaultsOfANewPolicy()
+    public async Task ANewPolicy_StartsWithTheStartingBreakNumbers_WhichAreSetInRulesFromThen()
     {
-        var fresh = new PolicyInput();
-        Assert.Equal((10, 15, 5, false, false, false, true), (fresh.IgnoreBreaksShorterThanMinutes, fresh.BreakStartGraceMinutes, fresh.LongBreakGraceMinutes, fresh.RaiseExceptionOnLongBreak, fresh.RaiseExceptionOnLateBreak, fresh.RaiseExceptionOnEarlyBreak, fresh.RaiseExceptionOnNoBreak));
+        await CreateAsync(Input("Breaks", ScheduleId("Night shift")));
 
-        var input = Input("Breaks", ScheduleId("Night shift"));
-        input.IgnoreBreaksShorterThanMinutes = 7;
-        input.BreakStartGraceMinutes = 20;
-        input.LongBreakGraceMinutes = 3;
-        input.RaiseExceptionOnLongBreak = true;
-        input.RaiseExceptionOnLateBreak = false;
-        input.RaiseExceptionOnEarlyBreak = true;
-        input.RaiseExceptionOnNoBreak = false;
-
-        var id = (await CreateAsync(input)).Id!.Value;
-
+        // No break setting is on the policy form: the policy only holds the numbers the starting rules are written from.
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var back = await Service(db).GetInputAsync(id, CancellationToken.None);
-        var listed = Assert.Single(await Service(db).ListAsync(CancellationToken.None));
-        Assert.Equal((7, 20, 3, true, false, true, false), (back!.IgnoreBreaksShorterThanMinutes, back.BreakStartGraceMinutes, back.LongBreakGraceMinutes, back.RaiseExceptionOnLongBreak, back.RaiseExceptionOnLateBreak, back.RaiseExceptionOnEarlyBreak, back.RaiseExceptionOnNoBreak));
-        Assert.Equal((7, 20, 3, true, false, true, false), (listed.IgnoreBreaksShorterThanMinutes, listed.BreakStartGraceMinutes, listed.LongBreakGraceMinutes, listed.RaiseExceptionOnLongBreak, listed.RaiseExceptionOnLateBreak, listed.RaiseExceptionOnEarlyBreak, listed.RaiseExceptionOnNoBreak));
-        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.PolicyChanged && a.Details!.Contains("breaks under 7 min ignored") && a.Details.Contains("long/early"));
+        var stored = db.AttendancePolicies.Single();
+        Assert.Equal((10, 15, 5), (stored.IgnoreBreaksShorterThanMinutes, stored.BreakStartGraceMinutes, stored.LongBreakGraceMinutes));
+        Assert.DoesNotContain(typeof(PolicyInput).GetProperties(), p => p.Name.Contains("Break", StringComparison.Ordinal));
+        Assert.DoesNotContain(typeof(PolicyListItem).GetProperties(), p => p.Name.Contains("Break", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task TheBreakInference_IsOffByDefault_IsStoredAndReadBack_AndOnlyKnownModesAreAccepted()
+    public async Task SavingAPolicy_NeverChangesWhatRaisesAnExceptionOrReadsABreak_ThatIsSetInRules()
     {
-        var fresh = new PolicyInput();
-        Assert.Equal(("Off", 90, 120), (fresh.BreakInferenceMode, fresh.InferredBreakWindowMinutes, fresh.InferredBreakMaxMinutes));
+        // The break and no-show numbers are conditions of the rules too: saving a policy leaves the starting values where they are.
+        var id = (await CreateAsync(Input("Breaks", ScheduleId("Night shift")))).Id!.Value;
+        using (var seed = _database.CreateContext(TestDatabase.TenantA))
+        {
+            var policy = seed.AttendancePolicies.Single();
+            policy.RaiseExceptionOnLongBreak = true;
+            policy.RaiseExceptionOnNoBreak = false;
+            policy.BreakInferenceMode = BreakInferenceMode.FromGap;
+            policy.InferredBreakWindowMinutes = 45;
+            policy.InferredBreakMaxMinutes = 75;
+            policy.LongBreakGraceMinutes = 9;
+            policy.BreakStartGraceMinutes = 20;
+            policy.IgnoreBreaksShorterThanMinutes = 7;
+            await seed.SaveChangesAsync();
+        }
 
-        var input = Input("Gaps", ScheduleId("Night shift"));
-        input.BreakInferenceMode = "FromGap";
-        input.InferredBreakWindowMinutes = 45;
-        input.InferredBreakMaxMinutes = 75;
-        var id = (await CreateAsync(input)).Id!.Value;
+        var change = Input("Breaks, renamed", ScheduleId("Night shift"));
+        Assert.True((await UpdateAsync(id, change)).Succeeded);
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var back = await Service(db).GetInputAsync(id, CancellationToken.None);
-        var listed = Assert.Single(await Service(db).ListAsync(CancellationToken.None));
-        Assert.Equal(("FromGap", 45, 75), (back!.BreakInferenceMode, back.InferredBreakWindowMinutes, back.InferredBreakMaxMinutes));
-        Assert.Equal(("FromGap", 45, 75), (listed.BreakInferenceMode, listed.InferredBreakWindowMinutes, listed.InferredBreakMaxMinutes));
-        Assert.Equal(BreakInferenceMode.FromGap, db.AttendancePolicies.Single().BreakInferenceMode);
-
-        var bad = Input("Bad", ScheduleId("Day shift"));
-        bad.BreakInferenceMode = "Guess";
-        bad.InferredBreakMaxMinutes = 0;
-        var refused = await CreateAsync(bad);
-        Assert.Contains(nameof(PolicyInput.BreakInferenceMode), refused.Errors.Keys);
-        Assert.Contains(nameof(PolicyInput.InferredBreakMaxMinutes), refused.Errors.Keys);
+        var stored = db.AttendancePolicies.Single();
+        Assert.Equal((9, 20, 7), (stored.LongBreakGraceMinutes, stored.BreakStartGraceMinutes, stored.IgnoreBreaksShorterThanMinutes));
+        Assert.Equal((true, false, BreakInferenceMode.FromGap, 45, 75), (stored.RaiseExceptionOnLongBreak, stored.RaiseExceptionOnNoBreak, stored.BreakInferenceMode, stored.InferredBreakWindowMinutes, stored.InferredBreakMaxMinutes));
     }
 
     [Theory]
@@ -131,9 +120,6 @@ public sealed class AttendancePolicyServiceTests : IDisposable
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 0)]
     [InlineData(nameof(PolicyInput.DuplicateTimeWindowSeconds), 3601)]
     [InlineData(nameof(PolicyInput.MissingPunchGraceMinutes), 1441)]
-    [InlineData(nameof(PolicyInput.IgnoreBreaksShorterThanMinutes), 241)]
-    [InlineData(nameof(PolicyInput.BreakStartGraceMinutes), -1)]
-    [InlineData(nameof(PolicyInput.LongBreakGraceMinutes), 241)]
     public async Task ASettingOutsideItsRange_IsRefusedByName(string field, int value)
     {
         var input = Input("Bad");

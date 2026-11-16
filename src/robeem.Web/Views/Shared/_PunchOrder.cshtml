@@ -1,0 +1,28 @@
+@* The order attendance punches are expected in. Read-only: it is how the calculation, the exception check and Correct a day all read a day, not a setting. *@
+<div class="card mb-3" id="punch-order">
+    <div class="card-header">Expected order of punches</div>
+    <div class="card-body">
+        <ol class="list-inline mb-2">
+            <li class="list-inline-item"><span class="badge text-bg-primary">1 · Check-in</span></li>
+            <li class="list-inline-item text-muted" aria-hidden="true">→</li>
+            <li class="list-inline-item"><span class="badge text-bg-secondary">2 · Break-out</span></li>
+            <li class="list-inline-item text-muted" aria-hidden="true">→</li>
+            <li class="list-inline-item"><span class="badge text-bg-secondary">3 · Break-in</span></li>
+            <li class="list-inline-item text-muted" aria-hidden="true">→</li>
+            <li class="list-inline-item"><span class="badge text-bg-primary">4 · Check-out</span></li>
+        </ol>
+        <ul class="small text-muted mb-0">
+            <li>A shift with no scheduled break needs only the check-in and the check-out. The two break punches belong to a shift that has a break.</li>
+            <li>Every break-out is followed by its break-in, and a new check-in comes only after a check-out. The day ends with a check-out, after midnight for a shift that ends after midnight.</li>
+            <li>Punches of the same minute are taken in this order, so a pair of taps is not judged by the order it was stored in.</li>
+            <li>
+                A punch that breaks the order shows as <strong>Wrong order</strong> on the Exceptions tab, and a punch that is absent is reported <strong>missing</strong>.
+                Neither is ever invented or moved: the employee puts the day right with <strong>Correct</strong>, and an approver decides.
+            </li>
+            <li>
+                A device that sends no punch type: with <em>Alternate check-in / check-out</em> below, a day whose punches are all unlabeled is typed in this order, but only
+                when the count fits (two, or four on a shift with a break). Each is marked as inferred.
+            </li>
+        </ul>
+    </div>
+</div>

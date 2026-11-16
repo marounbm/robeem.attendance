@@ -108,9 +108,68 @@ public sealed class RulesWebTests
         Assert.Single(model.Rules);
     }
 
+    [Fact]
+    public async Task AnActionFromTheGrid_IsSentForThatRuleAndVersion_AndGoesBackToTheGrid()
+    {
+        var controller = NewController();
+
+        var result = await controller.Manage(5, 3, 2, RuleChangeOperations.Disable, CancellationToken.None);
+
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Equal((5, 3, 2, RuleChangeOperations.Disable), (_api.Changed!.TimeScheduleId, _api.Changed.ExpectedVersion, _api.Changed.Position, _api.Changed.Operation));
+        Assert.True(controller.TempData.ContainsKey("StatusMessage"));
+    }
+
+    [Fact]
+    public async Task ARefusedActionFromTheGrid_ShowsWhy()
+    {
+        _api.ChangeErrors = new Dictionary<string, string> { ["id"] = "The rules were changed since this page was shown." };
+        var controller = NewController();
+
+        var result = await controller.Manage(null, 3, 2, RuleChangeOperations.Delete, CancellationToken.None);
+
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(result).ActionName);
+        Assert.Contains("changed since", (string)controller.TempData["ErrorMessage"]!);
+    }
+
+    [Fact]
+    public async Task ChangingOneRule_SendsItInPlaceOfTheOneAtThatPosition_AndKeepsTheFormOnAnError()
+    {
+        var controller = NewController();
+        var rule = Rule("A");
+        rule.Action = "InferBreak";
+        rule.Finding = "NoShow";
+
+        var saved = await controller.EditRule(null, 4, 2, new RulesEditViewModel { Rules = [rule] }, "save", CancellationToken.None);
+
+        Assert.Equal("Index", Assert.IsType<RedirectToActionResult>(saved).ActionName);
+        Assert.Equal((RuleChangeOperations.Replace, 4, 2, "Interpretation"), (_api.Changed!.Operation, _api.Changed.Position, _api.Changed.ExpectedVersion, _api.Changed.Rule!.Stage));
+        Assert.Null(_api.Changed.Rule.Finding);
+
+        _api.ChangeErrors = new Dictionary<string, string> { ["Rules[0].Name"] = "Give the rule a name." };
+        var refused = await controller.EditRule(null, 4, 2, new RulesEditViewModel { Rules = [Rule(string.Empty)] }, "save", CancellationToken.None);
+
+        var view = Assert.IsType<ViewResult>(refused);
+        Assert.Equal(4, Assert.IsType<RulesEditViewModel>(view.Model).Position);
+        Assert.Equal("Give the rule a name.", controller.ModelState["Rules[0].Name"]!.Errors.Single().ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ChangingOneRule_AddsAConditionWithoutSaving()
+    {
+        var controller = NewController();
+
+        var result = await controller.EditRule(null, 0, 1, new RulesEditViewModel { Rules = [Rule("A")] }, "add-condition:0", CancellationToken.None);
+
+        Assert.Single(Assert.IsType<RulesEditViewModel>(Assert.IsType<ViewResult>(result).Model).Rules[0].Conditions);
+        Assert.Null(_api.Changed);
+    }
+
     private static RulesEditViewModel Model(params RuleDto[] rules) => new() { Rules = [.. rules] };
 
     private static RuleDto Rule(string name) => new() { Name = name, Stage = "Exception", Action = "RaiseException", Finding = "NoShow", IsEnabled = true };
+
+    private RulesController NewController() => new(_api) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NoTempData()) };
 
     private async Task<(IActionResult Result, RulesEditViewModel Model)> EditAsync(RulesEditViewModel model, string command)
     {
@@ -136,6 +195,10 @@ public sealed class RulesWebTests
         public int Published { get; private set; }
 
         public Dictionary<string, string>? SaveErrors { get; set; }
+
+        public RuleChangeRequest? Changed { get; private set; }
+
+        public Dictionary<string, string>? ChangeErrors { get; set; }
 
         public Task<IReadOnlyList<RuleScopeDto>> ListScopesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RuleScopeDto>>([]);
 
@@ -164,6 +227,17 @@ public sealed class RulesWebTests
         {
             Published++;
             return Task.FromResult(ApiSaveResult.Success(draftId));
+        }
+
+        public Task<ApiSaveResult> ChangeRuleAsync(RuleChangeRequest request, CancellationToken cancellationToken)
+        {
+            if (ChangeErrors is not null)
+            {
+                return Task.FromResult(ApiSaveResult.Invalid(ChangeErrors));
+            }
+
+            Changed = request;
+            return Task.FromResult(ApiSaveResult.Success(null));
         }
 
         public Task<ApiSaveResult> DiscardDraftAsync(int draftId, CancellationToken cancellationToken) => Task.FromResult(ApiSaveResult.Success(draftId));

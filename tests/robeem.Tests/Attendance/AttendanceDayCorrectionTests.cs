@@ -590,7 +590,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     }
 
     private AttendanceDayCorrectionService Service(RobeemDbContext db) =>
-        new(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), CreateAudit(db), Clock);
+        new(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), Clock);
 
     private AttendanceCorrectionService Corrections(RobeemDbContext db) =>
         new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);
