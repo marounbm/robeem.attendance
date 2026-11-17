@@ -80,6 +80,21 @@ public sealed class RecordsWebTests
     }
 
     [Fact]
+    public async Task TheOpenExceptionsChoice_AsksTheApiForDaysWithAnOpenException_AndStaysChosenOnThePageLinks()
+    {
+        var records = new FakeRecords { Total = 61 };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var model = (RecordsIndexViewModel)((ViewResult)await controller.Index(RecordsIndexViewModel.OpenExceptions, null, null, false, 4, 1, 20, null, null, CancellationToken.None)).Model!;
+
+        // To the Api it is no status at all, only the days with an exception that is not closed.
+        Assert.Equal((null, true), (records.Status, records.OnlyWithExceptions));
+        Assert.Contains(RecordsIndexViewModel.OpenExceptions, RecordsIndexViewModel.Statuses);
+        Assert.Equal(RecordsIndexViewModel.OpenExceptions, model.Status);
+        Assert.Equal(RecordsIndexViewModel.OpenExceptions, model.Pager.RouteValues["status"]);
+    }
+
+    [Fact]
     public async Task ThePage_IsAskedFromTheServer_WithASizeFromTheOfferedOnes_AndShowsWhatTheServerAnswered()
     {
         var records = new FakeRecords { Total = 61, ServerPage = 2 };

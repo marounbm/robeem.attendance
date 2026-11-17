@@ -39,7 +39,10 @@ public sealed class RecordsController : Controller
         // Oldest first unless a known column and direction are asked for.
         var field = Enum.TryParse<RecordSortField>(sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : RecordSortField.Date;
         var descending = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
-        var result = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
+
+        // "Open exceptions" is how the list names a day that waits for its exceptions; to the Api it is the days with an exception that is not closed.
+        var openExceptions = chosen == RecordsIndexViewModel.OpenExceptions;
+        var result = await _records.ListAsync(from, to, employeeId, chosen is "Any" or RecordsIndexViewModel.OpenExceptions ? null : chosen, onlyWithExceptions || openExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
         var canCheckMissing = _actor.IsInRole(NavigationMenu.Hr);
         var (checkFrom, checkTo) = canCheckMissing ? await DefaultPeriodAsync(cancellationToken) : (null, null);
         return View(new RecordsIndexViewModel

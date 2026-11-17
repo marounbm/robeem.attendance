@@ -7,7 +7,14 @@ public sealed class RecordsIndexViewModel
 {
     public const int DefaultPageSize = 20;
 
-    public static IReadOnlyList<string> Statuses { get; } = ["Any", "Calculated", "PendingReview", "Approved", "Rejected"];
+    /// <summary>The Status filter's choice for days with an open exception.</summary>
+    public const string OpenExceptions = "OpenExceptions";
+
+    /// <summary>
+    /// Gets what the Status filter offers. <see cref="OpenExceptions"/> is not a status the Api knows: it is what the list calls a day that waits for
+    /// its exceptions, and the controller asks the Api for the days with an open exception.
+    /// </summary>
+    public static IReadOnlyList<string> Statuses { get; } = ["Any", OpenExceptions, "Calculated", "PendingReview", "Approved", "Rejected"];
 
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];
