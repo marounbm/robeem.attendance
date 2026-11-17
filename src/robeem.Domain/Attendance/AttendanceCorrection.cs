@@ -104,10 +104,10 @@ namespace robeem.DataModel
         [NotMapped]
         public override string Title => Kind switch
         {
-            AttendanceCorrectionKind.ChangePunchType => $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:d}",
-            AttendanceCorrectionKind.IgnorePunch => $"Correction ignore {OriginalEventType} — {AttendanceDate:d}",
-            AttendanceCorrectionKind.CancelSuppliedPunch => $"Correction delete added {CorrectedEventType} — {AttendanceDate:d}",
-            _ => $"Correction {CorrectedEventType} — {AttendanceDate:d}",
+            AttendanceCorrectionKind.ChangePunchType => $"Correction {OriginalEventType} to {CorrectedEventType} — {AttendanceDate:yyyy-MM-dd}",
+            AttendanceCorrectionKind.IgnorePunch => $"Correction ignore {OriginalEventType} — {AttendanceDate:yyyy-MM-dd}",
+            AttendanceCorrectionKind.CancelSuppliedPunch => $"Correction delete added {CorrectedEventType} — {AttendanceDate:yyyy-MM-dd}",
+            _ => $"Correction {CorrectedEventType} — {AttendanceDate:yyyy-MM-dd}",
         };
         #endregion
     }

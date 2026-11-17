@@ -25,5 +25,12 @@ namespace robeem.DataModel
         /// arriving or being corrected, by a manager or HR accepting it with a reason, or by a leave or holiday that is entered later.
         /// </summary>
         NoShow,
+
+        /// <summary>
+        /// A complete day, after the shift is over, in which the employee worked less than the shift schedules (late, left early, a longer
+        /// break, or any mix). There is no punch to supply: a manager or HR accepts it with a reason, or the day's punches are corrected. The
+        /// rules decide how much less is a problem.
+        /// </summary>
+        ShortHours,
     }
 }

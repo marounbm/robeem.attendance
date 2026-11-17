@@ -70,7 +70,8 @@ public static class NavigationMenu
             new NavItem("Pay periods", "PayPeriods", "Index", "Create, close and reopen the pay periods; closing ends payroll extraction of a period.", Payroll),
         ]);
 
-    private static readonly NavSection Settings = new("Settings", [new NavItem("Policies", "Policies", "Index", "Rounding, grace periods, overtime and correction rules: the tenant default and each schedule's own.", Hr),
+    private static readonly NavSection Settings = new("Settings", [new NavItem("Start date", "AttendanceSettings", "Index", "The date the punching started: attendance is not expected, accepted or looked for before it.", Hr),
+            new NavItem("Policies", "Policies", "Index", "Rounding, grace periods, overtime and correction rules: the tenant default and each schedule's own.", Hr),
             new NavItem("Rules", "Rules", "Index", "How a break is read from the punches of a device that sends no break type, and which findings become an exception: see the rules, change them on a draft, publish a new version.", Hr),
         ]);
 

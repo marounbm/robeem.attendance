@@ -230,6 +230,20 @@ public sealed class RecordsWebTests
     }
 
     [Fact]
+    public async Task LookingForMissingDays_WithNoDatesChosen_StartsAtTheStartDate_AndEndsAtTheLastDayEntered()
+    {
+        var records = new FakeRecords { CheckResult = new CheckMissingDaysResponse { From = new DateTime(2026, 4, 1), To = new DateTime(2026, 4, 30) } };
+        var settings = new FakeSettings { Item = new AttendanceSettingsItem { StartDate = new DateTime(2026, 4, 1), LastAttendanceDate = new DateTime(2026, 4, 30) } };
+        var controller = Controller(records, ["HRAdministrator"], settings: settings);
+
+        var index = (RecordsIndexViewModel)((ViewResult)await controller.Index(null, null, null, false, null, 1, 20, null, null, CancellationToken.None)).Model!;
+        await controller.CheckMissing(null, null, null, null, false, 0, CancellationToken.None);
+
+        Assert.Equal((new DateTime(2026, 4, 1), new DateTime(2026, 4, 30)), (index.CheckFrom, index.CheckTo));
+        Assert.Equal((new DateTime(2026, 4, 1), new DateTime(2026, 4, 30)), (records.CheckedFrom, records.CheckedTo));
+    }
+
+    [Fact]
     public async Task OnlyHrIsOfferedTheButtonToLookForMissingDays()
     {
         var records = new FakeRecords();
@@ -338,8 +352,17 @@ public sealed class RecordsWebTests
         Assert.Equal((false, new DateTime(2026, 10, 1), new DateTime(2026, 10, 31)), (swapped.RangeShortened, swapped.From, swapped.To));
     }
 
-    private static RecordsController Controller(FakeRecords records, string[] roles, FakeExceptions? exceptions = null) =>
-        new(records, exceptions ?? new FakeExceptions(), new FakeActor(roles)) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NullTempDataProvider()) };
+    private static RecordsController Controller(FakeRecords records, string[] roles, FakeExceptions? exceptions = null, FakeSettings? settings = null) =>
+        new(records, exceptions ?? new FakeExceptions(), new FakeActor(roles), settings ?? new FakeSettings()) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NullTempDataProvider()) };
+
+    private sealed class FakeSettings : IAttendanceSettingsApiClient
+    {
+        public AttendanceSettingsItem Item { get; init; } = new();
+
+        public Task<AttendanceSettingsItem> GetAsync(CancellationToken cancellationToken) => Task.FromResult(Item);
+
+        public Task<ApiSaveResult> SaveAsync(AttendanceSettingsInput input, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
 
     private sealed class NullTempDataProvider : ITempDataProvider
     {

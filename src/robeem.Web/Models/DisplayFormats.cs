@@ -45,6 +45,19 @@ public static class DisplayFormats
     }
 
     /// <summary>
+    /// What an exception is, in words: a missing punch names the punch; a no-show says nobody punched at all; the order of punches says so; a
+    /// long, late or early break says which. A type this does not know is shown by its own name, never as another one.
+    /// </summary>
+    public static string ExceptionLabel(string? exceptionType, string? missingEventType) => (exceptionType, missingEventType) switch
+    {
+        (_, { } missing) when missing.Length > 0 => $"Missing {Words(missing).ToLowerInvariant()}",
+        ("NoShow", _) => "No punch at all (no-show)",
+        ("InvalidSequence", _) => "Wrong order",
+        ("ShortHours", _) => "Worked less than scheduled",
+        _ => Words(exceptionType),
+    };
+
+    /// <summary>
     /// The label of a day's status. The engine calls a day <c>PendingReview</c> both when a person must review it and when it is only
     /// waiting for its open exceptions to be settled; only the first is in the approvers' queue, so the second is named for what it waits for.
     /// </summary>

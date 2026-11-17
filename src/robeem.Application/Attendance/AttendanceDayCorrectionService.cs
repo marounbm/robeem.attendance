@@ -71,7 +71,11 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             errors[nameof(DayCorrectionRequest.Justification)] = $"The justification can be at most {JustificationMaxLength} characters.";
         }
 
-        if (!data.View.CanCorrect)
+        if (await AttendanceStartDate.ReadAsync(_db, cancellationToken) is { } startDate && AttendanceStartDate.IsBefore(day, startDate))
+        {
+            errors["Date"] = AttendanceStartDate.DayMessage(startDate);
+        }
+        else if (!data.View.CanCorrect)
         {
             errors["Date"] = data.View.CannotCorrectReason ?? "This day can't be corrected now.";
         }

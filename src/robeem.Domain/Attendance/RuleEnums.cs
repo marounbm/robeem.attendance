@@ -57,6 +57,12 @@ namespace robeem.DataModel
         /// is raised, but never whether: it is always raised 24 hours after the shift ended, so a day can always be corrected.
         /// </summary>
         MissingCheckOut,
+
+        /// <summary>
+        /// A complete shift, once it is over, in which less was worked than scheduled (late, left early, a longer break, or any mix). The fact
+        /// <see cref="RuleFact.MinutesOver"/> is how many minutes short the day is, after the time on approved leave.
+        /// </summary>
+        ShortHours,
     }
 
     /// <summary>

@@ -195,6 +195,8 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
             return Task.FromResult(new LookbackResult(from, to, 0, [], 21, 0, 0, [new DateTime(2026, 4, 3)]));
         }
 
+        public Task<LookbackResult?> CheckSinceStartAsync(int maxDays, CancellationToken cancellationToken) => Task.FromResult<LookbackResult?>(null);
+
         public Task<int> ReexamineAbsencesAsync(int? employeeId, DateTime from, DateTime to, CancellationToken cancellationToken) => Task.FromResult(0);
     }
 

@@ -87,8 +87,8 @@ namespace robeem.DataModel
 
         [NotMapped]
         public override string Title => ExceptionType == AttendanceExceptionType.MissingPunch
-            ? $"Missing {MissingEventType} — {AttendanceDate:d}"
-            : $"{ExceptionType} — {AttendanceDate:d}";
+            ? $"Missing {MissingEventType} — {AttendanceDate:yyyy-MM-dd}"
+            : $"{ExceptionType} — {AttendanceDate:yyyy-MM-dd}";
         #endregion
     }
 }

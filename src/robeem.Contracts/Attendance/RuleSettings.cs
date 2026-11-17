@@ -25,6 +25,12 @@ public sealed record RuleSettings
     /// <summary>Gets or sets a value indicating whether a shift with a scheduled break, worked with no break punches, raises an exception.</summary>
     public bool NoBreakRaises { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether a complete day worked for less time than the shift schedules raises an exception.</summary>
+    public bool ShortHoursRaises { get; set; }
+
+    /// <summary>Gets or sets how many minutes short of the scheduled time a day may be before it raises an exception (after the time on approved leave).</summary>
+    public int ShortHoursMinutesOver { get; set; }
+
     public bool NoShowRaises { get; set; }
 
     /// <summary>Gets or sets how many minutes after a shift ends a shift with no punch becomes a no-show.</summary>

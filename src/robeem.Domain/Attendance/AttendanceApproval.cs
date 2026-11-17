@@ -79,7 +79,7 @@ namespace robeem.DataModel
 
         #region not mapped
         [NotMapped]
-        public override string Title => $"{Type} {Status} — {AttendanceDate:d}";
+        public override string Title => $"{Type} {Status} — {AttendanceDate:yyyy-MM-dd}";
         #endregion
     }
 }

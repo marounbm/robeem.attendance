@@ -8,6 +8,8 @@ namespace robeem.Application.Attendance;
 
 public sealed class AttendanceLookbackService : IAttendanceLookbackService
 {
+    private const int SliceDays = 366;
+
     private readonly IRobeemDbContext _db;
     private readonly IAttendanceProcessingEngine _engine;
     private readonly IScheduleResolutionService _schedules;
@@ -43,6 +45,12 @@ public sealed class AttendanceLookbackService : IAttendanceLookbackService
         var to = DateTime.SpecifyKind(today.AddDays(-1), DateTimeKind.Unspecified);
         var from = DateTime.SpecifyKind(today.AddDays(-Math.Max(1, windowDays)), DateTimeKind.Unspecified);
 
+        // Nothing is expected before the date the punching started.
+        if (await AttendanceStartDate.ReadAsync(_db, cancellationToken) is { } startDate && startDate > from)
+        {
+            from = DateTime.SpecifyKind(startDate, DateTimeKind.Unspecified);
+        }
+
         var (checkedDevices, silent) = await CheckDevicesAsync(from, cancellationToken);
 
         var employees = await _db.Profiles.AsNoTracking()
@@ -65,7 +73,8 @@ public sealed class AttendanceLookbackService : IAttendanceLookbackService
     {
         // Today is not over, so the last day that can be missing is yesterday.
         var yesterday = _clock.GetLocalNow().DateTime.Date.AddDays(-1);
-        var first = DateTime.SpecifyKind(from.Date, DateTimeKind.Unspecified);
+        var start = await AttendanceStartDate.ReadAsync(_db, cancellationToken);
+        var first = DateTime.SpecifyKind(start is { } startDate && startDate > from.Date ? startDate : from.Date, DateTimeKind.Unspecified);
         var last = DateTime.SpecifyKind(to.Date > yesterday ? yesterday : to.Date, DateTimeKind.Unspecified);
         if (first > last)
         {
@@ -97,6 +106,48 @@ public sealed class AttendanceLookbackService : IAttendanceLookbackService
             $"Looked for missing days from {first:yyyy-MM-dd} to {last:yyyy-MM-dd} ({(employeeId is null ? "everyone" : $"employee {employeeId}")}): {calculated} day(s) calculated, {failed} failed, {Math.Max(0, work.Count - limit)} left for another run.");
         await _db.SaveChangesAsync(cancellationToken);
         return new LookbackResult(first, last, 0, [], calculated, failed, Math.Max(0, work.Count - limit), datesWithoutData);
+    }
+
+    public async Task<LookbackResult?> CheckSinceStartAsync(int maxDays, CancellationToken cancellationToken)
+    {
+        var start = await AttendanceStartDate.ReadAsync(_db, cancellationToken);
+        var last = await AttendanceStartDate.ReadLastAttendanceDateAsync(_db, cancellationToken);
+        var yesterday = _clock.GetLocalNow().DateTime.Date.AddDays(-1);
+        if (start is null || last is null)
+        {
+            return null;
+        }
+
+        var from = start.Value;
+        var to = last.Value > yesterday ? yesterday : last.Value;
+        if (from > to)
+        {
+            return new LookbackResult(from, to, 0, [], 0, 0, 0, []);
+        }
+
+        // A slice at a time: each reads the schedules and the calculated days of its own dates only.
+        int calculated = 0, failed = 0, deferred = 0;
+        var withoutData = new List<DateTime>();
+        var budget = Math.Max(1, maxDays);
+        for (var sliceStart = from; sliceStart <= to; sliceStart = sliceStart.AddDays(SliceDays))
+        {
+            var sliceEnd = sliceStart.AddDays(SliceDays - 1) < to ? sliceStart.AddDays(SliceDays - 1) : to;
+            var slice = await CheckPeriodAsync(null, sliceStart, sliceEnd, budget, cancellationToken);
+            calculated += slice.DaysCalculated;
+            failed += slice.DaysFailed;
+            deferred += slice.DaysDeferred;
+            withoutData.AddRange(slice.DatesWithoutData);
+
+            // The cap is for the whole run: what the earlier slices used is not left for the later ones.
+            budget -= slice.DaysCalculated + slice.DaysFailed;
+            if (budget <= 0)
+            {
+                deferred = Math.Max(deferred, sliceEnd < to ? 1 : 0);
+                break;
+            }
+        }
+
+        return new LookbackResult(from, to, 0, [], calculated, failed, deferred, withoutData);
     }
 
     public async Task<int> ReexamineAbsencesAsync(int? employeeId, DateTime from, DateTime to, CancellationToken cancellationToken)

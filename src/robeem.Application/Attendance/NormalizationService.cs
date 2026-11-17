@@ -96,6 +96,7 @@ public sealed class NormalizationService : INormalizationService
         {
             PayloadFormatName = recorded?.PayloadFormatName,
             PayloadFormatVersion = recorded?.PayloadFormatVersion,
+            StartDate = await AttendanceStartDate.ReadAsync(_db, cancellationToken),
         };
         foreach (var rawId in pendingIds)
         {
@@ -173,6 +174,20 @@ public sealed class NormalizationService : INormalizationService
             return;
         }
 
+        // Local time in the device's zone, else the integration's; UTC when neither is known. Of
+        // unspecified kind: local columns are `timestamp without time zone`, which refuse a UTC kind.
+        var timeZone = zoneId is not null && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var foundZone) ? foundZone : null;
+        var local = DateTime.SpecifyKind(
+            timeZone is null ? utc.Value.UtcDateTime : TimeZoneInfo.ConvertTime(utc.Value, timeZone).DateTime,
+            DateTimeKind.Unspecified);
+
+        // Attendance is not expected before the date the punching started: the raw row is kept, marked failed, and no punch is made.
+        if (run.StartDate is { } startDate && AttendanceStartDate.IsBefore(local, startDate))
+        {
+            await FailAsync(raw, AttendanceStartDate.PunchMessage(local, startDate), run, cancellationToken);
+            return;
+        }
+
         var policy = await GetPolicyAsync(employeeId, run, cancellationToken);
 
         // c. Event type, through the vendor's interpreter (CLAUDE.md §1.9).
@@ -199,13 +214,6 @@ public sealed class NormalizationService : INormalizationService
             await FailAsync(raw, $"Unrecognized event type '{OriginalEventType(raw)}' for vendor '{integration.VendorKey}'.", run, cancellationToken);
             return;
         }
-
-        // Local time in the device's zone, else the integration's; UTC when neither is known. Of
-        // unspecified kind: local columns are `timestamp without time zone`, which refuse a UTC kind.
-        var timeZone = zoneId is not null && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var foundZone) ? foundZone : null;
-        var local = DateTime.SpecifyKind(
-            timeZone is null ? utc.Value.UtcDateTime : TimeZoneInfo.ConvertTime(utc.Value, timeZone).DateTime,
-            DateTimeKind.Unspecified);
 
         // d. Unresolved employee or device: the row is still made, flagged.
         var normalized = new NormalizedAttendanceTransaction
@@ -339,6 +347,9 @@ public sealed class NormalizationService : INormalizationService
         public string? PayloadFormatName { get; init; }
 
         public int? PayloadFormatVersion { get; init; }
+
+        /// <summary>Gets the date the punching started; a punch on an earlier day is failed.</summary>
+        public DateTime? StartDate { get; init; }
 
         public Dictionary<int, IntegrationLookups> Integrations { get; } = [];
 

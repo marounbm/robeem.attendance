@@ -123,11 +123,14 @@ internal static class ShiftAttendanceCalculator
 
         // Overtime only from a complete shift: with a punch missing, the time worked is not known.
         // Below the policy's threshold, extra time is not overtime. Time away on leave is not expected.
-        var overtime = 0;
+        var (overtime, shortfall) = (0, 0);
         if (shift is not null && complete)
         {
             var extra = WholeMinutes(working) - (ScheduledMinutes(shift) - excusedMinutes);
             overtime = extra > 0 && extra >= policy.OvertimeThresholdMinutes ? extra : 0;
+
+            // Time lost to a break that ran over is the break rules' to judge (a long break is a finding of its own), so it is not counted twice.
+            shortfall = Math.Max(0, -extra - breakExcess);
         }
 
         return new ShiftCalculation
@@ -141,6 +144,7 @@ internal static class ShiftAttendanceCalculator
             LateMinutes = late,
             EarlyDepartureMinutes = early,
             OvertimeMinutes = overtime,
+            ShortfallMinutes = shortfall,
             ExcusedMinutes = excusedMinutes,
             BreakExcused = breakExcused,
             BreakFindings = findings,

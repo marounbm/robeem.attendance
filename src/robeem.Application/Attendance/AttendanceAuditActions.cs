@@ -18,6 +18,9 @@ public static class AttendanceAuditActions
     /// <summary>A pay period was created, closed or reopened.</summary>
     public const string PayPeriodChanged = "PayPeriodChanged";
 
+    /// <summary>The tenant's attendance settings (the date the punching started) were changed.</summary>
+    public const string AttendanceSettingsChanged = "AttendanceSettingsChanged";
+
     /// <summary>An attendance policy was created, changed or deleted.</summary>
     public const string PolicyChanged = "PolicyChanged";
 

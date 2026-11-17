@@ -124,7 +124,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         }
 
         var current = (await GetCurrentAsync(timeScheduleId, cancellationToken))!;
-        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
+        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true };
         _db.AttendanceRuleSets.Add(draft);
         AddRules(draft, current.Rules);
         await _db.SaveChangesAsync(cancellationToken);
@@ -163,6 +163,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
 
         // What was sent was read from the draft with its thresholds written in, so the draft keeps them from now on.
         draft.ThresholdsInRules = true;
+        draft.ShortHoursInRules = true;
         AddRules(draft, request.Rules);
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(draft.Id);
@@ -251,7 +252,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
             return SaveResult.Invalid(invalid);
         }
 
-        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true };
         _db.AttendanceRuleSets.Add(set);
         AddRules(set, rules);
         await PublishSetAsync(set, rules, title!, change, change, cancellationToken);
@@ -323,7 +324,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
                 return SaveResult.Invalid(nameof(RuleChangeRequest.Operation), $"The operation must be one of: {string.Join(", ", RuleChangeOperations.Replace, RuleChangeOperations.Enable, RuleChangeOperations.Disable, RuleChangeOperations.Delete, RuleChangeOperations.MoveUp, RuleChangeOperations.MoveDown)}.");
         }
 
-        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true };
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true };
         _db.AttendanceRuleSets.Add(set);
         AddRules(set, rules);
         await PublishSetAsync(set, rules, title!, string.IsNullOrWhiteSpace(request.Notes) ? change : request.Notes, change, cancellationToken);

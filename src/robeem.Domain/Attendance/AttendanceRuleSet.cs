@@ -48,6 +48,13 @@ namespace robeem.DataModel
         /// </summary>
         public bool ThresholdsInRules { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about a day worked short (the rule for <c>ShortHours</c>, on or off, or taken
+        /// out on purpose). A set made before that finding existed has none, and is read with the policy's own rule for it added, on. Every set
+        /// made since says true, so deleting the rule from one is a choice that stays.
+        /// </summary>
+        public bool ShortHoursInRules { get; set; }
+
         public ICollection<AttendanceRule> Rules { get; set; } = new List<AttendanceRule>();
     }
 }

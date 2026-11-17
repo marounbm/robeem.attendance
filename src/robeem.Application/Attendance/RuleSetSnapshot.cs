@@ -56,6 +56,7 @@ public sealed class RuleSetSnapshot
             Raise("Raise an exception for a late break", 30, RuleFinding.LateBreak, policy.RaiseExceptionOnLateBreak, policy),
             Raise("Raise an exception for an early break", 40, RuleFinding.EarlyBreak, policy.RaiseExceptionOnEarlyBreak, policy),
             Raise("Raise an exception when no break was taken", 50, RuleFinding.NoBreak, policy.RaiseExceptionOnNoBreak, policy),
+            Raise("Raise an exception when less than the scheduled time was worked", 55, RuleFinding.ShortHours, true, policy),
             Raise("Raise an exception for a no-show", 60, RuleFinding.NoShow, true, policy),
             Raise("Raise an exception for a missing check-out", 65, RuleFinding.MissingCheckOut, true, policy),
             ShortBreak(70, policy),
@@ -88,6 +89,21 @@ public sealed class RuleSetSnapshot
         }
 
         return new RuleSetSnapshot(Version, Source, rules);
+    }
+
+    /// <summary>
+    /// The same rules with the rule for a day worked short added when there is none. It is how a set made before that finding existed
+    /// (<see cref="AttendanceRuleSet.ShortHoursInRules"/> false) is read: as if it had the policy's own rule, on, so it behaves as the
+    /// policy's starting rules do. A set made since carries the rule itself, or leaves it out on purpose, and is not read through this.
+    /// </summary>
+    public RuleSetSnapshot WithShortHours(AttendancePolicy policy)
+    {
+        if (Rules.Any(r => r.Finding == RuleFinding.ShortHours))
+        {
+            return this;
+        }
+
+        return new RuleSetSnapshot(Version, Source, [.. Rules, Raise("Raise an exception when less than the scheduled time was worked", int.MaxValue - 2, RuleFinding.ShortHours, true, policy)]);
     }
 
     /// <summary>
@@ -143,6 +159,9 @@ public sealed class RuleSetSnapshot
         RuleFinding.LongBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.LongBreakGraceMinutes),
         RuleFinding.LateBreak or RuleFinding.EarlyBreak => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.BreakStartGraceMinutes),
         RuleFinding.NoShow or RuleFinding.MissingCheckOut => new ConditionSnapshot(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual, policy.MissingPunchGraceMinutes),
+
+        // How much less than scheduled is a problem starts as what the policy already forgives at the start and at the end of the shift.
+        RuleFinding.ShortHours => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.LateGraceMinutes + policy.EarlyDepartureGraceMinutes),
         _ => null,
     };
 }

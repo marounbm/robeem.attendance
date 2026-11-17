@@ -19,6 +19,14 @@ public interface IAttendanceLookbackService
     Task<LookbackResult> CheckPeriodAsync(int? employeeId, DateTime from, DateTime to, int maxDays, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Looks for missing days over everything the system holds: from the date the punching started (<c>AttendanceSettings.StartDate</c>) to the
+    /// last day attendance was entered for, never later than yesterday, for everyone. It is <see cref="CheckPeriodAsync"/> in slices of at most a
+    /// year, so a long history is not read in one piece; at most <paramref name="maxDays"/> employee-days are calculated in all and the rest are
+    /// reported as deferred. Returns null when the tenant has no start date or no attendance has been entered yet: there is no period to look at.
+    /// </summary>
+    Task<LookbackResult?> CheckSinceStartAsync(int maxDays, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Calculates again the days from <paramref name="from"/> to <paramref name="to"/> (of one employee, or of everyone) whose
     /// excused time may have changed: those with an open no-show, a no-show once excused, or leave that the record does not match.
     /// Returns how many employee-days were calculated. For the leave module to call when it saves a leave.

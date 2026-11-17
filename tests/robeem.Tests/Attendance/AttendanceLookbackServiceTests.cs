@@ -290,6 +290,66 @@ public sealed class AttendanceLookbackServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task NothingBeforeTheStartDate_IsLookedAt_ByAPeriodCheckOrTheNightlyRun()
+    {
+        BobWorks(Monday);
+        Clock.Local = Tuesday.At(20, 0);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceSettings.Add(new AttendanceSettings { StartDate = Monday });
+            db.SaveChanges();
+        }
+
+        // The Mondays before the start are not asked about, so none is reported as a date nobody punched on.
+        var period = await CheckAsync(null, Monday.AddDays(-14), Monday);
+        Assert.Equal((Monday, Monday), (period.From, period.To));
+        Assert.Empty(period.DatesWithoutData);
+
+        var nightly = await RunAsync();
+        Assert.Equal(Monday, nightly.From);
+        Assert.Empty(nightly.DatesWithoutData);
+    }
+
+    [Fact]
+    public async Task CheckingSinceTheStart_LooksFromTheStartDateToTheLastDayEntered_ForEveryone()
+    {
+        BobWorks(Monday);
+        Clock.Local = Tuesday.At(20, 0);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceSettings.Add(new AttendanceSettings { StartDate = Monday.AddDays(-14) });
+            db.SaveChanges();
+            await CreateEngine(db).ProcessEmployeeDayAsync(_bob, Monday, CancellationToken.None);
+        }
+
+        LookbackResult? result;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            result = await Service(db).CheckSinceStartAsync(2000, CancellationToken.None);
+        }
+
+        Assert.NotNull(result);
+        Assert.Equal((Monday.AddDays(-14), Monday), (result.From, result.To));
+        Assert.Equal([Monday.AddDays(-14), Monday.AddDays(-7)], result.DatesWithoutData);
+        var noShow = Assert.Single(Exceptions());
+        Assert.Equal((EmployeeId, Monday, AttendanceExceptionType.NoShow), (noShow.EmployeeId, noShow.AttendanceDate, noShow.ExceptionType));
+    }
+
+    [Fact]
+    public async Task CheckingSinceTheStart_NeedsAStartDateAndSomeAttendance()
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+
+        // No start date.
+        Assert.Null(await Service(db).CheckSinceStartAsync(2000, CancellationToken.None));
+
+        // A start date, but nothing entered yet.
+        db.AttendanceSettings.Add(new AttendanceSettings { StartDate = Monday });
+        db.SaveChanges();
+        Assert.Null(await Service(db).CheckSinceStartAsync(2000, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task CheckingAPeriod_StopsAtTheCap_AndTheRestWaitsForTheNextRequest()
     {
         BobWorks(Monday);

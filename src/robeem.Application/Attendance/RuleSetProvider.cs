@@ -35,7 +35,10 @@ public sealed class RuleSetProvider : IRuleSetProvider
                     r.Reason,
                     r.Conditions.OrderBy(c => c.Id).Select(c => new ConditionSnapshot(c.Fact, c.Operator, c.Value)).ToList()))
                 .ToList());
-        return set.ThresholdsInRules ? snapshot : snapshot.WithPolicyThresholds(policy);
+        snapshot = set.ThresholdsInRules ? snapshot : snapshot.WithPolicyThresholds(policy);
+
+        // A set made before a day worked short was a finding has no rule for it: it is read with the policy's own, on.
+        return set.ShortHoursInRules ? snapshot : snapshot.WithShortHours(policy);
     }
 
     public async Task<RuleSetSnapshot> ResolveAsync(AttendancePolicy policy, CancellationToken cancellationToken)

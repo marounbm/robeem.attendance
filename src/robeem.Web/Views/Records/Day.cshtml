@@ -151,18 +151,7 @@ else
             {
                 <li class="list-group-item">
                     <span class="badge text-bg-@DisplayFormats.Badge(e.Status)">@DisplayFormats.Words(e.Status)</span>
-                    @if (e.MissingEventType is not null)
-                    {
-                        <span>Missing @DisplayFormats.Words(e.MissingEventType).ToLowerInvariant()</span>
-                    }
-                    else if (e.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
-                    {
-                        <span>@DisplayFormats.Words(e.ExceptionType)</span>
-                    }
-                    else
-                    {
-                        <span>Wrong order</span>
-                    }
+                    <span>@DisplayFormats.ExceptionLabel(e.ExceptionType, e.MissingEventType)</span>
                     @if (e.ShiftTitle is not null)
                     {
                         <span class="text-muted"> · @e.ShiftTitle</span>

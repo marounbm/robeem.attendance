@@ -20,12 +20,14 @@ public sealed class RecordsController : Controller
     private readonly IRecordsApiClient _records;
     private readonly IExceptionsApiClient _exceptions;
     private readonly ICurrentActor _actor;
+    private readonly IAttendanceSettingsApiClient _settings;
 
-    public RecordsController(IRecordsApiClient records, IExceptionsApiClient exceptions, ICurrentActor actor)
+    public RecordsController(IRecordsApiClient records, IExceptionsApiClient exceptions, ICurrentActor actor, IAttendanceSettingsApiClient settings)
     {
         _records = records;
         _exceptions = exceptions;
         _actor = actor;
+        _settings = settings;
     }
 
     [HttpGet]
@@ -38,8 +40,12 @@ public sealed class RecordsController : Controller
         var field = Enum.TryParse<RecordSortField>(sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : RecordSortField.Date;
         var descending = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
         var result = await _records.ListAsync(from, to, employeeId, chosen == "Any" ? null : chosen, onlyWithExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
+        var canCheckMissing = _actor.IsInRole(NavigationMenu.Hr);
+        var (checkFrom, checkTo) = canCheckMissing ? await DefaultPeriodAsync(cancellationToken) : (null, null);
         return View(new RecordsIndexViewModel
         {
+            CheckFrom = checkFrom,
+            CheckTo = checkTo,
             Items = result.Items,
             Page = result.Page,
             PageSize = size,
@@ -52,7 +58,7 @@ public sealed class RecordsController : Controller
             OnlyWithExceptions = onlyWithExceptions,
             Sort = field,
             Descending = descending,
-            CanCheckMissing = _actor.IsInRole(NavigationMenu.Hr),
+            CanCheckMissing = canCheckMissing,
         });
     }
 
@@ -64,6 +70,14 @@ public sealed class RecordsController : Controller
     [HttpPost]
     public async Task<IActionResult> CheckMissing(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int pageSize, CancellationToken cancellationToken)
     {
+        // An empty first day starts at the date the punching started; an empty last day ends at the last day attendance was entered for.
+        if (from is null || to is null)
+        {
+            var (defaultFrom, defaultTo) = await DefaultPeriodAsync(cancellationToken);
+            from ??= defaultFrom;
+            to ??= defaultTo;
+        }
+
         string? problem = null;
         if (from is null || to is null)
         {
@@ -189,5 +203,17 @@ public sealed class RecordsController : Controller
 
         message.Append(" The no-shows are on the Exceptions tab.");
         return message.ToString();
+    }
+
+    /// <summary>
+    /// The period looked at when none is chosen: from the date the punching started to the last day attendance was entered for
+    /// (never later than yesterday, the last day that can be missing). Either is null when the system does not know it.
+    /// </summary>
+    private async Task<(DateTime? From, DateTime? To)> DefaultPeriodAsync(CancellationToken cancellationToken)
+    {
+        var settings = await _settings.GetAsync(cancellationToken);
+        var yesterday = DateTime.Today.AddDays(-1);
+        var to = settings.LastAttendanceDate is { } last ? (last.Date > yesterday ? yesterday : last.Date) : (DateTime?)null;
+        return (settings.StartDate?.Date, to);
     }
 }

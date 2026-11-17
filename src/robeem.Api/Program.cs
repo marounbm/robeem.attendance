@@ -27,12 +27,14 @@ builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration
 builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSection(AttendanceSyncOptions.SectionName));
 builder.Services.Configure<AttendanceDataResetOptions>(builder.Configuration.GetSection(AttendanceDataResetOptions.SectionName));
 builder.Services.Configure<AttendanceLookbackOptions>(builder.Configuration.GetSection(AttendanceLookbackOptions.SectionName));
+builder.Services.Configure<AttendanceMissingDaysOptions>(builder.Configuration.GetSection(AttendanceMissingDaysOptions.SectionName));
 
 // The scheduler decision is in CLAUDE.md §2.8: one in-process host runs these jobs.
 builder.Services.AddSingleton<IScheduledJob, NormalizationJob>();
 builder.Services.AddSingleton<IScheduledJob, IntegrationSyncJob>();
 builder.Services.AddSingleton<IScheduledJob, ReconciliationJob>();
 builder.Services.AddSingleton<IScheduledJob, AttendanceLookbackJob>();
+builder.Services.AddSingleton<IScheduledJob, AttendanceMissingDaysJob>();
 builder.Services.AddSingleton<IJobRunRecorder, JobRunRecorder>();
 builder.Services.AddSingleton<JobCoordinator>();
 builder.Services.AddSingleton<IJobCoordinator>(services => services.GetRequiredService<JobCoordinator>());

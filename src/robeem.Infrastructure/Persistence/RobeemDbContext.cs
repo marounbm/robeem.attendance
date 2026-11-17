@@ -80,6 +80,8 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
 
+    public DbSet<AttendanceSettings> AttendanceSettings => Set<AttendanceSettings>();
+
     public DbSet<AttendanceRuleSet> AttendanceRuleSets => Set<AttendanceRuleSet>();
 
     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();

@@ -107,18 +107,7 @@
                                     {
                                         <li class="py-1">
                                             <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
-                                            @if (item.MissingEventType is not null)
-                                            {
-                                                <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
-                                            }
-                                            else if (item.ExceptionType is "LongBreak" or "LateBreak" or "EarlyBreak")
-                                            {
-                                                <span>@DisplayFormats.Words(item.ExceptionType)</span>
-                                            }
-                                            else
-                                            {
-                                                <span>Wrong order</span>
-                                            }
+                                            <span>@DisplayFormats.ExceptionLabel(item.ExceptionType, item.MissingEventType)</span>
                                             <span class="small text-muted"> · @item.Description</span>
                                             @if (item.ResolutionMethod is not null)
                                             {

@@ -84,6 +84,15 @@ else
                     <div>a shift with a scheduled break is worked with no break punches</div>
                 </div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.ShortHoursRaises" class="form-check-input" role="switch" aria-label="A day worked short raises an exception" /></div>
+                    <div>
+                        a complete day is worked more than
+                        <input asp-for="Settings.ShortHoursMinutesOver" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes short of the scheduled time, once the shift is over
+                        <span asp-validation-for="Settings.ShortHoursMinutesOver" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
                     <div class="form-check form-switch m-0"><input asp-for="Settings.NoShowRaises" class="form-check-input" role="switch" aria-label="A no-show raises an exception" /></div>
                     <div>
                         nobody punched for a scheduled shift,

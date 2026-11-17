@@ -47,8 +47,8 @@ namespace robeem.DataModel
         #region not mapped
         [NotMapped]
         public override string Title => IsPartDay
-            ? $"{LeaveType} — {StartDate:d} {StartTime}–{EndTime}"
-            : $"{LeaveType} — {StartDate:d}{(EndDate.Date == StartDate.Date ? string.Empty : $" – {EndDate:d}")}";
+            ? $"{LeaveType} — {StartDate:yyyy-MM-dd} {StartTime}–{EndTime}"
+            : $"{LeaveType} — {StartDate:yyyy-MM-dd}{(EndDate.Date == StartDate.Date ? string.Empty : $" – {EndDate:yyyy-MM-dd}")}";
         #endregion
     }
 }

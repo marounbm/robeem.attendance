@@ -1249,6 +1249,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<int?>("PublishedById")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ShortHoursInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1285,6 +1290,46 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "TimeScheduleId", "Status");
 
                     b.ToTable("AttendanceRuleSet", "Attendance");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.AttendanceSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("StartDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceSettings", "Attendance");
                 });
 
             modelBuilder.Entity("robeem.DataModel.AttendanceUploadedFile", b =>

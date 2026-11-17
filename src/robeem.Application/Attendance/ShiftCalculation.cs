@@ -23,6 +23,13 @@ internal sealed record ShiftCalculation
 
     public int OvertimeMinutes { get; init; }
 
+    /// <summary>
+    /// Gets how many minutes less than scheduled were worked, after the time on approved leave and the time a break ran over (a long break is
+    /// a finding of its own); 0 when the shift was worked in full, has no schedule, or is not complete (with a punch missing, the time worked is
+    /// not known).
+    /// </summary>
+    public int ShortfallMinutes { get; init; }
+
     /// <summary>Gets the minutes of the shift covered by part-day approved leave (not counting the part over the scheduled break).</summary>
     public int ExcusedMinutes { get; init; }
 

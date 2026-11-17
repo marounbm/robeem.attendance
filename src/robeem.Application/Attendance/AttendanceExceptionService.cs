@@ -33,7 +33,7 @@ public sealed class AttendanceExceptionService : IAttendanceExceptionService
 
         if (!AttendanceExceptionRules.IsAcceptable(exception.ExceptionType))
         {
-            return SaveResult.Invalid("id", "Only a break exception or a no-show can be accepted. A missing punch is corrected, with the time it happened.");
+            return SaveResult.Invalid("id", "Only a break exception, a no-show or a day worked short can be accepted. A missing punch is corrected, with the time it happened.");
         }
 
         if (exception.Status != AttendanceExceptionStatus.Open)

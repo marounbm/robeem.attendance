@@ -1,0 +1,38 @@
+@model AttendanceSettingsViewModel
+@{
+    ViewData["Title"] = "Attendance settings";
+}
+
+<h1 class="h3 mb-3">Attendance settings</h1>
+
+<partial name="_StatusMessage" />
+
+<div class="card">
+    <div class="card-header">Start date</div>
+    <div class="card-body">
+        <p class="text-muted">
+            The date the punching started: attendance is not expected before it. A punch on an earlier day is kept but marked failed and not used,
+            a correction can't be made for an earlier day, and <em>Find missing days</em> starts here. Leave it empty if the system has no such date.
+        </p>
+        <form method="post" asp-action="Save" class="row g-3 align-items-start">
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger col-12 mb-0" role="alert"></div>
+            <div class="col-md-3">
+                <label asp-for="Input.StartDate" class="form-label">Punching started on</label>
+                <input asp-for="Input.StartDate" type="date" value="@Model.Input.StartDate?.ToString("yyyy-MM-dd")" class="form-control" />
+                <span asp-validation-for="Input.StartDate" class="text-danger small"></span>
+            </div>
+            <div class="col-md-3 pt-4">
+                <button type="submit" class="btn btn-primary mt-2">Save</button>
+            </div>
+            <div class="col-12 form-text">
+                Attendance was last entered for
+                @(Model.LastAttendanceDate is { } last ? DisplayFormats.Date(last) : "no day yet").
+                Moving the date earlier puts the punches that were kept out for being too early back to be read.
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -57,6 +57,8 @@ public interface IRobeemDbContext
 
     DbSet<PayPeriod> PayPeriods { get; }
 
+    DbSet<AttendanceSettings> AttendanceSettings { get; }
+
     DbSet<AttendanceRuleSet> AttendanceRuleSets { get; }
 
     DbSet<AttendanceRule> AttendanceRules { get; }

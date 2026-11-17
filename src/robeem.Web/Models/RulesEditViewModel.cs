@@ -24,6 +24,7 @@ public sealed class RulesEditViewModel
         ("NoBreak", "a shift worked with no break"),
         ("NoShow", "a no-show"),
         ("MissingCheckOut", "a missing check-out (it can only be raised, never left out)"),
+        ("ShortHours", "less than the scheduled time worked (minutes short: Minutes over)"),
     ];
 
     /// <summary>Gets the facts a condition can look at, with the words the form shows and the stage each belongs to.</summary>

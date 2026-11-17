@@ -147,6 +147,20 @@ internal static class AttendanceExceptionDetector
 
         AddBreakFindings(found, calculation, shift, rules);
 
+        // A complete day worked for less time than scheduled. The shift has to be over: until then the employee may still come back, and the
+        // exception would only be raised and withdrawn. There is no punch to supply, so a manager or HR accepts it, or the punches are corrected.
+        if (shift is not null && calculation.IsComplete && calculation.ShortfallMinutes > 0 && now >= shift.EndsAt
+            && rules.Raises(RuleFinding.ShortHours, ShiftFacts.For(shift, calculation.ShortfallMinutes, calculation.ExcusedMinutes)))
+        {
+            var worked = (int)Math.Round(calculation.WorkingHours.TotalMinutes);
+            var scheduled = worked + calculation.ExcusedMinutes + calculation.ShortfallMinutes + calculation.BreakExcessMinutes;
+            var description = $"Worked {Hours(worked)} of the scheduled {Hours(scheduled)}: {Minutes(calculation.ShortfallMinutes)} short"
+                + (calculation.BreakExcessMinutes > 0 ? $", not counting the {Minutes(calculation.BreakExcessMinutes)} the break ran over." : ".")
+                + (calculation.LateMinutes > 0 ? $" Late by {Minutes(calculation.LateMinutes)} beyond the grace." : string.Empty)
+                + (calculation.EarlyDepartureMinutes > 0 ? $" Left {Minutes(calculation.EarlyDepartureMinutes)} early beyond the grace." : string.Empty);
+            found.Add(new DetectedException(AttendanceExceptionType.ShortHours, null, null, description));
+        }
+
         // One report per problem: a repeated cause (two stray break-ins) is still one missing break-out.
         return found
             .GroupBy(d => (d.Type, d.MissingEventType, d.NormalizedTransactionId))
@@ -196,6 +210,8 @@ internal static class AttendanceExceptionDetector
     }
 
     private static string Minutes(int minutes) => minutes == 1 ? "1 minute" : $"{minutes} minutes";
+
+    private static string Hours(int minutes) => $"{minutes / 60}:{minutes % 60:00}";
 
     private static DetectedException Missing(NormalizedEventType missing, string description) =>
         new(AttendanceExceptionType.MissingPunch, missing, null, description);

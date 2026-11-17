@@ -323,6 +323,53 @@ public sealed class NormalizationServiceTests : IDisposable
         Assert.Empty(await CreateService(check).ListBatchesWithPendingTransactionsAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task APunchBeforeTheStartDate_IsKeptButFailed_AndOneOnTheDateIsNormalized()
+    {
+        await SetStartDateAsync(new DateTime(2026, 10, 4));
+        AddRaw("EXT-1", "DEV-1", "2026-10-03 23:30:00", "IN");
+        AddRaw("EXT-1", "DEV-1", "2026-10-04 00:30:00", "IN");
+
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 1), result);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var failed = db.RawAttendanceTransactions.Single(r => r.ProcessingStatus == RawTransactionProcessingStatus.Failed);
+        Assert.StartsWith(AttendanceStartDate.BeforeStartPrefix, failed.ProcessingError);
+        Assert.Equal(new DateTime(2026, 10, 4), db.NormalizedAttendanceTransactions.Single().AttendanceDate);
+    }
+
+    [Fact]
+    public async Task MovingTheStartDateEarlier_QueuesThePunchesThatWereTooEarly_ForAnotherTry()
+    {
+        await SetStartDateAsync(new DateTime(2026, 10, 4));
+        AddRaw("EXT-1", "DEV-1", "2026-10-02 09:00:00", "IN");
+        await NormalizeAsync();
+
+        await SetStartDateAsync(new DateTime(2026, 10, 1));
+        var result = await NormalizeAsync();
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 0), result);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(RawTransactionProcessingStatus.Normalized, db.RawAttendanceTransactions.Single().ProcessingStatus);
+        Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.AttendanceSettingsChanged && a.Details!.Contains("1 punch(es)"));
+    }
+
+    [Fact]
+    public async Task WithNoStartDate_NothingIsHeldBack()
+    {
+        AddRaw("EXT-1", "DEV-1", "2001-01-01 09:00:00", "IN");
+
+        Assert.Equal(new NormalizationResult(1, 0, 0, 0), await NormalizeAsync());
+    }
+
+    private async Task SetStartDateAsync(DateTime date)
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var result = await AttendanceSettingsTests.SettingsServiceFor(db).SaveAsync(new robeem.Contracts.Attendance.AttendanceSettingsInput { StartDate = date }, CancellationToken.None);
+        Assert.True(result.Succeeded);
+    }
+
     private async Task<NormalizationResult> NormalizeAsync()
     {
         using var db = _database.CreateContext(TestDatabase.TenantA);

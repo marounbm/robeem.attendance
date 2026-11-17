@@ -38,6 +38,12 @@ public sealed class RecordsIndexViewModel
     /// <summary>Gets a value indicating whether the user may ask for missing days to be looked for in the period (HR).</summary>
     public bool CanCheckMissing { get; init; }
 
+    /// <summary>Gets the first day looked at for missing days when none is chosen: the date the punching started.</summary>
+    public DateTime? CheckFrom { get; init; }
+
+    /// <summary>Gets the last day looked at for missing days when none is chosen: the last day attendance was entered for, at most yesterday.</summary>
+    public DateTime? CheckTo { get; init; }
+
     /// <summary>Gets the employees the user can narrow the list to.</summary>
     public IReadOnlyList<EmployeeOption> Employees { get; init; } = Array.Empty<EmployeeOption>();
 

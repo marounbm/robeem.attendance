@@ -71,6 +71,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     [Fact]
     public async Task IgnoringAStrayPunch_AndAddingAForgottenOne_AreDecidedTogether_AndTheDayIsRightAfterwards()
     {
+        AllowShortDays();
         AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
         await ProcessAsync(Monday);
         var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
@@ -122,6 +123,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     [Fact]
     public async Task AfterTheDecision_TheDayShowsWhatWasIgnoredAndAdded_AndCanNotBeEditedAgainOnThosePunches()
     {
+        AllowShortDays();
         AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
         await ProcessAsync(Monday);
         var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
@@ -135,6 +137,24 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         Assert.Equal(("CheckIn", Monday.At(14, 0), "Corrected", (int?)null), (added.Type, added.At, added.Source, added.TransactionId));
         Assert.False(day.CanCorrect);
         Assert.Equal("This day has no exception to correct.", day.CannotCorrectReason);
+    }
+
+    [Fact]
+    public async Task ADayBeforeTheStartDate_CanNotBeCorrected()
+    {
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceSettings.Add(new AttendanceSettings { StartDate = Monday.AddDays(1) });
+            db.SaveChanges();
+        }
+
+        var result = await ProposeAsync(Request("Because", new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray }));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("nothing can be entered for an earlier day", result.Errors["Date"]);
     }
 
     [Fact]
@@ -281,6 +301,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     [Fact]
     public async Task APunchAnEarlierCorrectionAdded_CanBeDeleted_ByANewCorrection_AndTheEngineStopsReadingIt()
     {
+        AllowShortDays();
         AddPunches("I@08:00,O@13:00,O@13:05");
         await ProcessAsync(Monday);
         var addedId = AddAppliedSuppliedCheckIn(Monday.At(14, 0));
@@ -594,6 +615,12 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
 
     private AttendanceCorrectionService Corrections(RobeemDbContext db) =>
         new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);
+
+    /// <summary>
+    /// For a test about corrections, not about hours: the days it corrects end up shorter than the 08:00-17:00 shift, which would raise an exception
+    /// of its own, so the policy forgives the time (the allowance that starts the rule for a day worked short).
+    /// </summary>
+    private void AllowShortDays() => AddDefaultPolicy(p => p.LateGraceMinutes = 600);
 
     private void AddPunches(string punches)
     {

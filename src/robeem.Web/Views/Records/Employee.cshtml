@@ -143,14 +143,7 @@ else
                                 </td>
                                 <td>@(item.ShiftTitle ?? "Unscheduled work")</td>
                                 <td>
-                                    @if (item.MissingEventType is not null)
-                                    {
-                                        <span>Missing @DisplayFormats.Words(item.MissingEventType).ToLowerInvariant()</span>
-                                    }
-                                    else
-                                    {
-                                        <span>@DisplayFormats.Words(item.ExceptionType)</span>
-                                    }
+                                    <span>@DisplayFormats.ExceptionLabel(item.ExceptionType, item.MissingEventType)</span>
                                     <div class="small text-muted">@item.Description</div>
                                 </td>
                                 <td><span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span></td>

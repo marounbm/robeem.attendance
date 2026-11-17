@@ -4,7 +4,7 @@ using robeem.DataModel;
 namespace robeem.Application.Attendance;
 
 /// <summary>
-/// Reads the standard rules of a scope as <see cref="RuleSettings"/> and writes settings back into them. The standard rules are the eight the
+/// Reads the standard rules of a scope as <see cref="RuleSettings"/> and writes settings back into them. The standard rules are the nine the
 /// starting rules are made of, each once, with its usual conditions: only their switches and numbers differ. Rules that were added, removed or given
 /// other conditions are not standard, and are changed in the Rules grid instead. Pure: no I/O.
 /// </summary>
@@ -18,6 +18,7 @@ public static class RuleSettingsMapper
     private static readonly Shape LateBreak = new(RuleAction.RaiseException, RuleFinding.LateBreak, [(RuleFact.MinutesOver, RuleOperator.GreaterThan)]);
     private static readonly Shape EarlyBreak = new(RuleAction.RaiseException, RuleFinding.EarlyBreak, [(RuleFact.MinutesOver, RuleOperator.GreaterThan)]);
     private static readonly Shape NoBreak = new(RuleAction.RaiseException, RuleFinding.NoBreak, []);
+    private static readonly Shape ShortHours = new(RuleAction.RaiseException, RuleFinding.ShortHours, [(RuleFact.MinutesOver, RuleOperator.GreaterThan)]);
     private static readonly Shape NoShow = new(RuleAction.RaiseException, RuleFinding.NoShow, [(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual)]);
     private static readonly Shape MissingCheckOut = new(RuleAction.RaiseException, RuleFinding.MissingCheckOut, [(RuleFact.MinutesAfterShiftEnd, RuleOperator.GreaterOrEqual)]);
     private static readonly Shape ShortBreak = new(RuleAction.IgnoreShortBreak, null, [(RuleFact.BreakMinutes, RuleOperator.LessThan)]);
@@ -32,7 +33,7 @@ public static class RuleSettingsMapper
             (RuleFact.GapExcusedPercent, RuleOperator.LessOrEqual),
         ]);
 
-    private static readonly Shape[] All = [LongBreak, LateBreak, EarlyBreak, NoBreak, NoShow, MissingCheckOut, ShortBreak, ReadGap];
+    private static readonly Shape[] All = [LongBreak, LateBreak, EarlyBreak, NoBreak, ShortHours, NoShow, MissingCheckOut, ShortBreak, ReadGap];
 
     /// <summary>Reads the rules as settings, or returns null and says why they are not the standard rules.</summary>
     public static RuleSettings? TryRead(IReadOnlyList<RuleDto> rules, out string? reason)
@@ -53,6 +54,8 @@ public static class RuleSettingsMapper
             EarlyBreakRaises = found[EarlyBreak].IsEnabled,
             EarlyBreakMinutesOver = ValueOf(found[EarlyBreak], RuleFact.MinutesOver),
             NoBreakRaises = found[NoBreak].IsEnabled,
+            ShortHoursRaises = found[ShortHours].IsEnabled,
+            ShortHoursMinutesOver = ValueOf(found[ShortHours], RuleFact.MinutesOver),
             NoShowRaises = found[NoShow].IsEnabled,
             NoShowWaitMinutes = ValueOf(found[NoShow], RuleFact.MinutesAfterShiftEnd),
             MissingCheckOutWaitMinutes = ValueOf(found[MissingCheckOut], RuleFact.MinutesAfterShiftEnd),
@@ -79,6 +82,7 @@ public static class RuleSettingsMapper
         Minutes(nameof(RuleSettings.LongBreakMinutesOver), settings.LongBreakMinutesOver);
         Minutes(nameof(RuleSettings.LateBreakMinutesOver), settings.LateBreakMinutesOver);
         Minutes(nameof(RuleSettings.EarlyBreakMinutesOver), settings.EarlyBreakMinutesOver);
+        Minutes(nameof(RuleSettings.ShortHoursMinutesOver), settings.ShortHoursMinutesOver);
         Minutes(nameof(RuleSettings.NoShowWaitMinutes), settings.NoShowWaitMinutes);
         Minutes(nameof(RuleSettings.MissingCheckOutWaitMinutes), settings.MissingCheckOutWaitMinutes);
         Minutes(nameof(RuleSettings.ShortBreakMinutes), settings.ShortBreakMinutes);
@@ -103,6 +107,7 @@ public static class RuleSettingsMapper
         Set(found[LateBreak], settings.LateBreakRaises, RuleFact.MinutesOver, settings.LateBreakMinutesOver);
         Set(found[EarlyBreak], settings.EarlyBreakRaises, RuleFact.MinutesOver, settings.EarlyBreakMinutesOver);
         found[NoBreak].IsEnabled = settings.NoBreakRaises;
+        Set(found[ShortHours], settings.ShortHoursRaises, RuleFact.MinutesOver, settings.ShortHoursMinutesOver);
         Set(found[NoShow], settings.NoShowRaises, RuleFact.MinutesAfterShiftEnd, settings.NoShowWaitMinutes);
         Set(found[MissingCheckOut], true, RuleFact.MinutesAfterShiftEnd, settings.MissingCheckOutWaitMinutes);
         Set(found[ShortBreak], settings.ShortBreakIsWork, RuleFact.BreakMinutes, settings.ShortBreakMinutes);
@@ -143,6 +148,8 @@ public static class RuleSettingsMapper
         Switch("early break", before.EarlyBreakRaises, after.EarlyBreakRaises);
         Number("early break over", before.EarlyBreakMinutesOver, after.EarlyBreakMinutesOver);
         Switch("no break", before.NoBreakRaises, after.NoBreakRaises);
+        Switch("day worked short", before.ShortHoursRaises, after.ShortHoursRaises);
+        Number("day worked short over", before.ShortHoursMinutesOver, after.ShortHoursMinutesOver);
         Switch("no-show", before.NoShowRaises, after.NoShowRaises);
         Number("no-show wait", before.NoShowWaitMinutes, after.NoShowWaitMinutes);
         Number("missing check-out wait", before.MissingCheckOutWaitMinutes, after.MissingCheckOutWaitMinutes);

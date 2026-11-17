@@ -54,6 +54,11 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
 
         var trimmed = ValidateJustification(justification, errors);
 
+        if (await AttendanceStartDate.ReadAsync(_db, cancellationToken) is { } startDate && AttendanceStartDate.IsBefore(exception.AttendanceDate, startDate))
+        {
+            errors[nameof(ProposeCorrectionRequest.ExceptionId)] = AttendanceStartDate.DayMessage(startDate);
+        }
+
         var proposed = DateTime.SpecifyKind(proposedValue, DateTimeKind.Unspecified);
         var timeZoneId = string.Empty;
         var day = exception.AttendanceDate.Date;
@@ -153,6 +158,11 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
         }
 
         var trimmed = ValidateJustification(justification, errors);
+        if (await AttendanceStartDate.ReadAsync(_db, cancellationToken) is { } startDate && AttendanceStartDate.IsBefore(exception.AttendanceDate, startDate))
+        {
+            errors[nameof(ProposeCorrectionRequest.ExceptionId)] = AttendanceStartDate.DayMessage(startDate);
+        }
+
         if (errors.Count > 0)
         {
             return CorrectionResult.Invalid(errors);

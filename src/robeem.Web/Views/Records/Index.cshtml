@@ -87,17 +87,24 @@
 
 @if (Model.CanCheckMissing)
 {
-    <form method="post" asp-action="CheckMissing" class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <input type="hidden" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" />
-        <input type="hidden" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" />
+    @* The period is entered here, starting from the filter's, so the button never sits disabled waiting for a filter the person did not know to set. *@
+    <form method="post" asp-action="CheckMissing" class="d-flex flex-wrap align-items-end gap-2 mb-3">
         <input type="hidden" name="employeeId" value="@Model.EmployeeId" />
         <input type="hidden" name="status" value="@Model.Status" />
         <input type="hidden" name="onlyWithExceptions" value="@(Model.OnlyWithExceptions ? "true" : "false")" />
         <input type="hidden" name="pageSize" value="@Model.PageSize" />
-        <button type="submit" class="btn btn-outline-primary btn-sm" disabled="@(Model.From is null || Model.To is null)">Find missing days</button>
+        <div>
+            <label class="form-label small mb-0" for="checkFrom">First day</label>
+            <input id="checkFrom" type="date" name="from" value="@((Model.From ?? Model.CheckFrom)?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="checkTo">Last day</label>
+            <input id="checkTo" type="date" name="to" value="@((Model.To ?? Model.CheckTo)?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+        </div>
+        <button type="submit" class="btn btn-outline-primary btn-sm">Find missing days</button>
         <span class="small text-muted">
-            A day nobody punched on has no line here until it is looked for. This looks for them in the period above (of the chosen employee, or of everyone) and raises a no-show for each
-            scheduled working day that was missed; holidays and approved leave are not. Choose a first and a last day first.
+            A day nobody punched on has no line here until it is looked for. This looks for them in the period chosen here (of the employee chosen above, or of everyone) and raises a no-show for each
+            scheduled working day that was missed; holidays and approved leave are not. Left empty, it starts at the date the punching started (<em>Settings → Start date</em>) and ends at the last day attendance was entered for.
         </span>
     </form>
 }
