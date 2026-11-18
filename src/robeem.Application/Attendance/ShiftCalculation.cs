@@ -48,6 +48,12 @@ internal sealed record ShiftCalculation
     /// <summary>Gets how many breaks were left out for being shorter than the policy's minimum.</summary>
     public int IgnoredShortBreaks { get; init; }
 
+    /// <summary>Gets how many punches the automatic fixes gave another type (a lone check-out read as the check-in, and the like); they are marked inferred.</summary>
+    public int AutoRetypedPunches { get; init; }
+
+    /// <summary>Gets how many punches the automatic fixes left out of the calculation, as the second of two close punches.</summary>
+    public int AutoIgnoredPunches { get; init; }
+
     /// <summary>Gets a value indicating whether every expected punch is present, in a valid sequence, with no punch left unlabeled.</summary>
     public bool IsComplete { get; init; }
 

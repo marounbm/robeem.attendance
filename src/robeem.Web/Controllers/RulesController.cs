@@ -262,9 +262,10 @@ public sealed class RulesController : Controller
         foreach (var rule in model.Rules)
         {
             rule.Conditions ??= [];
-            rule.Stage = rule.Action is "InferBreak" or "IgnoreShortBreak" ? "Interpretation" : "Exception";
+            var interpretation = RulesEditViewModel.InterpretationActions.Contains(rule.Action);
+            rule.Stage = interpretation ? "Interpretation" : "Exception";
             rule.Sentence = string.Empty;
-            if (rule.Action is "InferBreak" or "IgnoreShortBreak")
+            if (interpretation)
             {
                 rule.Finding = null;
             }
@@ -281,6 +282,7 @@ public sealed class RulesController : Controller
     {
         "InferBreak" => "GapMinutes",
         "IgnoreShortBreak" => "BreakMinutes",
+        "LoneCheckOutIsCheckIn" or "LoneCheckInIsCheckOut" or "KeepFirstMorningPunch" or "KeepFirstEveningPunch" => "PunchOffsetMinutes",
         _ => "MinutesOver",
     };
 

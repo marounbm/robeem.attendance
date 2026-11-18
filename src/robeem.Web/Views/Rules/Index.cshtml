@@ -141,6 +141,58 @@ else
             </div>
         </div>
 
+        <div class="card mb-3">
+            <div class="card-header">Fix obvious punch mistakes automatically</div>
+            <div class="list-group list-group-flush">
+                <div class="list-group-item small text-muted">
+                    Off to begin with. A fix only changes how a punch is read for the day: the punch the machine sent is kept as it was, a fixed punch is marked as inferred, and no punch is ever made up.
+                    A punch a person added or corrected is never changed. These need a scheduled shift, so hourly staff are not affected.
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.LoneCheckOutIsCheckIn" class="form-check-input" role="switch" aria-label="A lone check-out near the start is read as the check-in" /></div>
+                    <div>
+                        A day with a check-out within
+                        <input asp-for="Settings.LoneCheckOutWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled start and no check-in: read it as the check-in
+                        <span asp-validation-for="Settings.LoneCheckOutWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.LoneCheckInIsCheckOut" class="form-check-input" role="switch" aria-label="A lone check-in near the end is read as the check-out" /></div>
+                    <div>
+                        A day with a check-in within
+                        <input asp-for="Settings.LoneCheckInWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled end and no check-out: read it as the check-out
+                        <span asp-validation-for="Settings.LoneCheckInWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.MorningDuplicateIsOne" class="form-check-input" role="switch" aria-label="Two close punches at the start count as one" /></div>
+                    <div>
+                        Two punches at the start (a check-in and another check-in or a check-out) within
+                        <input asp-for="Settings.MorningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of each other, the first within
+                        <input asp-for="Settings.MorningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled start: the first is the check-in and the second is left out
+                        <span asp-validation-for="Settings.MorningDuplicateGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.MorningDuplicateWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.EveningDuplicateIsOne" class="form-check-input" role="switch" aria-label="Two close punches at the end count as one" /></div>
+                    <div>
+                        Two punches at the end (a check-out or check-in, then a check-out) within
+                        <input asp-for="Settings.EveningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of each other, the first within
+                        <input asp-for="Settings.EveningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled end: the first is the check-out and the second is left out
+                        <span asp-validation-for="Settings.EveningDuplicateGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.EveningDuplicateWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary">Save</button>
     </form>
 }

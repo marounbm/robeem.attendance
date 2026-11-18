@@ -55,6 +55,13 @@ namespace robeem.DataModel
         /// </summary>
         public bool ShortHoursInRules { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about the automatic fixes of punches (the four rules that read a lone check-out or
+        /// check-in, or keep the first of two close punches). A set made before they existed has none and is read with them added, all off, so it behaves
+        /// as published. Every set made since says true.
+        /// </summary>
+        public bool AutoFixesInRules { get; set; }
+
         public ICollection<AttendanceRule> Rules { get; set; } = new List<AttendanceRule>();
     }
 }

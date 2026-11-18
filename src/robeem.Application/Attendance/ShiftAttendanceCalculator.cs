@@ -40,6 +40,9 @@ internal static class ShiftAttendanceCalculator
         var complete = ordered.All(p => p.Type != NormalizedEventType.Unknown);
         var typed = WithoutRepeats(ordered.Where(p => p.Type != NormalizedEventType.Unknown).ToList(), policy.DuplicateTimeWindowSeconds);
 
+        // The obvious slips of a day (a check-out where the check-in belongs, one punch said twice) are read the way the rules say, before anything else looks at the order.
+        typed = PunchFixer.Fix(typed, shift, rules, out var autoRetyped, out var autoIgnored);
+
         // A device that sends only in and out: the gap near the scheduled break is read as the break, marked inferred (CLAUDE.md §1.6).
         if (rules.CanInferBreak)
         {
@@ -151,6 +154,8 @@ internal static class ShiftAttendanceCalculator
             BreakExcessMinutes = breakExcess,
             BreakStartOffsetMinutes = breakOffset,
             IgnoredShortBreaks = ignoredShortBreaks,
+            AutoRetypedPunches = autoRetyped,
+            AutoIgnoredPunches = autoIgnored,
             IsComplete = complete,
             SourceIds = ordered.Where(p => p.NormalizedTransactionId.HasValue).Select(p => p.NormalizedTransactionId!.Value).Order().ToList(),
             CorrectionIds = ordered.Where(p => p.CorrectionId.HasValue).Select(p => p.CorrectionId!.Value).Order().ToList(),

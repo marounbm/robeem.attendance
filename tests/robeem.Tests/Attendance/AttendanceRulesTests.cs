@@ -123,7 +123,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         Assert.Equal("When the shift has a break and the gap lasts at most 120 minutes, read the gap as the break (marked as inferred).", infer);
         Assert.Equal("Always do not raise an exception for a no-show (reason: Unannounced days are fine.).", suppress);
         Assert.Equal("When the shift ends the same day, raise an exception for a long break.", always);
-        Assert.Equal(9, current.Rules.Count);
+        Assert.Equal(13, current.Rules.Count);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
         var service = Service(db);
 
         var current = (await service.GetCurrentAsync(null, CancellationToken.None))!;
-        Assert.Equal(("Policy", 0, 9, null), (current.Status, current.Version, current.Rules.Count, current.Id));
+        Assert.Equal(("Policy", 0, 13, null), (current.Status, current.Version, current.Rules.Count, current.Id));
         Assert.Contains("read the gap as the break", current.Rules[0].Sentence);
         Assert.Equal(["The whole company (the default policy)"], (await service.ListScopesAsync(CancellationToken.None)).Select(s => s.Title));
 
@@ -743,6 +743,18 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
                 GapIsBreak = false,
                 GapWindowMinutes = 90,
                 GapMaxMinutes = 120,
+
+                // The automatic fixes of punches are off until a tenant chooses them.
+                LoneCheckOutIsCheckIn = false,
+                LoneCheckOutWindowMinutes = 120,
+                LoneCheckInIsCheckOut = false,
+                LoneCheckInWindowMinutes = 120,
+                MorningDuplicateIsOne = false,
+                MorningDuplicateWindowMinutes = 120,
+                MorningDuplicateGapMinutes = 10,
+                EveningDuplicateIsOne = false,
+                EveningDuplicateWindowMinutes = 120,
+                EveningDuplicateGapMinutes = 10,
             },
             shown.Settings);
     }
@@ -768,7 +780,7 @@ public sealed class AttendanceRulesTests : AttendanceEngineTestBase
 
         // Only the standard rules changed, in the same order, and the history and the audit log say what was done.
         var rules = (await service.GetCurrentAsync(null, CancellationToken.None))!;
-        Assert.Equal(9, rules.Rules.Count);
+        Assert.Equal(13, rules.Rules.Count);
         Assert.Contains("long break on", rules.Notes);
         Assert.Contains("long break over 5 → 20 min", rules.Notes);
         Assert.Contains(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.RuleSetPublished && a.Details!.Contains("no-show wait 120 → 30 min"));

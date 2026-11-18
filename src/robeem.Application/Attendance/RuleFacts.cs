@@ -20,6 +20,10 @@ public sealed record RuleFacts
 
     public int BreakMinutes { get; init; }
 
+    public int PunchOffsetMinutes { get; init; }
+
+    public int PunchGapMinutes { get; init; }
+
     public int GapMinutes { get; init; }
 
     public int GapStartOffsetMinutes { get; init; }
@@ -37,6 +41,8 @@ public sealed record RuleFacts
         RuleFact.ExcusedMinutes => ExcusedMinutes,
         RuleFact.MinutesAfterShiftEnd => MinutesAfterShiftEnd,
         RuleFact.BreakMinutes => BreakMinutes,
+        RuleFact.PunchOffsetMinutes => PunchOffsetMinutes,
+        RuleFact.PunchGapMinutes => PunchGapMinutes,
         _ => 0,
     };
 }

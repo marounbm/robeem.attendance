@@ -13,7 +13,15 @@ public sealed class RulesEditViewModel
         ("SuppressException", "Do not raise an exception"),
         ("InferBreak", "Read the gap as the break"),
         ("IgnoreShortBreak", "Count a short break as work"),
+        ("LoneCheckOutIsCheckIn", "Read a lone check-out as the check-in"),
+        ("LoneCheckInIsCheckOut", "Read a lone check-in as the check-out"),
+        ("KeepFirstMorningPunch", "Keep the first of two close punches at the start"),
+        ("KeepFirstEveningPunch", "Keep the first of two close punches at the end"),
     ];
+
+    /// <summary>Gets the actions that work on a day's punches while they are read, so they are not about a finding.</summary>
+    public static IReadOnlyList<string> InterpretationActions { get; } =
+        ["InferBreak", "IgnoreShortBreak", "LoneCheckOutIsCheckIn", "LoneCheckInIsCheckOut", "KeepFirstMorningPunch", "KeepFirstEveningPunch"];
 
     /// <summary>Gets what a raise or suppress rule can be about.</summary>
     public static IReadOnlyList<(string Value, string Label)> Findings { get; } =
@@ -37,6 +45,8 @@ public sealed class RulesEditViewModel
         ("GapMinutes", "Length of the gap, minutes (reading a break)"),
         ("GapStartOffsetMinutes", "Gap start from the scheduled break, minutes (reading a break)"),
         ("GapExcusedPercent", "Share of the gap on approved leave, % (reading a break)"),
+        ("PunchOffsetMinutes", "Punch from the scheduled start or end, minutes (fixing punches)"),
+        ("PunchGapMinutes", "Minutes between the two punches (keeping the first of two)"),
         ("ShiftHasBreak", "The shift has a break (1 yes, 0 no)"),
         ("ShiftIsOvernight", "The shift ends after midnight (1 yes, 0 no)"),
     ];

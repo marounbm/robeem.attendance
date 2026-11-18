@@ -32,6 +32,27 @@ namespace robeem.DataModel
 
         /// <summary>Count a short break (a break-out followed at once by its break-in) as work: both punches are left out of the calculation. A stored punch is never changed.</summary>
         IgnoreShortBreak,
+
+        /// <summary>
+        /// A day with a check-out near the start of the shift and no check-in at all: the check-out is read as the check-in (retyped and marked
+        /// inferred). The punch exists; none is invented.
+        /// </summary>
+        LoneCheckOutIsCheckIn,
+
+        /// <summary>A day with a check-in near the end of the shift and no check-out at all: the check-in is read as the check-out (retyped and marked inferred).</summary>
+        LoneCheckInIsCheckOut,
+
+        /// <summary>
+        /// The first two punches of the day are a check-in followed by another check-in or a check-out, close together and near the start of the shift: the
+        /// first is the check-in and the second is left out of the calculation. A stored punch is never changed.
+        /// </summary>
+        KeepFirstMorningPunch,
+
+        /// <summary>
+        /// The last two punches of the day are a check-out or a check-in followed by a check-out, close together and near the end of the shift: the first is
+        /// the check-out (retyped and marked inferred when it was a check-in) and the second is left out of the calculation.
+        /// </summary>
+        KeepFirstEveningPunch,
     }
 
     /// <summary>What an exception rule is about. Stored as its name.</summary>
@@ -100,6 +121,12 @@ namespace robeem.DataModel
 
         /// <summary>How long a break lasted, in whole minutes (a gap between a check-out and a check-in, or a break-out and its break-in). Only a rule that counts a short break as work can use it.</summary>
         BreakMinutes,
+
+        /// <summary>How far the punch a rule looks at is from the shift's start (morning rules) or end (evening rules), in minutes, either way. Only the rules that fix punches can use it.</summary>
+        PunchOffsetMinutes,
+
+        /// <summary>How many minutes apart the two punches a rule looks at are. Only a rule that keeps the first of two close punches can use it.</summary>
+        PunchGapMinutes,
     }
 
     /// <summary>How a condition compares a fact with its value. Stored as its name.</summary>

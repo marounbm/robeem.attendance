@@ -11,6 +11,12 @@ public sealed class RuleSetSnapshot
     /// <summary>How long after a shift ends a missing check-out is raised at the latest, whatever the rules say: 24 hours.</summary>
     public const int MissingCheckOutBackstopMinutes = 1440;
 
+    /// <summary>How far from the start or end of the shift a punch may be and still be fixed by the automatic fixes, to begin with: 2 hours.</summary>
+    public const int DefaultWindowMinutes = 120;
+
+    /// <summary>How many minutes apart two punches may be and still be one punch said twice, to begin with.</summary>
+    public const int DefaultGapMinutes = 10;
+
     public RuleSetSnapshot(int version, string source, IReadOnlyList<RuleSnapshot> rules)
     {
         Version = version;
@@ -28,6 +34,13 @@ public sealed class RuleSetSnapshot
 
     /// <summary>Gets a value indicating whether any enabled rule can read a gap as the break.</summary>
     public bool CanInferBreak => Rules.Any(r => r.IsEnabled && r.Action == RuleAction.InferBreak);
+
+    /// <summary>Gets a value indicating whether any enabled rule fixes punches, so the calculation has to look for them.</summary>
+    public bool CanFixPunches => Rules.Any(r => r.IsEnabled && IsAutoFix(r.Action));
+
+    /// <summary>Whether the action is one of the four that fix a day's punches.</summary>
+    public static bool IsAutoFix(RuleAction action) =>
+        action is RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut or RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch;
 
     /// <summary>
     /// The policy's settings as rules: one to read the break from a gap (on when the policy's break inference is), and one to raise each
@@ -61,9 +74,28 @@ public sealed class RuleSetSnapshot
             Raise("Raise an exception for a missing check-out", 65, RuleFinding.MissingCheckOut, true, policy),
             ShortBreak(70, policy),
         };
+        rules.AddRange(AutoFixes(80));
 
         return new RuleSetSnapshot(0, "the policy", rules);
     }
+
+    /// <summary>
+    /// The same rules with the four automatic punch fixes added, all off, when there are none. It is how a set made before they existed
+    /// (<see cref="AttendanceRuleSet.AutoFixesInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithAutoFixes()
+    {
+        if (Rules.Any(r => IsAutoFix(r.Action)))
+        {
+            return this;
+        }
+
+        return new RuleSetSnapshot(Version, Source, [.. Rules, .. AutoFixes(int.MaxValue - 10)]);
+    }
+
+    /// <summary>Whether an enabled rule of this action has its conditions met by <paramref name="facts"/>: how the calculation asks whether to fix a day's punches.</summary>
+    public bool Applies(RuleAction action, RuleFacts facts) =>
+        Rules.Any(r => r.Stage == RuleStage.Interpretation && r.Action == action && r.Matches(facts));
 
     /// <summary>
     /// The same rules with the policy's thresholds added to the conditions of every exception rule about a break finding or a no-show. It is how a
@@ -138,6 +170,29 @@ public sealed class RuleSetSnapshot
     /// <summary>Whether a break that lasted as <paramref name="facts"/> says is a short one, counted as work: some enabled rule that counts a short break as work has its conditions met.</summary>
     public bool IgnoresShortBreak(RuleFacts facts) =>
         Rules.Any(r => r.Stage == RuleStage.Interpretation && r.Action == RuleAction.IgnoreShortBreak && r.Matches(facts));
+
+    /// <summary>
+    /// The four automatic fixes of punches, off to begin with (they change what payroll sees, so a tenant chooses them): a lone check-out or check-in near the
+    /// start or end of the shift is read as the check-in or check-out, and of two punches close together at the start or end the first counts and the second is left out.
+    /// </summary>
+    private static IEnumerable<RuleSnapshot> AutoFixes(int priority)
+    {
+        yield return AutoFix("Read a lone check-out near the start as the check-in", priority, RuleAction.LoneCheckOutIsCheckIn, DefaultWindowMinutes);
+        yield return AutoFix("Read a lone check-in near the end as the check-out", priority + 1, RuleAction.LoneCheckInIsCheckOut, DefaultWindowMinutes);
+        yield return AutoFix("Keep the first of two close punches at the start", priority + 2, RuleAction.KeepFirstMorningPunch, DefaultWindowMinutes, DefaultGapMinutes);
+        yield return AutoFix("Keep the first of two close punches at the end", priority + 3, RuleAction.KeepFirstEveningPunch, DefaultWindowMinutes, DefaultGapMinutes);
+    }
+
+    private static RuleSnapshot AutoFix(string name, int priority, RuleAction action, int windowMinutes, int? gapMinutes = null)
+    {
+        var conditions = new List<ConditionSnapshot> { new(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual, windowMinutes) };
+        if (gapMinutes is { } gap)
+        {
+            conditions.Add(new ConditionSnapshot(RuleFact.PunchGapMinutes, RuleOperator.LessOrEqual, gap));
+        }
+
+        return new RuleSnapshot(name, priority, false, RuleStage.Interpretation, action, null, null, conditions);
+    }
 
     /// <summary>The rule for a break shorter than the policy's minimum: on when the policy has one (0 turns it off, as it did).</summary>
     private static RuleSnapshot ShortBreak(int priority, AttendancePolicy policy) => new(

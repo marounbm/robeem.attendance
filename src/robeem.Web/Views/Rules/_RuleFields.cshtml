@@ -3,7 +3,7 @@
     // The fields of the rule at ViewData["Index"], named Rules[i].Field so the whole form binds back to RulesEditViewModel.
     var i = (int)ViewData["Index"]!;
     var rule = Model.Rules[i];
-    var interpretation = rule.Action is "InferBreak" or "IgnoreShortBreak";
+    var interpretation = RulesEditViewModel.InterpretationActions.Contains(rule.Action);
 }
 
 <div class="card-body row g-3">

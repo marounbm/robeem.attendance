@@ -4,7 +4,7 @@ using robeem.DataModel;
 namespace robeem.Application.Attendance;
 
 /// <summary>
-/// Reads the standard rules of a scope as <see cref="RuleSettings"/> and writes settings back into them. The standard rules are the nine the
+/// Reads the standard rules of a scope as <see cref="RuleSettings"/> and writes settings back into them. The standard rules are the thirteen the
 /// starting rules are made of, each once, with its usual conditions: only their switches and numbers differ. Rules that were added, removed or given
 /// other conditions are not standard, and are changed in the Rules grid instead. Pure: no I/O.
 /// </summary>
@@ -33,7 +33,12 @@ public static class RuleSettingsMapper
             (RuleFact.GapExcusedPercent, RuleOperator.LessOrEqual),
         ]);
 
-    private static readonly Shape[] All = [LongBreak, LateBreak, EarlyBreak, NoBreak, ShortHours, NoShow, MissingCheckOut, ShortBreak, ReadGap];
+    private static readonly Shape LoneCheckOut = new(RuleAction.LoneCheckOutIsCheckIn, null, [(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual)]);
+    private static readonly Shape LoneCheckIn = new(RuleAction.LoneCheckInIsCheckOut, null, [(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual)]);
+    private static readonly Shape MorningPair = new(RuleAction.KeepFirstMorningPunch, null, [(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual), (RuleFact.PunchGapMinutes, RuleOperator.LessOrEqual)]);
+    private static readonly Shape EveningPair = new(RuleAction.KeepFirstEveningPunch, null, [(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual), (RuleFact.PunchGapMinutes, RuleOperator.LessOrEqual)]);
+
+    private static readonly Shape[] All = [LongBreak, LateBreak, EarlyBreak, NoBreak, ShortHours, NoShow, MissingCheckOut, ShortBreak, ReadGap, LoneCheckOut, LoneCheckIn, MorningPair, EveningPair];
 
     /// <summary>Reads the rules as settings, or returns null and says why they are not the standard rules.</summary>
     public static RuleSettings? TryRead(IReadOnlyList<RuleDto> rules, out string? reason)
@@ -64,6 +69,16 @@ public static class RuleSettingsMapper
             GapIsBreak = found[ReadGap].IsEnabled,
             GapWindowMinutes = ValueOf(found[ReadGap], RuleFact.GapStartOffsetMinutes),
             GapMaxMinutes = ValueOf(found[ReadGap], RuleFact.GapMinutes),
+            LoneCheckOutIsCheckIn = found[LoneCheckOut].IsEnabled,
+            LoneCheckOutWindowMinutes = ValueOf(found[LoneCheckOut], RuleFact.PunchOffsetMinutes),
+            LoneCheckInIsCheckOut = found[LoneCheckIn].IsEnabled,
+            LoneCheckInWindowMinutes = ValueOf(found[LoneCheckIn], RuleFact.PunchOffsetMinutes),
+            MorningDuplicateIsOne = found[MorningPair].IsEnabled,
+            MorningDuplicateWindowMinutes = ValueOf(found[MorningPair], RuleFact.PunchOffsetMinutes),
+            MorningDuplicateGapMinutes = ValueOf(found[MorningPair], RuleFact.PunchGapMinutes),
+            EveningDuplicateIsOne = found[EveningPair].IsEnabled,
+            EveningDuplicateWindowMinutes = ValueOf(found[EveningPair], RuleFact.PunchOffsetMinutes),
+            EveningDuplicateGapMinutes = ValueOf(found[EveningPair], RuleFact.PunchGapMinutes),
         };
     }
 
@@ -88,6 +103,12 @@ public static class RuleSettingsMapper
         Minutes(nameof(RuleSettings.ShortBreakMinutes), settings.ShortBreakMinutes);
         Minutes(nameof(RuleSettings.GapWindowMinutes), settings.GapWindowMinutes);
         Minutes(nameof(RuleSettings.GapMaxMinutes), settings.GapMaxMinutes);
+        Minutes(nameof(RuleSettings.LoneCheckOutWindowMinutes), settings.LoneCheckOutWindowMinutes);
+        Minutes(nameof(RuleSettings.LoneCheckInWindowMinutes), settings.LoneCheckInWindowMinutes);
+        Minutes(nameof(RuleSettings.MorningDuplicateWindowMinutes), settings.MorningDuplicateWindowMinutes);
+        Minutes(nameof(RuleSettings.MorningDuplicateGapMinutes), settings.MorningDuplicateGapMinutes);
+        Minutes(nameof(RuleSettings.EveningDuplicateWindowMinutes), settings.EveningDuplicateWindowMinutes);
+        Minutes(nameof(RuleSettings.EveningDuplicateGapMinutes), settings.EveningDuplicateGapMinutes);
         return errors;
     }
 
@@ -113,6 +134,12 @@ public static class RuleSettingsMapper
         Set(found[ShortBreak], settings.ShortBreakIsWork, RuleFact.BreakMinutes, settings.ShortBreakMinutes);
         Set(found[ReadGap], settings.GapIsBreak, RuleFact.GapStartOffsetMinutes, settings.GapWindowMinutes);
         SetValue(found[ReadGap], RuleFact.GapMinutes, settings.GapMaxMinutes);
+        Set(found[LoneCheckOut], settings.LoneCheckOutIsCheckIn, RuleFact.PunchOffsetMinutes, settings.LoneCheckOutWindowMinutes);
+        Set(found[LoneCheckIn], settings.LoneCheckInIsCheckOut, RuleFact.PunchOffsetMinutes, settings.LoneCheckInWindowMinutes);
+        Set(found[MorningPair], settings.MorningDuplicateIsOne, RuleFact.PunchOffsetMinutes, settings.MorningDuplicateWindowMinutes);
+        SetValue(found[MorningPair], RuleFact.PunchGapMinutes, settings.MorningDuplicateGapMinutes);
+        Set(found[EveningPair], settings.EveningDuplicateIsOne, RuleFact.PunchOffsetMinutes, settings.EveningDuplicateWindowMinutes);
+        SetValue(found[EveningPair], RuleFact.PunchGapMinutes, settings.EveningDuplicateGapMinutes);
         foreach (var rule in copy)
         {
             rule.Sentence = RuleSentence.Describe(rule);
@@ -158,6 +185,16 @@ public static class RuleSettingsMapper
         Switch("gap read as the break", before.GapIsBreak, after.GapIsBreak);
         Number("gap window", before.GapWindowMinutes, after.GapWindowMinutes);
         Number("longest gap", before.GapMaxMinutes, after.GapMaxMinutes);
+        Switch("lone check-out read as the check-in", before.LoneCheckOutIsCheckIn, after.LoneCheckOutIsCheckIn);
+        Number("lone check-out within", before.LoneCheckOutWindowMinutes, after.LoneCheckOutWindowMinutes);
+        Switch("lone check-in read as the check-out", before.LoneCheckInIsCheckOut, after.LoneCheckInIsCheckOut);
+        Number("lone check-in within", before.LoneCheckInWindowMinutes, after.LoneCheckInWindowMinutes);
+        Switch("two close punches at the start count as one", before.MorningDuplicateIsOne, after.MorningDuplicateIsOne);
+        Number("start punches within", before.MorningDuplicateWindowMinutes, after.MorningDuplicateWindowMinutes);
+        Number("start punches apart", before.MorningDuplicateGapMinutes, after.MorningDuplicateGapMinutes);
+        Switch("two close punches at the end count as one", before.EveningDuplicateIsOne, after.EveningDuplicateIsOne);
+        Number("end punches within", before.EveningDuplicateWindowMinutes, after.EveningDuplicateWindowMinutes);
+        Number("end punches apart", before.EveningDuplicateGapMinutes, after.EveningDuplicateGapMinutes);
         return changes.Count == 0 ? string.Empty : "Settings: " + string.Join(", ", changes) + ".";
     }
 

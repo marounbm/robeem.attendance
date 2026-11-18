@@ -18,12 +18,24 @@ public static class RuleValidator
 
     private static readonly RuleFact[] ShortBreakFacts = [RuleFact.BreakMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
 
+    private static readonly RuleFact[] LonePunchFacts = [RuleFact.PunchOffsetMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
+
+    private static readonly RuleFact[] ClosePunchFacts = [RuleFact.PunchOffsetMinutes, RuleFact.PunchGapMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
+
     private static readonly RuleFact[] ExceptionFacts =
         [RuleFact.MinutesOver, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight, RuleFact.ExcusedMinutes, RuleFact.MinutesAfterShiftEnd];
 
     /// <summary>Gets the facts a condition of a rule of <paramref name="stage"/> may use; a rule that counts a short break as work looks at the break, not at a gap.</summary>
     public static IReadOnlyList<RuleFact> FactsOf(RuleStage stage, RuleAction? action = null) =>
-        stage == RuleStage.Exception ? ExceptionFacts : action == RuleAction.IgnoreShortBreak ? ShortBreakFacts : InterpretationFacts;
+        stage == RuleStage.Exception
+            ? ExceptionFacts
+            : action switch
+            {
+                RuleAction.IgnoreShortBreak => ShortBreakFacts,
+                RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut => LonePunchFacts,
+                RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch => ClosePunchFacts,
+                _ => InterpretationFacts,
+            };
 
     public static Dictionary<string, string> Validate(IReadOnlyList<RuleDto> rules)
     {
@@ -100,16 +112,16 @@ public static class RuleValidator
 
     private static void ValidateAction(RuleDto rule, string key, RuleStage stage, RuleAction action, Dictionary<string, string> errors)
     {
-        if (action is RuleAction.InferBreak or RuleAction.IgnoreShortBreak)
+        if (action is RuleAction.InferBreak or RuleAction.IgnoreShortBreak || RuleSetSnapshot.IsAutoFix(action))
         {
             if (stage != RuleStage.Interpretation)
             {
-                errors[$"{key}.Stage"] = "Reading a break from a gap, or counting a short break as work, is an interpretation rule.";
+                errors[$"{key}.Stage"] = "Reading a break from a gap, counting a short break as work, or fixing punches is an interpretation rule.";
             }
 
             if (!string.IsNullOrWhiteSpace(rule.Finding))
             {
-                errors[$"{key}.Finding"] = "Reading a break is not about a finding.";
+                errors[$"{key}.Finding"] = "Reading a break or fixing punches is not about a finding.";
             }
 
             return;
