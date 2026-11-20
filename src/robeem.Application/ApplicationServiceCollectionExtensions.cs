@@ -59,6 +59,8 @@ public static class ApplicationServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAttendanceProcessingEngine, AttendanceProcessingEngine>();
         services.AddScoped<IAttendanceLookbackService, AttendanceLookbackService>();
+        services.AddScoped<IAttendanceReprocessingService, AttendanceReprocessingService>();
+        services.AddScoped<IAbsenceChangeNotifier, AttendanceAbsenceChangeNotifier>();
         services.AddScoped<IRuleSetProvider, RuleSetProvider>();
         services.AddScoped<IAttendanceRuleService, AttendanceRuleService>();
         services.AddScoped<IPendingDayProcessor, PendingDayProcessor>();

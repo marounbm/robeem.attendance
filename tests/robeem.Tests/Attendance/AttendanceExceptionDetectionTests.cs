@@ -304,7 +304,7 @@ public sealed class AttendanceExceptionDetectionTests : AttendanceEngineTestBase
 
         var again = await ProcessAsync(Monday);
 
-        Assert.Equal(new DayProcessingResult(0, 1, 0), again);
+        Assert.Equal(new DayProcessingResult(0, 1, 0, RecordsSentToReview: 1), again);
         using var check = Database.CreateContext(TestDatabase.TenantA);
         Assert.Equal(AttendanceRecordStatus.PendingReview, Assert.Single(check.AttendanceRecords).Status);
         Assert.Equal(AttendanceRecordStatus.PendingReview, Assert.Single(check.AttendanceDaySummaries).Status);

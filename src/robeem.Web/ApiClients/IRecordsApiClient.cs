@@ -24,4 +24,6 @@ public interface IRecordsApiClient
 
     /// <summary>Looks for missing days in a period (HR only), so that a no-show is raised for each scheduled day nobody punched on.</summary>
     Task<CheckMissingDaysResponse> CheckMissingDaysAsync(DateTime from, DateTime to, int? employeeId, CancellationToken cancellationToken);
+
+    Task<ReprocessSinceResponse> ReprocessSinceAsync(DateTime from, int? employeeId, CancellationToken cancellationToken);
 }

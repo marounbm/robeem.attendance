@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Common;
+using robeem.Application.HR.Absence;
 using robeem.Application.Persistence;
 using robeem.Contracts.HR.Holidays;
 using robeem.DataModel;
@@ -15,10 +16,12 @@ public sealed class HolidayService : IHolidayService
     private const int MaxDays = 31;
 
     private readonly IRobeemDbContext _db;
+    private readonly IAbsenceChangeNotifier? _absences;
 
-    public HolidayService(IRobeemDbContext db)
+    public HolidayService(IRobeemDbContext db, IAbsenceChangeNotifier? absences = null)
     {
         _db = db;
+        _absences = absences;
     }
 
     public async Task<IReadOnlyList<HolidayItem>> ListAsync(int year, CancellationToken cancellationToken)
@@ -90,6 +93,7 @@ public sealed class HolidayService : IHolidayService
             return SaveResult.Invalid(nameof(HolidayInput.Date), "A holiday already exists on one of those dates.");
         }
 
+        await NotifyAsync(first, last, cancellationToken);
         return SaveResult.Success(rows[0].Id);
     }
 
@@ -118,10 +122,19 @@ public sealed class HolidayService : IHolidayService
             return SaveResult.Invalid(nameof(HolidayInput.Date), $"{date:yyyy-MM-dd} already has a holiday ({other}).");
         }
 
+        var oldDate = row.Date.Date;
         row.Date = date;
         row.Title = name;
         row.IsProvisional = input.IsProvisional;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // A holiday moved to another date frees the old one and covers the new one.
+        await NotifyAsync(date, date, cancellationToken);
+        if (oldDate != date)
+        {
+            await NotifyAsync(oldDate, oldDate, cancellationToken);
+        }
+
         return SaveResult.Success(id);
     }
 
@@ -135,6 +148,7 @@ public sealed class HolidayService : IHolidayService
 
         _db.PublicHolidays.Remove(row);
         await _db.SaveChangesAsync(cancellationToken);
+        await NotifyAsync(row.Date, row.Date, cancellationToken);
         return SaveResult.Success(id);
     }
 
@@ -155,4 +169,8 @@ public sealed class HolidayService : IHolidayService
 
     private static HolidayItem ToItem(PublicHoliday h) =>
         new() { Id = h.Id, Date = h.Date.Date, Name = h.Title, IsProvisional = h.IsProvisional };
+
+    /// <summary>Tells whoever works from the excused time that a holiday, which is everyone's, changed on these days.</summary>
+    private Task NotifyAsync(DateTime first, DateTime last, CancellationToken cancellationToken) =>
+        _absences is null ? Task.CompletedTask : _absences.AbsenceChangedAsync(null, first.Date, last.Date, cancellationToken);
 }

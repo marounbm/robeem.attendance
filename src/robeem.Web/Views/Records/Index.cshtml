@@ -107,6 +107,32 @@
             scheduled working day that was missed; holidays and approved leave are not. Left empty, it starts at the date the punching started (<em>Settings → Start date</em>) and ends at the last day attendance was entered for.
         </span>
     </form>
+
+    <form method="post" asp-action="ReprocessSince" class="d-flex flex-wrap align-items-end gap-2 mb-3">
+        <input type="hidden" name="status" value="@Model.Status" />
+        <input type="hidden" name="onlyWithExceptions" value="@(Model.OnlyWithExceptions ? "true" : "false")" />
+        <input type="hidden" name="pageSize" value="@Model.PageSize" />
+        <div>
+            @* Starts at the employee the list is filtered to, but is chosen here, so it does not depend on the Filter button having been pressed. *@
+            <label class="form-label small mb-0" for="reprocessEmployee">Employee</label>
+            <select id="reprocessEmployee" name="employeeId" class="form-select form-select-sm">
+                <option value="">All employees</option>
+                @foreach (var employee in Model.Employees)
+                {
+                    <option value="@employee.Id" selected="@(employee.Id == Model.EmployeeId)">@employee.Name</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="form-label small mb-0" for="reprocessFrom">Calculate again from</label>
+            <input id="reprocessFrom" type="date" name="from" value="@(Model.From?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" required />
+        </div>
+        <button type="submit" class="btn btn-outline-primary btn-sm">Calculate again</button>
+        <span class="small text-muted">
+            After the policy, the rules, a holiday or a leave changed: calculates the days from this date to today again (of the employee chosen here, or of everyone). A day that comes out the same
+            is left alone; a changed one gets a new version, open exceptions whose problem is gone are closed, and a stricter policy or rule raises its exceptions. Days in a closed pay period are never touched.
+        </span>
+    </form>
 }
 
 <div class="card">
@@ -122,6 +148,11 @@
                     <tr>
                         @foreach (var column in columns)
                         {
+                            if (column.Field == RecordSortField.Exceptions)
+                            {
+                                <th scope="col" class="text-end">Punches</th>
+                            }
+
                             <th scope="col" class="@column.Class" aria-sort="@Model.AriaSort(column.Field)">
                                 <a asp-action="Index" asp-all-route-data="Model.SortLink(column.Field)" class="text-reset text-decoration-none">@column.Title@(Model.Sort != column.Field ? string.Empty : Model.Descending ? " ▼" : " ▲")</a>
                             </th>
@@ -138,6 +169,7 @@
                             <td class="text-end">@DisplayFormats.Hours(item.TotalWorkingHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
+                            <td class="text-end">@item.PunchCount</td>
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
                             <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span></td>
                             <td class="text-end">

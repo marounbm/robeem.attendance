@@ -453,7 +453,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         }
 
         var current = new List<AttendanceRecord>();
-        int written = 0, unchanged = 0;
+        int written = 0, unchanged = 0, sentToReview = 0;
         foreach (var (shift, calculation) in calculated)
         {
             var hasActiveException = shiftsWithActiveException.Contains(shift?.TimeScheduleShiftId);
@@ -472,6 +472,16 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 if (hasActiveException && previous.Status is AttendanceRecordStatus.Approved or AttendanceRecordStatus.Calculated)
                 {
                     previous.Status = AttendanceRecordStatus.PendingReview;
+                    sentToReview++;
+                }
+                else if (previous.Status == AttendanceRecordStatus.Approved
+                    && candidate.Status == AttendanceRecordStatus.PendingReview
+                    && !await HasReviewerApprovalAsync(previous.Id, cancellationToken))
+                {
+                    // The engine approved it by itself under an earlier policy (overtime that needed no pre-approval, say) and the policy
+                    // now asks for a review. A reviewer's own approval is never taken back for that.
+                    previous.Status = AttendanceRecordStatus.PendingReview;
+                    sentToReview++;
                 }
                 else if (previous.Status == AttendanceRecordStatus.PendingReview && candidate.Status == AttendanceRecordStatus.Approved)
                 {
@@ -520,8 +530,14 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             SetAside(r);
         });
 
-        return (current, new DayProcessingResult(written, unchanged, stale.Count));
+        return (current, new DayProcessingResult(written, unchanged, stale.Count, RecordsSentToReview: sentToReview));
     }
+
+    /// <summary>Whether a reviewer approved this record version: the engine never takes such a decision back.</summary>
+    private Task<bool> HasReviewerApprovalAsync(int recordId, CancellationToken cancellationToken) =>
+        _db.AttendanceApprovals.AnyAsync(
+            a => a.Type == AttendanceApprovalType.Review && a.Status == AttendanceApprovalStatus.Approved && a.AttendanceRecordId == recordId,
+            cancellationToken);
 
     private async Task WriteSummaryAsync(int employeeId, DateTime day, List<AttendanceRecord> current, int activeExceptionCount, CancellationToken cancellationToken)
     {

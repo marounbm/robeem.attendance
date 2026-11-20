@@ -81,6 +81,12 @@ public sealed class RecordsApiClient : IRecordsApiClient
         return await ApiResponses.ReadAsync<CheckMissingDaysResponse>(response, cancellationToken);
     }
 
+    public async Task<ReprocessSinceResponse> ReprocessSinceAsync(DateTime from, int? employeeId, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/reprocess-since", new ReprocessSinceRequest { From = from.Date, EmployeeId = employeeId }, cancellationToken);
+        return await ApiResponses.ReadAsync<ReprocessSinceResponse>(response, cancellationToken);
+    }
+
     public async Task<ReprocessResponse?> ReprocessAsync(int employeeId, DateTime date, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsync($"{DayPath(employeeId, date)}/reprocess", null, cancellationToken);

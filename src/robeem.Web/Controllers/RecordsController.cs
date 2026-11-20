@@ -117,6 +117,37 @@ public sealed class RecordsController : Controller
     }
 
     /// <summary>
+    /// Calculates the days already held again from a date to today (of the employee the list is filtered to, else of everyone), for when the
+    /// policy, the rules, a holiday or a leave changed. Only what comes out different is rewritten; closed pay periods are left alone.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> ReprocessSince(DateTime? from, int? employeeId, string? status, bool onlyWithExceptions, int pageSize, CancellationToken cancellationToken)
+    {
+        DateTime? continueFrom = from;
+        if (from is null)
+        {
+            TempData["ErrorMessage"] = "Choose the first day to calculate again, then press Calculate again.";
+        }
+        else
+        {
+            var result = await _records.ReprocessSinceAsync(from.Value, employeeId, cancellationToken);
+            TempData["StatusMessage"] = ReprocessSinceMessage(result);
+
+            // When one request did not reach every day, the list and the date box move on to where to carry on from.
+            continueFrom = result.NextFrom ?? from;
+        }
+
+        return RedirectToAction(nameof(Index), new
+        {
+            from = continueFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            employeeId,
+            status,
+            onlyWithExceptions = onlyWithExceptions ? "true" : null,
+            pageSize = pageSize > 0 ? pageSize : (int?)null,
+        });
+    }
+
+    /// <summary>
     /// One employee's days and exceptions over a date range (the last 30 days unless asked otherwise, at most 92), with the totals.
     /// The employee must be one the user may see; without one the page only offers the choice.
     /// </summary>
@@ -182,6 +213,33 @@ public sealed class RecordsController : Controller
             ? "The day was calculated again and nothing changed."
             : $"The day was calculated again: {result.RecordsWritten} record(s) written, {result.RecordsRetired} retired, {result.ExceptionsRaised} exception(s) raised, {result.ExceptionsResolved} resolved.";
         return RedirectToAction(nameof(Day), new { employeeId, date = date.ToString("yyyy-MM-dd") });
+    }
+
+    private static string ReprocessSinceMessage(ReprocessSinceResponse result)
+    {
+        var message = new StringBuilder();
+        message.Append(CultureInfo.InvariantCulture, $"Calculated again from {result.From:yyyy-MM-dd} to {result.To:yyyy-MM-dd}: {result.DaysExamined} day(s) looked at, {result.DaysChanged} changed.");
+        if (result.DaysChanged > 0)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" {result.RecordsWritten} record(s) written, {result.RecordsRetired} retired, {result.RecordsSentToReview} sent back to review; {result.ExceptionsRaised} exception(s) raised, {result.ExceptionsResolved} closed because the problem is gone.");
+        }
+
+        if (result.DaysInClosedPeriods > 0)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" {result.DaysInClosedPeriods} day(s) in closed pay periods were left alone.");
+        }
+
+        if (result.DaysFailed > 0)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" {result.DaysFailed} could not be calculated: press the button again to try them again.");
+        }
+
+        if (result.NextFrom is { } next)
+        {
+            message.Append(CultureInfo.InvariantCulture, $" There are more days: the first day below is {next:yyyy-MM-dd}, where to carry on; press the button again.");
+        }
+
+        return message.ToString();
     }
 
     private static string CheckMissingMessage(CheckMissingDaysResponse result)

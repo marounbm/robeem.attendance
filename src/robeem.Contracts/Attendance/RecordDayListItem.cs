@@ -23,6 +23,9 @@ public sealed class RecordDayListItem
     /// <summary>Gets the number of current records that day, unscheduled work included.</summary>
     public int ShiftCount { get; init; }
 
+    /// <summary>Gets the number of punches that day that count in the calculation (duplicates, replaced punches and those of unrecognized devices are left out).</summary>
+    public int PunchCount { get; init; }
+
     /// <summary>Gets the number of exceptions that day that are not closed yet.</summary>
     public int ExceptionCount { get; init; }
 

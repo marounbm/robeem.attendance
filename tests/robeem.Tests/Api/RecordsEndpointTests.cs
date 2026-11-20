@@ -16,6 +16,7 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
 
     private readonly FakeRecords _records = new();
     private readonly FakeLookback _lookback = new();
+    private readonly FakeReprocessing _reprocessing = new();
     private readonly TestApi _api;
 
     public RecordsEndpointTests()
@@ -24,6 +25,7 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
         {
             services.AddSingleton<IAttendanceRecordService>(_records);
             services.AddSingleton<IAttendanceLookbackService>(_lookback);
+            services.AddSingleton<IAttendanceReprocessingService>(_reprocessing);
             services.AddOptions<AttendanceLookbackOptions>();
         });
     }
@@ -176,6 +178,43 @@ public sealed class RecordsEndpointTests : IAsyncDisposable
         Assert.Equal(7, (await day.Content.ReadFromJsonAsync<RecordDayDetail>())!.EmployeeId);
         Assert.Equal((7, new DateTime(2026, 10, 5)), _records.Reprocessed.Single());
         Assert.Equal(2, (await reprocess.Content.ReadFromJsonAsync<ReprocessResponse>())!.RecordsWritten);
+    }
+
+    [Fact]
+    public async Task CalculatingAgainFromADate_IsForHrOnly_NeedsADate_AndAnswersWhatChangedAndWhereToCarryOn()
+    {
+        foreach (var role in new[] { AttendanceRoles.Employee, AttendanceRoles.Manager, AttendanceRoles.PayrollAdministrator, AttendanceRoles.IntegrationAdministrator })
+        {
+            var refused = await _api.Send(HttpMethod.Post, "api/attendance/records/reprocess-since", TestApi.As(7, role), new ReprocessSinceRequest { From = new DateTime(2026, 4, 1) });
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+
+        var noDate = await _api.Send(HttpMethod.Post, "api/attendance/records/reprocess-since", Hr, new ReprocessSinceRequest());
+        Assert.Equal(HttpStatusCode.BadRequest, noDate.StatusCode);
+        Assert.Null(_reprocessing.FromAsked);
+
+        var ok = await _api.Send(HttpMethod.Post, "api/attendance/records/reprocess-since", Hr, new ReprocessSinceRequest { From = new DateTime(2026, 4, 1), EmployeeId = 2 });
+        var body = (await ok.Content.ReadFromJsonAsync<ReprocessSinceResponse>())!;
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal((new DateTime(2026, 4, 1), 2), (_reprocessing.FromAsked, _reprocessing.EmployeeAsked));
+        Assert.Equal((9, 3, 1, new DateTime(2026, 4, 17)), (body.DaysExamined, body.DaysChanged, body.ExceptionsRaised, body.NextFrom));
+    }
+
+    private sealed class FakeReprocessing : IAttendanceReprocessingService
+    {
+        public int? EmployeeAsked { get; private set; }
+
+        public DateTime? FromAsked { get; private set; }
+
+        public Task<ReprocessSinceResult> ReprocessSinceAsync(DateTime from, int? employeeId, int maxDays, CancellationToken cancellationToken)
+        {
+            (FromAsked, EmployeeAsked) = (from, employeeId);
+            return Task.FromResult(new ReprocessSinceResult(from, new DateTime(2026, 4, 30), 9, 3, 2, 0, 0, 1, 0, 0, 0, new DateTime(2026, 4, 17)));
+        }
+
+        public Task<ReprocessSinceResult> ReprocessRangeAsync(DateTime from, DateTime to, int? employeeId, int maxDays, CancellationToken cancellationToken) =>
+            ReprocessSinceAsync(from, employeeId, maxDays, cancellationToken);
     }
 
     private sealed class FakeLookback : IAttendanceLookbackService

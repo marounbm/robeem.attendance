@@ -102,6 +102,12 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 TotalOvertimeHours = d.TotalOvertimeHours,
                 TotalBreakHours = d.TotalBreakHours,
                 ShiftCount = d.ShiftCount,
+                PunchCount = _db.NormalizedAttendanceTransactions.Count(n =>
+                    n.EmployeeId == d.EmployeeId
+                    && n.AttendanceDate == d.AttendanceDate
+                    && n.DuplicateStatus == DuplicateStatus.Unique
+                    && n.ProcessingStatus != NormalizedTransactionProcessingStatus.Excluded
+                    && n.ExceptionStatus != TransactionExceptionStatus.FlaggedUnrecognizedDevice),
                 ExceptionCount = d.ExceptionCount,
                 HasPendingApproval = _db.AttendanceApprovals.Any(a =>
                     a.Type == AttendanceApprovalType.Correction

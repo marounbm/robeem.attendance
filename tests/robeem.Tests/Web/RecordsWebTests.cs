@@ -228,6 +228,49 @@ public sealed class RecordsWebTests
     }
 
     [Fact]
+    public async Task AnHrAdministratorCanCalculateAgainFromADate_AndCarriesOnWhereTheRunStopped()
+    {
+        var records = new FakeRecords
+        {
+            ReprocessSinceResult = new ReprocessSinceResponse
+            {
+                From = new DateTime(2026, 4, 1),
+                To = new DateTime(2026, 4, 30),
+                DaysExamined = 20,
+                DaysChanged = 4,
+                RecordsWritten = 3,
+                ExceptionsRaised = 2,
+                ExceptionsResolved = 1,
+                DaysInClosedPeriods = 5,
+                NextFrom = new DateTime(2026, 4, 17),
+            },
+        };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var result = (RedirectToActionResult)await controller.ReprocessSince(new DateTime(2026, 4, 1), 2, "Any", true, 50, CancellationToken.None);
+
+        Assert.Equal((new DateTime(2026, 4, 1), 2), (records.ReprocessedFrom, records.ReprocessedEmployee));
+        Assert.Equal(("Index", "2026-04-17", 2, "true", 50), (result.ActionName, result.RouteValues!["from"], result.RouteValues["employeeId"], result.RouteValues["onlyWithExceptions"], result.RouteValues["pageSize"]));
+        var message = (string)controller.TempData["StatusMessage"]!;
+        Assert.Contains("20 day(s) looked at, 4 changed", message);
+        Assert.Contains("2 exception(s) raised, 1 closed", message);
+        Assert.Contains("5 day(s) in closed pay periods were left alone", message);
+        Assert.Contains("2026-04-17", message);
+    }
+
+    [Fact]
+    public async Task CalculatingAgain_NeedsAFirstDay()
+    {
+        var records = new FakeRecords();
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        await controller.ReprocessSince(null, null, null, false, 0, CancellationToken.None);
+
+        Assert.Contains("first day", (string)controller.TempData["ErrorMessage"]!);
+        Assert.Null(records.ReprocessedFrom);
+    }
+
+    [Fact]
     public async Task LookingForMissingDays_NeedsAFirstAndALastDay_InOrder_AndNotMoreThanAYear()
     {
         var records = new FakeRecords();
@@ -428,6 +471,12 @@ public sealed class RecordsWebTests
 
         public int? CheckedEmployee { get; private set; }
 
+        public ReprocessSinceResponse ReprocessSinceResult { get; set; } = new();
+
+        public DateTime? ReprocessedFrom { get; private set; }
+
+        public int? ReprocessedEmployee { get; private set; }
+
         public int PageAsked { get; private set; }
 
         public int PageSizeAsked { get; private set; }
@@ -468,6 +517,12 @@ public sealed class RecordsWebTests
         {
             (CheckedFrom, CheckedTo, CheckedEmployee) = (from, to, employeeId);
             return Task.FromResult(CheckResult);
+        }
+
+        public Task<ReprocessSinceResponse> ReprocessSinceAsync(DateTime from, int? employeeId, CancellationToken cancellationToken)
+        {
+            (ReprocessedFrom, ReprocessedEmployee) = (from, employeeId);
+            return Task.FromResult(ReprocessSinceResult);
         }
     }
 

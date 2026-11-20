@@ -52,6 +52,8 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         Assert.Single(taken);
         var day = firstWeek.Single();
         Assert.Equal(("E-1", "Ada Lovelace", TimeSpan.FromHours(8), 1, 0), (day.EmployeeNumber, day.EmployeeName, day.TotalWorkingHours, day.ShiftCount, day.ExceptionCount));
+        Assert.Equal(4, day.PunchCount);
+        Assert.Equal(1, secondWeek.Single().PunchCount);
     }
 
     [Fact]

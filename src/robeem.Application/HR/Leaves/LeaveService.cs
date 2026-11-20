@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Common;
+using robeem.Application.HR.Absence;
 using robeem.Application.Persistence;
 using robeem.Contracts.Common;
 using robeem.Contracts.HR.Leaves;
@@ -18,10 +19,12 @@ public sealed class LeaveService : ILeaveService
     private const int NotesMaxLength = 500;
 
     private readonly IRobeemDbContext _db;
+    private readonly IAbsenceChangeNotifier? _absences;
 
-    public LeaveService(IRobeemDbContext db)
+    public LeaveService(IRobeemDbContext db, IAbsenceChangeNotifier? absences = null)
     {
         _db = db;
+        _absences = absences;
     }
 
     public async Task<PagedResult<LeaveListItem>> ListAsync(LeaveFilter filter, CancellationToken cancellationToken)
@@ -142,6 +145,7 @@ public sealed class LeaveService : ILeaveService
 
         _db.EmployeeLeaves.Add(leave);
         await _db.SaveChangesAsync(cancellationToken);
+        await NotifyAsync(leave.EmployeeId, leave.StartDate, leave.EndDate, leave.IsPartDay, cancellationToken);
         return SaveResult.Success(leave.Id);
     }
 
@@ -153,6 +157,7 @@ public sealed class LeaveService : ILeaveService
             return SaveResult.Missing();
         }
 
+        var (oldEmployeeId, oldStart, oldEnd, oldPartDay) = (leave.EmployeeId, leave.StartDate, leave.EndDate, leave.IsPartDay);
         var errors = await ApplyAsync(input, leave, id, cancellationToken);
         if (errors.Count > 0)
         {
@@ -161,6 +166,10 @@ public sealed class LeaveService : ILeaveService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // The days the leave covered before are settled again as well as the days it covers now.
+        await NotifyAsync(oldEmployeeId, oldStart, oldEnd, oldPartDay, cancellationToken);
+        await NotifyAsync(leave.EmployeeId, leave.StartDate, leave.EndDate, leave.IsPartDay, cancellationToken);
         return SaveResult.Success(id);
     }
 
@@ -174,6 +183,7 @@ public sealed class LeaveService : ILeaveService
 
         _db.EmployeeLeaves.Remove(leave);
         await _db.SaveChangesAsync(cancellationToken);
+        await NotifyAsync(leave.EmployeeId, leave.StartDate, leave.EndDate, leave.IsPartDay, cancellationToken);
         return SaveResult.Success(id);
     }
 
@@ -187,6 +197,15 @@ public sealed class LeaveService : ILeaveService
         var start = startDate.Add(Set.ParseTime(startTime));
         var end = startDate.Add(Set.ParseTime(endTime));
         return (start, end <= start ? end.AddDays(1) : end);
+    }
+
+    /// <summary>Tells whoever works from the excused time that it changed. A part of a day can run past midnight, so the days either side are included.</summary>
+    private Task NotifyAsync(int employeeId, DateTime start, DateTime end, bool isPartDay, CancellationToken cancellationToken)
+    {
+        var pad = isPartDay ? 1 : 0;
+        return _absences is null
+            ? Task.CompletedTask
+            : _absences.AbsenceChangedAsync(employeeId, start.Date.AddDays(-pad), end.Date.AddDays(pad), cancellationToken);
     }
 
     /// <summary>Validates <paramref name="input"/> and, when it is fine, copies it onto <paramref name="leave"/>. Returns the errors, keyed by input property.</summary>

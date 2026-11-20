@@ -23,13 +23,15 @@ public sealed class AttendanceRecordsController : ControllerBase
 
     private readonly IAttendanceRecordService _records;
     private readonly IAttendanceLookbackService _lookback;
+    private readonly IAttendanceReprocessingService _reprocessing;
     private readonly IOptions<AttendanceLookbackOptions> _lookbackOptions;
     private readonly ICurrentUser _user;
 
-    public AttendanceRecordsController(IAttendanceRecordService records, IAttendanceLookbackService lookback, IOptions<AttendanceLookbackOptions> lookbackOptions, ICurrentUser user)
+    public AttendanceRecordsController(IAttendanceRecordService records, IAttendanceLookbackService lookback, IAttendanceReprocessingService reprocessing, IOptions<AttendanceLookbackOptions> lookbackOptions, ICurrentUser user)
     {
         _records = records;
         _lookback = lookback;
+        _reprocessing = reprocessing;
         _lookbackOptions = lookbackOptions;
         _user = user;
     }
@@ -139,6 +141,40 @@ public sealed class AttendanceRecordsController : ControllerBase
             DaysFailed = result.DaysFailed,
             DaysDeferred = result.DaysDeferred,
             DatesWithoutData = result.DatesWithoutData.ToList(),
+        };
+    }
+
+    /// <summary>
+    /// Calculates the days already held from a date to today again (of one employee, or of everyone), for when the policy, the rules, a holiday
+    /// or a leave changed. A day that comes out the same is left alone; a changed one gets a new record version; open exceptions whose problem is
+    /// gone are closed and a stricter policy or rule raises its exceptions. Days in a closed pay period are not touched. At most one run's limit of
+    /// employee-days at a time: <c>NextFrom</c> in the answer is the date to ask again from.
+    /// </summary>
+    [HttpPost("reprocess-since")]
+    [Authorize(Roles = AttendanceRoles.HRAdministrator)]
+    public async Task<ActionResult<ReprocessSinceResponse>> ReprocessSince(ReprocessSinceRequest request, CancellationToken cancellationToken)
+    {
+        if (request.From.Date < new DateTime(2000, 1, 1))
+        {
+            ModelState.AddModelError(nameof(ReprocessSinceRequest.From), "Choose the first day to calculate again.");
+            return ValidationProblem(ModelState);
+        }
+
+        var result = await _reprocessing.ReprocessSinceAsync(request.From, request.EmployeeId, _lookbackOptions.Value.EffectiveMaxDaysPerRun, cancellationToken);
+        return new ReprocessSinceResponse
+        {
+            From = result.From,
+            To = result.To,
+            DaysExamined = result.DaysExamined,
+            DaysChanged = result.DaysChanged,
+            RecordsWritten = result.RecordsWritten,
+            RecordsRetired = result.RecordsRetired,
+            RecordsSentToReview = result.RecordsSentToReview,
+            ExceptionsRaised = result.ExceptionsRaised,
+            ExceptionsResolved = result.ExceptionsResolved,
+            DaysFailed = result.DaysFailed,
+            DaysInClosedPeriods = result.DaysInClosedPeriods,
+            NextFrom = result.NextFrom,
         };
     }
 
