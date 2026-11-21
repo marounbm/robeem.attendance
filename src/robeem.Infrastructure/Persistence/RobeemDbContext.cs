@@ -74,6 +74,8 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<AttendanceException> AttendanceExceptions => Set<AttendanceException>();
 
+    public DbSet<AttendanceExceptionGroup> AttendanceExceptionGroups => Set<AttendanceExceptionGroup>();
+
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
 
     public DbSet<AttendanceApproval> AttendanceApprovals => Set<AttendanceApproval>();
@@ -119,6 +121,7 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         await AttendanceCorrections.ExecuteUpdateAsync(s => s.SetProperty(c => c.CancelsCorrectionId, (int?)null), cancellationToken);
         await DeleteAsync("Corrections", AttendanceCorrections);
         await DeleteAsync("Exceptions", AttendanceExceptions);
+        await DeleteAsync("Exception groups", AttendanceExceptionGroups);
         await DeleteAsync("Approvals", AttendanceApprovals);
         await AttendanceRecords.ExecuteUpdateAsync(s => s.SetProperty(r => r.SupersededByRecordId, (int?)null), cancellationToken);
         await DeleteAsync("Attendance records", AttendanceRecords);

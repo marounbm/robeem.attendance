@@ -31,6 +31,7 @@ public sealed class AttendanceDataResetService : IAttendanceDataResetService
             Count("Attendance records", await _db.AttendanceRecords.CountAsync(cancellationToken)),
             Count("Day summaries", await _db.AttendanceDaySummaries.CountAsync(cancellationToken)),
             Count("Exceptions", await _db.AttendanceExceptions.CountAsync(cancellationToken)),
+            Count("Exception groups", await _db.AttendanceExceptionGroups.CountAsync(cancellationToken)),
             Count("Corrections", await _db.AttendanceCorrections.CountAsync(cancellationToken)),
             Count("Approvals", await _db.AttendanceApprovals.CountAsync(cancellationToken)),
             Count("Job runs", await _db.AttendanceJobRuns.CountAsync(cancellationToken)),

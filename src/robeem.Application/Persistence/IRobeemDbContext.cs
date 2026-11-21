@@ -51,6 +51,8 @@ public interface IRobeemDbContext
 
     DbSet<AttendanceException> AttendanceExceptions { get; }
 
+    DbSet<AttendanceExceptionGroup> AttendanceExceptionGroups { get; }
+
     DbSet<AttendanceCorrection> AttendanceCorrections { get; }
 
     DbSet<AttendanceApproval> AttendanceApprovals { get; }

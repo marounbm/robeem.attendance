@@ -72,6 +72,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendanceExceptionService, AttendanceExceptionService>();
         services.AddScoped<IAttendanceDayCorrectionService, AttendanceDayCorrectionService>();
         services.AddScoped<IAttendanceExceptionQuery, AttendanceExceptionQuery>();
+        services.AddScoped<IAttendanceExceptionGroupService, AttendanceExceptionGroupService>();
+        services.AddScoped<IAttendanceExceptionGroupQuery, AttendanceExceptionGroupQuery>();
         services.AddScoped<IAttendanceTransactionQuery, AttendanceTransactionQuery>();
         services.AddScoped<IAttendanceIntegrationService, AttendanceIntegrationService>();
         services.AddScoped<IAttendancePayloadFormatService, AttendancePayloadFormatService>();

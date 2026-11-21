@@ -2,12 +2,14 @@ using System.Globalization;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 
 namespace robeem.Web.ApiClients;
 
 public sealed class ExceptionsApiClient : IExceptionsApiClient
 {
     private const string Path = "api/attendance/exceptions";
+    private const string GroupsPath = "api/attendance/exception-groups";
 
     private readonly HttpClient _http;
 
@@ -41,6 +43,43 @@ public sealed class ExceptionsApiClient : IExceptionsApiClient
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(Path, query), cancellationToken);
         return await ApiResponses.ReadAsync<List<ExceptionListItem>>(response, cancellationToken);
+    }
+
+    public async Task<PagedResult<ExceptionGroupListItem>> ListGroupsAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["page"] = page.ToString(CultureInfo.InvariantCulture),
+            ["pageSize"] = pageSize.ToString(CultureInfo.InvariantCulture),
+        };
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query["status"] = status;
+        }
+
+        if (from is { } first)
+        {
+            query["from"] = first.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (to is { } last)
+        {
+            query["to"] = last.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (employeeId is { } employee)
+        {
+            query["employeeId"] = employee.ToString(CultureInfo.InvariantCulture);
+        }
+
+        using var response = await _http.GetAsync(QueryHelpers.AddQueryString(GroupsPath, query), cancellationToken);
+        return await ApiResponses.ReadAsync<PagedResult<ExceptionGroupListItem>>(response, cancellationToken);
+    }
+
+    public async Task<ApiSaveResult> AcceptGroupAsync(int groupId, AcceptExceptionRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{GroupsPath}/{groupId.ToString(CultureInfo.InvariantCulture)}/accept", request, cancellationToken);
+        return await ApiResponses.SaveAsync<AcceptExceptionRequest>(response, groupId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken)

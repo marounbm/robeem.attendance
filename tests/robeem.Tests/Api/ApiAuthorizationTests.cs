@@ -25,6 +25,7 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     private readonly FakeDayCorrections _days = new();
     private readonly FakePayroll _payroll = new();
     private readonly FakeExceptions _exceptions = new();
+    private readonly FakeExceptionGroups _exceptionGroups = new();
     private readonly FakeReviews _reviews = new();
     private readonly FakeApprovals _approvals = new();
     private readonly TestApi _api;
@@ -35,6 +36,8 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         {
             services.AddSingleton<IAttendanceExceptionQuery>(_exceptions);
             services.AddSingleton<IAttendanceExceptionService>(_exceptions);
+            services.AddSingleton<IAttendanceExceptionGroupQuery>(_exceptionGroups);
+            services.AddSingleton<IAttendanceExceptionGroupService>(_exceptionGroups);
             services.AddSingleton<IAttendanceReviewService>(_reviews);
             services.AddSingleton<IAttendanceApprovalService>(_approvals);
             services.AddSingleton<IAttendanceCorrectionService>(_corrections);
@@ -318,6 +321,42 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ExceptionGroups_AreListedForTheUsersOwnRoles_PagedAndNotForOtherRoles()
+    {
+        await Send(HttpMethod.Get, "api/attendance/exception-groups?employeeId=5&page=2&pageSize=50", As(7, AttendanceRoles.Employee));
+        await Send(HttpMethod.Get, "api/attendance/exception-groups?status=closed&page=-3", As(13, AttendanceRoles.HRAdministrator));
+
+        Assert.Equal(
+            [
+                (new ExceptionViewer(7, true, false, false), 5, ExceptionStatusFilter.Active, 2, 50),
+                (new ExceptionViewer(13, false, false, true), null, ExceptionStatusFilter.Closed, 1, 0),
+            ],
+            _exceptionGroups.Calls.Select(c => (c.Viewer, c.Filter.EmployeeId, c.Filter.Status, c.Filter.Page, c.Filter.PageSize)));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/exception-groups", As(7, AttendanceRoles.PayrollAdministrator))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/exception-groups", As(null, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Send(HttpMethod.Get, "api/attendance/exception-groups?status=nonsense", As(7, AttendanceRoles.Employee))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get, "api/attendance/exception-groups", null)).StatusCode);
+        Assert.Equal(2, _exceptionGroups.Calls.Count);
+    }
+
+    [Fact]
+    public async Task AcceptingAGroup_IsForApproversOnly_AndIsDoneAsTheUser_InTheirRole_WithTheReason()
+    {
+        var body = new { reason = "Covered the phones" };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/exception-groups/5/accept", As(7, AttendanceRoles.Employee), body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Post, "api/attendance/exception-groups/5/accept", As(null, AttendanceRoles.Manager), body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Post, "api/attendance/exception-groups/5/accept", null, body)).StatusCode);
+        Assert.Empty(_exceptionGroups.Accepted);
+
+        var first = await Send(HttpMethod.Post, "api/attendance/exception-groups/5/accept", As(12, AttendanceRoles.Manager), new { reason = "Covered the phones", isHrDecision = true });
+        await Send(HttpMethod.Post, "api/attendance/exception-groups/6/accept", As(13, AttendanceRoles.HRAdministrator), new { reason = "Agreed" });
+
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.Equal([(5, 12, false, "Covered the phones"), (6, 13, true, "Agreed")], _exceptionGroups.Accepted);
+    }
+
+    [Fact]
     public async Task Reviews_AreForApproversOnly_WithAnEmployeeIdentity()
     {
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "api/attendance/reviews/pending", As(7, AttendanceRoles.Employee))).StatusCode);
@@ -575,6 +614,27 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
         {
             Calls.Add((filter, viewer));
             return Task.FromResult<IReadOnlyList<ExceptionListItem>>([]);
+        }
+    }
+
+    private sealed class FakeExceptionGroups : IAttendanceExceptionGroupQuery, IAttendanceExceptionGroupService
+    {
+        public List<(ExceptionGroupFilter Filter, ExceptionViewer Viewer)> Calls { get; } = [];
+
+        public List<(int GroupId, int AcceptedBy, bool AsHr, string? Reason)> Accepted { get; } = [];
+
+        public Task<PagedResult<ExceptionGroupListItem>> ListAsync(ExceptionGroupFilter filter, ExceptionViewer viewer, CancellationToken cancellationToken)
+        {
+            Calls.Add((filter, viewer));
+            return Task.FromResult(new PagedResult<ExceptionGroupListItem>());
+        }
+
+        public Task SyncDayAsync(int employeeId, DateTime date, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<SaveResult> AcceptAsync(int groupId, int acceptedByEmployeeId, bool asHr, string? reason, CancellationToken cancellationToken)
+        {
+            Accepted.Add((groupId, acceptedByEmployeeId, asHr, reason));
+            return Task.FromResult(SaveResult.Success(groupId));
         }
     }
 

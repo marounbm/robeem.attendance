@@ -7,6 +7,9 @@ public static class AttendanceAuditActions
 
     public const string ExceptionStatusChanged = "ExceptionStatusChanged";
 
+    /// <summary>A group of related exceptions (an employee's shift on a date) changed status: it follows its exceptions, or a manager or HR accepted it as a whole.</summary>
+    public const string ExceptionGroupStatusChanged = "ExceptionGroupStatusChanged";
+
     public const string ReviewDecided = "ReviewDecided";
 
     /// <summary>An integration, one of its devices or one of its vendor-id mappings was created, changed or removed.</summary>

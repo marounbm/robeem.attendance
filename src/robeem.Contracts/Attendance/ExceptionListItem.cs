@@ -5,6 +5,9 @@ public sealed class ExceptionListItem
 {
     public int Id { get; init; }
 
+    /// <summary>Gets the group of related exceptions (same employee, date and shift) this one is settled with; null until it is grouped.</summary>
+    public int? ExceptionGroupId { get; init; }
+
     public int EmployeeId { get; init; }
 
     public string EmployeeName { get; init; } = string.Empty;

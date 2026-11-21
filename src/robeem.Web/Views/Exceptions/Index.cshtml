@@ -1,7 +1,7 @@
 @model ExceptionsIndexViewModel
 @{
     ViewData["Title"] = "Attendance";
-    var days = Model.Days;
+    var groups = Model.Groups;
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -11,9 +11,10 @@
 <partial name="_AttendanceTabs" model="@("Exceptions")" />
 
 <p class="text-muted">
-    The days that have a problem a person has to settle: a missing punch, punches in the wrong order, or a break outside the rules. You see your
-    own; a manager also sees their reports'; HR sees everyone's. To put one of your days right, press <strong>Correct</strong>: it shows every
-    punch of the day, and you can change a punch, add one that is missing, or ignore one that should not count. Your approver then decides.
+    The problems found on an employee's shift, kept together as one case: a missing punch, punches in the wrong order, or a break or a day outside
+    the rules. You see your own; a manager also sees their reports'; HR sees everyone's. To put one of your days right, press <strong>Correct</strong>:
+    it shows every punch of the day, and you can change a punch, add one that is missing, or ignore one that should not count. Your approver then
+    decides. A manager or HR can <strong>accept</strong> a case as it is, with one reason, when none of its problems needs a punch.
 </p>
 
 <partial name="_StatusMessage" />
@@ -48,14 +49,23 @@
         <input id="to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
     </div>
     <div class="col-auto">
+        <label class="form-label small mb-0" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select">
+            @foreach (var size in ExceptionsIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
         <button type="submit" class="btn btn-outline-secondary">Filter</button>
     </div>
 </form>
 
 <div class="card">
-    @if (days.Count == 0)
+    @if (groups.Count == 0)
     {
-        <div class="card-body text-muted">No days with exceptions match.</div>
+        <div class="card-body text-muted">No exceptions match.</div>
     }
     else
     {
@@ -72,38 +82,50 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var day in days)
+                    @foreach (var group in groups)
                     {
-                        var key = $"{day.EmployeeId}-{day.Date:yyyyMMdd}";
                         <tr>
                             <td class="text-nowrap">
-                                <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId"
-                                   asp-route-date="@day.Date.ToString("yyyy-MM-dd")">@DisplayFormats.Date(day.Date)</a>
+                                <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@group.EmployeeId"
+                                   asp-route-date="@group.AttendanceDate.ToString("yyyy-MM-dd")">@DisplayFormats.Date(group.AttendanceDate)</a>
                             </td>
-                            <td>@day.EmployeeName</td>
-                            <td>@string.Join(", ", day.Shifts)</td>
+                            <td>@group.EmployeeName</td>
+                            <td>@(group.ShiftTitle ?? "Unscheduled work")</td>
                             <td>
                                 <button class="btn btn-link btn-sm p-0 text-start" type="button" data-bs-toggle="collapse"
-                                        data-bs-target="#day-@key" aria-expanded="false" aria-controls="day-@key">
-                                    @day.Items.Count problem@(day.Items.Count == 1 ? string.Empty : "s")
+                                        data-bs-target="#group-@group.Id" aria-expanded="false" aria-controls="group-@group.Id">
+                                    @group.Exceptions.Count problem@(group.Exceptions.Count == 1 ? string.Empty : "s")
                                 </button>
                             </td>
-                            <td><span class="badge text-bg-@DisplayFormats.Badge(day.Status)">@DisplayFormats.Words(day.Status)</span></td>
-                            <td class="text-end">
-                                @if (day.CanCorrect)
+                            <td>
+                                <span class="badge text-bg-@DisplayFormats.Badge(group.Status)">@DisplayFormats.Words(group.Status)</span>
+                                @if (group.ResolutionMethod is not null)
                                 {
-                                    <a class="btn btn-sm btn-primary" asp-action="Correct" asp-route-date="@day.Date.ToString("yyyy-MM-dd")">Correct</a>
+                                    <div class="small text-muted">
+                                        @DisplayFormats.Words(group.ResolutionMethod)@(group.ResolvedByName is null ? string.Empty : " by " + group.ResolvedByName)
+                                    </div>
                                 }
-                                else if (day.IsWaiting)
+                            </td>
+                            <td class="text-end">
+                                @if (group.CanCorrect)
+                                {
+                                    <a class="btn btn-sm btn-primary" asp-action="Correct" asp-route-date="@group.AttendanceDate.ToString("yyyy-MM-dd")">Correct</a>
+                                }
+                                else if (group.IsWaiting)
                                 {
                                     <span class="small text-muted">Waiting for approval</span>
                                 }
                             </td>
                         </tr>
-                        <tr class="collapse" id="day-@key">
+                        <tr class="collapse" id="group-@group.Id">
                             <td colspan="6" class="bg-light">
+                                @if (!string.IsNullOrWhiteSpace(group.ResolutionNote))
+                                {
+                                    <div class="small text-muted mb-2">@group.ResolutionNote</div>
+                                }
+
                                 <ul class="list-unstyled mb-0">
-                                    @foreach (var item in day.Items)
+                                    @foreach (var item in group.Exceptions)
                                     {
                                         <li class="py-1">
                                             <span class="badge text-bg-@DisplayFormats.Badge(item.Status)">@DisplayFormats.Words(item.Status)</span>
@@ -111,25 +133,29 @@
                                             <span class="small text-muted"> · @item.Description</span>
                                             @if (item.ResolutionMethod is not null)
                                             {
-                                                <div class="small text-muted ms-2">@DisplayFormats.Words(item.ResolutionMethod)@(string.IsNullOrWhiteSpace(item.ResolutionNote) ? string.Empty : ": " + item.ResolutionNote)</div>
-                                            }
-
-                                            @if (item.CanAccept)
-                                            {
-                                                <form method="post" asp-action="Accept" class="row g-2 align-items-end mt-1 ms-2">
-                                                    <input type="hidden" name="exceptionId" value="@item.Id" />
-                                                    <div class="col-md-7">
-                                                        <label class="form-label small mb-0" for="accept-why-@item.Id">Accept this as it is: why?</label>
-                                                        <input id="accept-why-@item.Id" type="text" name="reason" maxlength="1000" class="form-control form-control-sm" required />
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <button type="submit" class="btn btn-sm btn-outline-primary">Accept exception</button>
-                                                    </div>
-                                                </form>
+                                                <div class="small text-muted ms-2">@DisplayFormats.Words(item.ResolutionMethod)</div>
                                             }
                                         </li>
                                     }
                                 </ul>
+
+                                @if (group.CanAccept)
+                                {
+                                    <form method="post" asp-action="AcceptGroup" class="row g-2 align-items-end mt-2">
+                                        <input type="hidden" name="groupId" value="@group.Id" />
+                                        @foreach (var (key, value) in Model.ReturnValues)
+                                        {
+                                            <input type="hidden" name="@key" value="@value" />
+                                        }
+                                        <div class="col-md-7">
+                                            <label class="form-label small mb-0" for="accept-why-@group.Id">Accept all of these as they are: why?</label>
+                                            <input id="accept-why-@group.Id" type="text" name="reason" maxlength="1000" class="form-control form-control-sm" required />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Accept</button>
+                                        </div>
+                                    </form>
+                                }
                             </td>
                         </tr>
                     }
@@ -138,3 +164,5 @@
         </div>
     }
 </div>
+
+<partial name="_Pager" model="Model.Pager" />

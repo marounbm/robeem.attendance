@@ -40,6 +40,7 @@ public sealed class ActorAccessFilterTests
     [InlineData(typeof(RecordsController), "Day", "Manager")]
     [InlineData(typeof(ExceptionsController), "Index", "Employee")]
     [InlineData(typeof(ExceptionsController), "Accept", "HRAdministrator")]
+    [InlineData(typeof(ExceptionsController), "AcceptGroup", "HRAdministrator")]
     public void AnActorWithNoEmployee_IsTurnedAwayWithTheReason_WhereTheApiNeedsOne(Type controller, string action, string role)
     {
         var context = Run(controller, action, employeeId: null, [role]);

@@ -1,3 +1,5 @@
+using robeem.Application.Common;
+using robeem.Contracts.Attendance;
 using robeem.DataModel;
 
 namespace robeem.Application.Attendance;
@@ -5,6 +7,9 @@ namespace robeem.Application.Attendance;
 /// <summary>What a user may do with an exception, in one place for every screen that lists them.</summary>
 internal static class AttendanceExceptionRules
 {
+    /// <summary>The longest reason an acceptance can carry.</summary>
+    public const int ReasonMaxLength = 1000;
+
     /// <summary>
     /// Whether the viewer can propose a correction now: it is their own and open, and either a punch is missing (they say when it happened)
     /// or a punch is out of order and at least one other type would settle it.
@@ -33,6 +38,54 @@ internal static class AttendanceExceptionRules
     public static bool IsAcceptable(AttendanceExceptionType type) =>
         type is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
             or AttendanceExceptionType.NoShow or AttendanceExceptionType.ShortHours;
+
+    /// <summary>
+    /// Whether the viewer can accept the group of exceptions as it is: it is open, every exception in it that is not closed is open and
+    /// of a kind that can be accepted (a single missing punch makes the whole group a correction), and the viewer is HR or the employee's
+    /// manager, never the employee.
+    /// </summary>
+    public static bool CanAcceptGroup(AttendanceExceptionStatus groupStatus, IEnumerable<(AttendanceExceptionType Type, AttendanceExceptionStatus Status)> members, int employeeId, int? managerId, ExceptionViewer viewer)
+    {
+        var notClosed = members.Where(m => m.Status != AttendanceExceptionStatus.Closed).ToList();
+        return groupStatus == AttendanceExceptionStatus.Open
+            && notClosed.Count > 0
+            && notClosed.All(m => m.Status == AttendanceExceptionStatus.Open && IsAcceptable(m.Type))
+            && employeeId != viewer.EmployeeId
+            && (viewer.IsHr || (viewer.IsManager && managerId == viewer.EmployeeId));
+    }
+
+    /// <summary>Checks the reason given for accepting; null when it is fine, with the trimmed reason in <paramref name="trimmed"/>.</summary>
+    public static SaveResult? ReasonProblem(string? reason, out string trimmed)
+    {
+        trimmed = (reason ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return SaveResult.Invalid(nameof(AcceptExceptionRequest.Reason), "A reason is required to accept an exception.");
+        }
+
+        return trimmed.Length > ReasonMaxLength
+            ? SaveResult.Invalid(nameof(AcceptExceptionRequest.Reason), $"The reason can be at most {ReasonMaxLength} characters.")
+            : null;
+    }
+
+    /// <summary>Checks who accepts: an existing user, not the employee, and the employee's manager or HR; null when they may.</summary>
+    public static SaveResult? AcceptorProblem(Profile employee, bool acceptorExists, int acceptedByEmployeeId, bool asHr)
+    {
+        if (!acceptorExists)
+        {
+            return SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "The user does not exist.");
+        }
+
+        if (acceptedByEmployeeId == employee.Id)
+        {
+            return SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "An exception can't be accepted by its own employee.");
+        }
+
+        // A manager settles their own direct reports'; HR anyone's.
+        return !asHr && employee.ManagerId != acceptedByEmployeeId
+            ? SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "Only the employee's manager, or HR, can accept this exception.")
+            : null;
+    }
 
     /// <summary>Splits the stored list of suggested event types.</summary>
     public static IReadOnlyList<string> Suggested(string suggestedEventTypes) =>

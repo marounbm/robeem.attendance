@@ -21,7 +21,7 @@ public sealed class AttendanceDataResetTests : AttendanceEngineTestBase
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
             var before = await Service(db, enabled: true).GetSummaryAsync(CancellationToken.None);
-            Assert.All(new[] { "Raw transactions", "Normalized transactions", "Attendance records", "Day summaries", "Exceptions" }, name => Assert.True(Count(before.Deletes, name) > 0, name));
+            Assert.All(new[] { "Raw transactions", "Normalized transactions", "Attendance records", "Day summaries", "Exceptions", "Exception groups" }, name => Assert.True(Count(before.Deletes, name) > 0, name));
         }
 
         AttendanceDataResetResult result;
@@ -40,6 +40,7 @@ public sealed class AttendanceDataResetTests : AttendanceEngineTestBase
         Assert.Empty(check.AttendanceRecords);
         Assert.Empty(check.AttendanceDaySummaries);
         Assert.Empty(check.AttendanceExceptions);
+        Assert.Empty(check.AttendanceExceptionGroups);
         Assert.Empty(check.AttendanceApprovals);
         Assert.Empty(check.AttendanceCorrections);
 

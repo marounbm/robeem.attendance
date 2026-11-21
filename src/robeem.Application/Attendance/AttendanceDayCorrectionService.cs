@@ -136,7 +136,9 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, $"Open -> PendingCorrection: a correction of the day ({rows.Count} edit(s)) was proposed.", actor);
         }
 
+        await ExceptionGroupSync.ApplyAsync(_db, _audit, employeeId, day, [], cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+        await _audit.FlushNewAsync(cancellationToken);
         return SaveResult.Success(rows[0].Id);
     }
 

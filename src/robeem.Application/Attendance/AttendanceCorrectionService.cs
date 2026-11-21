@@ -121,7 +121,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             exception.Id,
             "Open -> PendingCorrection: a correction was proposed.",
             ActorOf(requestedByEmployeeId));
+        await ExceptionGroupSync.ApplyAsync(_db, _audit, exception.EmployeeId, exception.AttendanceDate, [], cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+        await _audit.FlushNewAsync(cancellationToken);
 
         return CorrectionResult.Success(correction.Id, approval.Status, exception.Status);
     }
@@ -204,7 +206,9 @@ public sealed class AttendanceCorrectionService : IAttendanceCorrectionService
             exception.Id,
             $"Open -> PendingCorrection: a change of the punch from {punch.NormalizedEventType} to {correction.CorrectedEventType} was proposed.",
             actor);
+        await ExceptionGroupSync.ApplyAsync(_db, _audit, exception.EmployeeId, exception.AttendanceDate, [], cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+        await _audit.FlushNewAsync(cancellationToken);
 
         return CorrectionResult.Success(correction.Id, approval.Status, exception.Status);
     }

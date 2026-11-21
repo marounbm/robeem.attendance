@@ -326,7 +326,9 @@ public sealed class AttendanceApprovalService : IAttendanceApprovalService
             exceptions.ForEach(e => e.Status = AttendanceExceptionStatus.Open);
             _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceApproval), approval.Id, $"{decision} by {role}; the correction is {approval.Status}.", actor);
             exceptions.ForEach(e => _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), e.Id, "PendingCorrection -> Open: the correction was rejected.", actor));
+            await ExceptionGroupSync.ApplyAsync(_db, _audit, approval.EmployeeId, approval.AttendanceDate, [], cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
+            await _audit.FlushNewAsync(cancellationToken);
             return ApprovalResult.Correction(approval, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Open);
         }
 

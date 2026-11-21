@@ -10,6 +10,7 @@ public static class AuditActionCatalog
     [
         "CorrectionDecided",
         "ExceptionStatusChanged",
+        "ExceptionGroupStatusChanged",
         "ReviewDecided",
         "IntegrationChanged",
         "IntegrationRunRequested",

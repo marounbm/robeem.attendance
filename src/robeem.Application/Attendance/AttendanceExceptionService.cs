@@ -8,8 +8,6 @@ namespace robeem.Application.Attendance;
 
 public sealed class AttendanceExceptionService : IAttendanceExceptionService
 {
-    private const int ReasonMaxLength = 1000;
-
     private readonly IRobeemDbContext _db;
     private readonly IAttendanceProcessingEngine _engine;
     private readonly IAttendanceAuditTrail _audit;
@@ -41,32 +39,16 @@ public sealed class AttendanceExceptionService : IAttendanceExceptionService
             return SaveResult.Invalid("id", exception.Status == AttendanceExceptionStatus.Closed ? "This exception is closed." : "This exception is waiting for a correction.");
         }
 
-        var trimmed = (reason ?? string.Empty).Trim();
-        if (trimmed.Length == 0)
+        if (AttendanceExceptionRules.ReasonProblem(reason, out var trimmed) is { } reasonProblem)
         {
-            return SaveResult.Invalid(nameof(AcceptExceptionRequest.Reason), "A reason is required to accept an exception.");
-        }
-
-        if (trimmed.Length > ReasonMaxLength)
-        {
-            return SaveResult.Invalid(nameof(AcceptExceptionRequest.Reason), $"The reason can be at most {ReasonMaxLength} characters.");
+            return reasonProblem;
         }
 
         var employee = await _db.Profiles.AsNoTracking().SingleAsync(p => p.Id == exception.EmployeeId, cancellationToken);
-        if (!await _db.Profiles.AnyAsync(p => p.Id == acceptedByEmployeeId, cancellationToken))
+        var acceptorExists = await _db.Profiles.AnyAsync(p => p.Id == acceptedByEmployeeId, cancellationToken);
+        if (AttendanceExceptionRules.AcceptorProblem(employee, acceptorExists, acceptedByEmployeeId, asHr) is { } acceptorProblem)
         {
-            return SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "The user does not exist.");
-        }
-
-        if (acceptedByEmployeeId == exception.EmployeeId)
-        {
-            return SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "An exception can't be accepted by its own employee.");
-        }
-
-        // A manager settles their own direct reports'; HR anyone's.
-        if (!asHr && employee.ManagerId != acceptedByEmployeeId)
-        {
-            return SaveResult.Invalid(CorrectionErrorKeys.DecidedBy, "Only the employee's manager, or HR, can accept this exception.");
+            return acceptorProblem;
         }
 
         var role = asHr ? "HR" : "Manager";

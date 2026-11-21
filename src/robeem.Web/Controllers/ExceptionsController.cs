@@ -14,8 +14,6 @@ namespace robeem.Web.Controllers;
 [RequiresEmployee(HrExempt = true)]
 public sealed class ExceptionsController : Controller
 {
-    private const int PageSize = 200;
-
     private readonly IExceptionsApiClient _exceptions;
     private readonly ICorrectionsApiClient _corrections;
     private readonly ICurrentActor _actor;
@@ -27,13 +25,19 @@ public sealed class ExceptionsController : Controller
         _actor = actor;
     }
 
+    /// <summary>The exception groups, a page at a time. The paging, the filters and who sees what are done by robeem.Api.</summary>
     [HttpGet]
-    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, int? employeeId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? status, DateTime? from, DateTime? to, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
     {
         var chosen = ExceptionsIndexViewModel.Statuses.Contains(status ?? string.Empty) ? status! : "Active";
+        var size = ExceptionsIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : ExceptionsIndexViewModel.DefaultPageSize;
+        var result = await _exceptions.ListGroupsAsync(chosen, from, to, employeeId, Math.Max(page, 1), size, cancellationToken);
         return View(new ExceptionsIndexViewModel
         {
-            Items = await _exceptions.ListAsync(chosen, from, to, employeeId, PageSize, cancellationToken),
+            Groups = result.Items,
+            Page = result.Page,
+            PageSize = size,
+            Total = result.Total,
             Employees = await _exceptions.ListEmployeeOptionsAsync(cancellationToken),
             Status = chosen,
             From = from,
@@ -87,6 +91,27 @@ public sealed class ExceptionsController : Controller
         }
 
         return View(new DayCorrectionViewModel { Day = day, Form = form.WithPunchesOf(day) });
+    }
+
+    /// <summary>
+    /// A manager or HR accepts a whole group of exceptions as it is, with one reason. The reason is required; the Api checks the user may. The
+    /// other parameters are the list as the approver had it (filters and page), so it is shown again the same way.
+    /// </summary>
+    [HttpPost]
+    [RequiresEmployee]
+    public async Task<IActionResult> AcceptGroup(int groupId, string? reason, string? status, DateTime? from, DateTime? to, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var result = await _exceptions.AcceptGroupAsync(
+            groupId,
+            new AcceptExceptionRequest { Reason = reason ?? string.Empty, IsHrDecision = _actor.IsInRole(NavigationMenu.Hr) },
+            cancellationToken);
+
+        TempData[result.Succeeded ? "StatusMessage" : "ErrorMessage"] = result.Succeeded
+            ? "The exceptions were accepted. The day was calculated again."
+            : result.MessageText;
+
+        // Back to the list as it was; a page that is now past the end is answered with the last one.
+        return RedirectToAction(nameof(Index), new { status, employeeId, from = from?.ToString("yyyy-MM-dd"), to = to?.ToString("yyyy-MM-dd"), page, pageSize });
     }
 
     /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>

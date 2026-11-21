@@ -281,32 +281,67 @@ public sealed class ApprovalsWebTests
     }
 
     [Fact]
-    public void TheExceptionsGrid_HasOneRowPerDay_NewestFirst_AndOffersCorrectOnlyWhereItCan()
+    public async Task TheExceptionsList_IsPagedByTheApi_AndEveryPageLinkKeepsTheFilters()
     {
-        var model = new ExceptionsIndexViewModel
-        {
-            Items =
-            [
-                new ExceptionListItem { Id = 1, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open", CanCorrect = true, ShiftTitle = "Day" },
-                new ExceptionListItem { Id = 2, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open", CanCorrect = true, ShiftTitle = "Day" },
-                new ExceptionListItem { Id = 3, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 6), Status = "Open", CanCorrect = true },
-                new ExceptionListItem { Id = 4, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 6), Status = "PendingCorrection" },
-                new ExceptionListItem { Id = 5, EmployeeId = 8, EmployeeName = "Charles Babbage", AttendanceDate = new DateTime(2026, 10, 5), Status = "Open" },
-                new ExceptionListItem { Id = 6, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, 1), Status = "Closed" },
-            ],
-        };
+        var exceptions = new FakeExceptions();
+        exceptions.Groups.AddRange(Enumerable.Range(1, 3).Select(i => new ExceptionGroupListItem { Id = i, EmployeeId = 7, EmployeeName = "Ada Lovelace", AttendanceDate = new DateTime(2026, 10, i), Status = "Open" }));
+        exceptions.GroupsTotal = 45;
+        var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["HRAdministrator"]));
 
-        var days = model.Days;
+        var model = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(
+            await controller.Index("Open", new DateTime(2026, 10, 1), new DateTime(2026, 10, 31), 7, 2, 50, CancellationToken.None)).Model);
 
-        Assert.Equal([(new DateTime(2026, 10, 6), 7), (new DateTime(2026, 10, 5), 7), (new DateTime(2026, 10, 5), 8), (new DateTime(2026, 10, 1), 7)], days.Select(d => (d.Date, d.EmployeeId)));
-        Assert.Equal([2, 2, 1, 1], days.Select(d => d.Items.Count));
+        Assert.Equal([(2, 50)], exceptions.GroupPages);
+        Assert.Equal((45, 3), (model.Total, model.Groups.Count));
+        var link = model.Pager.For(3);
+        Assert.Equal("Open", link["status"]);
+        Assert.Equal("7", link["employeeId"]);
+        Assert.Equal("2026-10-01", link["from"]);
+        Assert.Equal("2026-10-31", link["to"]);
+        Assert.Equal("50", link["pageSize"]);
+        Assert.Equal("3", link["page"]);
+    }
 
-        // 5 Oct (Ada): two open exceptions, hers: Correct. 6 Oct: a correction already waits, so no. Charles's day is not hers to correct.
-        Assert.Equal([false, true, false, false], days.Select(d => d.CanCorrect));
-        Assert.Equal(["Open", "Open", "Open", "Closed"], days.Select(d => d.Status));
-        Assert.True(days[0].IsWaiting);
-        Assert.Equal(["Day"], days[1].Shifts);
-        Assert.Equal(["Unscheduled work"], days[2].Shifts);
+    [Theory]
+    [InlineData(0, 20)]
+    [InlineData(37, 20)]
+    [InlineData(100, 100)]
+    public async Task TheExceptionsPageSize_IsOneTheScreenOffers(int asked, int used)
+    {
+        var exceptions = new FakeExceptions();
+        var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Employee"]));
+
+        await controller.Index(null, null, null, null, 0, asked, CancellationToken.None);
+
+        Assert.Equal([(1, used)], exceptions.GroupPages);
+    }
+
+    [Theory]
+    [InlineData("HRAdministrator", true)]
+    [InlineData("Manager", false)]
+    public async Task AcceptingAGroup_SendsTheReason_AndWhetherTheUserDecidesAsHr_AndReturnsToTheListAsItWas(string role, bool asHr)
+    {
+        var exceptions = new FakeExceptions();
+        var controller = WithTempData(new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor([role])));
+
+        var result = await controller.AcceptGroup(4, "Covered the phones", "Open", new DateTime(2026, 10, 1), null, 7, 3, 50, CancellationToken.None);
+
+        Assert.Equal([(4, "Covered the phones", asHr)], exceptions.GroupAccepted);
+        Assert.Contains("were accepted", (string)controller.TempData["StatusMessage"]!);
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Index", redirect.ActionName);
+        Assert.Equal(("Open", 7, "2026-10-01", 3, 50), (redirect.RouteValues!["status"], redirect.RouteValues["employeeId"], redirect.RouteValues["from"], redirect.RouteValues["page"], redirect.RouteValues["pageSize"]));
+    }
+
+    [Fact]
+    public async Task AcceptingAGroupIsRefused_ByTheApi_WithItsReason()
+    {
+        var exceptions = new FakeExceptions { Refusal = "This group has a problem that can't be accepted as it is." };
+        var controller = WithTempData(new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Manager"])));
+
+        await controller.AcceptGroup(4, "x", null, null, null, null, 1, 20, CancellationToken.None);
+
+        Assert.Equal("This group has a problem that can't be accepted as it is.", controller.TempData["ErrorMessage"]);
     }
 
     [Theory]
@@ -344,7 +379,7 @@ public sealed class ApprovalsWebTests
         var exceptions = new FakeExceptions();
         var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["Employee"]));
 
-        var result = await controller.Index(status, null, null, null, CancellationToken.None);
+        var result = await controller.Index(status, null, null, null, 0, 0, CancellationToken.None);
 
         Assert.Equal(expected, Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(result).Model).Status);
         Assert.Equal(expected, exceptions.Statuses.Single());
@@ -357,8 +392,8 @@ public sealed class ApprovalsWebTests
         exceptions.Employees.AddRange([new EmployeeOption { Id = 5, Name = "Hiba Rahme (21001)" }, new EmployeeOption { Id = 6, Name = "Yara Jabbour (22002)" }]);
         var controller = new ExceptionsController(exceptions, new FakeCorrections(), new FakeActor(["HRAdministrator"]));
 
-        var narrowed = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, 6, CancellationToken.None)).Model);
-        var everyone = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, null, CancellationToken.None)).Model);
+        var narrowed = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, 6, 0, 0, CancellationToken.None)).Model);
+        var everyone = Assert.IsType<ExceptionsIndexViewModel>(Assert.IsType<ViewResult>(await controller.Index("Open", null, null, null, 0, 0, CancellationToken.None)).Model);
 
         Assert.Equal([6, null], exceptions.EmployeeIds);
         Assert.Equal(6, narrowed.EmployeeId);
@@ -536,11 +571,35 @@ public sealed class ApprovalsWebTests
 
         public string? Refusal { get; set; }
 
+        public List<ExceptionGroupListItem> Groups { get; } = [];
+
+        public int GroupsTotal { get; set; }
+
+        public List<(int Page, int PageSize)> GroupPages { get; } = [];
+
+        public List<(int GroupId, string Reason, bool IsHr)> GroupAccepted { get; } = [];
+
         public Task<IReadOnlyList<ExceptionListItem>> ListAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int take, CancellationToken cancellationToken)
         {
             Statuses.Add(status);
             EmployeeIds.Add(employeeId);
             return Task.FromResult<IReadOnlyList<ExceptionListItem>>([]);
+        }
+
+        public Task<PagedResult<ExceptionGroupListItem>> ListGroupsAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int page, int pageSize, CancellationToken cancellationToken)
+        {
+            Statuses.Add(status);
+            EmployeeIds.Add(employeeId);
+            GroupPages.Add((page, pageSize));
+            return Task.FromResult(new PagedResult<ExceptionGroupListItem> { Items = Groups, Total = GroupsTotal, Page = page, PageSize = pageSize });
+        }
+
+        public Task<ApiSaveResult> AcceptGroupAsync(int groupId, AcceptExceptionRequest request, CancellationToken cancellationToken)
+        {
+            GroupAccepted.Add((groupId, request.Reason, request.IsHrDecision));
+            return Task.FromResult(Refusal is null
+                ? ApiSaveResult.Success(groupId)
+                : ApiSaveResult.Invalid(new Dictionary<string, string> { [string.Empty] = Refusal }));
         }
 
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) =>

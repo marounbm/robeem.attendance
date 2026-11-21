@@ -36,6 +36,11 @@ namespace robeem.DataModel
 
         public TimeScheduleShift? TimeScheduleShift { get; set; }
 
+        /// <summary>Gets or sets the group of related exceptions (same employee, date and shift) this one is settled with; null until the day's exceptions are grouped.</summary>
+        public int? ExceptionGroupId { get; set; }
+
+        public AttendanceExceptionGroup? ExceptionGroup { get; set; }
+
         public AttendanceExceptionType ExceptionType { get; set; }
 
         /// <summary>Gets or sets the punch that is absent. Set for <see cref="AttendanceExceptionType.MissingPunch"/>, otherwise null.</summary>

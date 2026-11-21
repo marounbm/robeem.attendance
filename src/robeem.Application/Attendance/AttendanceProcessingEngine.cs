@@ -591,6 +591,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
 
         var active = new List<AttendanceException>();
         var matched = new HashSet<AttendanceException>();
+        var newlyOpened = new List<AttendanceException>();
         var raised = 0;
         foreach (var (shiftId, found) in detected)
         {
@@ -635,6 +636,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             _db.AttendanceExceptions.Add(opened);
             _audit.RecordNew(AttendanceAuditActions.ExceptionStatusChanged, opened, $"(new) -> Open: {found.Description}");
             active.Add(opened);
+            newlyOpened.Add(opened);
             raised++;
         }
 
@@ -664,6 +666,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
                 active.Add(gone);
             }
         }
+
+        // The related exceptions of a shift are kept together as one case, which follows them.
+        await ExceptionGroupSync.ApplyAsync(_db, _audit, employeeId, day, newlyOpened, cancellationToken);
 
         return new ExceptionOutcome(active.Select(e => e.TimeScheduleShiftId).ToHashSet(), active.Count, raised, resolved);
     }

@@ -543,6 +543,10 @@ public sealed class RecordsWebTests
             return Task.FromResult(Items);
         }
 
+        public Task<PagedResult<ExceptionGroupListItem>> ListGroupsAsync(string? status, DateTime? from, DateTime? to, int? employeeId, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<ApiSaveResult> AcceptGroupAsync(int groupId, AcceptExceptionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<ApiSaveResult> AcceptAsync(int exceptionId, AcceptExceptionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
