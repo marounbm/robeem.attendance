@@ -12,7 +12,7 @@ namespace robeem.DataModel
     /// </summary>
     [Serializable]
     [Table(nameof(OnDemandTimeSchedule), Schema = nameof(SmartEnum.Module.HR))]
-    public class OnDemandTimeSchedule : Entity, ITenantScoped
+    public class OnDemandTimeSchedule : Entity, ISeedData, ITenantScoped
     {
         [Required]
         [MaxLength(ITenantScoped.TenantIdMaxLength)]

@@ -22,6 +22,8 @@ public static class AuditActionCatalog
         "ScheduleChanged",
         "UploadDeleted",
         "AttendanceDataReset",
+        "TestEmployeesLoaded",
+        "TestEmployeesDeleted",
         "AttendanceDataRead",
         "RuleSetPublished",
     ];

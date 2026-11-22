@@ -6,6 +6,7 @@ using robeem.Api.Security;
 using robeem.Api.Tenancy;
 using robeem.Application;
 using robeem.Application.Attendance;
+using robeem.Application.Attendance.TestEmployees;
 using robeem.Application.HR.Seeding;
 using robeem.Infrastructure;
 using robeem.Infrastructure.Attendance.Catalog;
@@ -26,6 +27,7 @@ builder.Services.Configure<SampleDataOptions>(builder.Configuration.GetSection(S
 builder.Services.Configure<AttendanceNormalizationOptions>(builder.Configuration.GetSection(AttendanceNormalizationOptions.SectionName));
 builder.Services.Configure<AttendanceSyncOptions>(builder.Configuration.GetSection(AttendanceSyncOptions.SectionName));
 builder.Services.Configure<AttendanceDataResetOptions>(builder.Configuration.GetSection(AttendanceDataResetOptions.SectionName));
+builder.Services.Configure<TestEmployeeOptions>(builder.Configuration.GetSection(TestEmployeeOptions.SectionName));
 builder.Services.Configure<AttendanceLookbackOptions>(builder.Configuration.GetSection(AttendanceLookbackOptions.SectionName));
 builder.Services.Configure<AttendanceMissingDaysOptions>(builder.Configuration.GetSection(AttendanceMissingDaysOptions.SectionName));
 

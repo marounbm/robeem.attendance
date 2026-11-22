@@ -4,6 +4,7 @@ using robeem.Application.Attendance;
 using robeem.Application.Attendance.Catalog;
 using robeem.Application.Attendance.Jobs;
 using robeem.Application.Attendance.Seeding;
+using robeem.Application.Attendance.TestEmployees;
 using robeem.Application.Common;
 using robeem.Application.HR.Absence;
 using robeem.Application.HR.Employees;
@@ -33,6 +34,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IUploadDeletionService, UploadDeletionService>();
         services.AddScoped<IAttendanceDataResetService, AttendanceDataResetService>();
         services.AddOptions<AttendanceDataResetOptions>();
+        services.AddScoped<ITestEmployeeLoader, TestEmployeeLoader>();
+        services.AddScoped<ITestEmployeeRemover, TestEmployeeRemover>();
+        services.AddOptions<TestEmployeeOptions>();
         services.AddScoped<IWebhookReceiver, WebhookReceiver>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
         services.AddScoped<ISeedContributor, ScheduleTemplateSeedContributor>();

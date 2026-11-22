@@ -12,7 +12,7 @@ namespace robeem.DataModel
     /// </summary>
     [Serializable]
     [Table(nameof(ExternalEmployeeIdMapping), Schema = nameof(SmartEnum.Module.Attendance))]
-    public class ExternalEmployeeIdMapping : Entity, ITenantScoped
+    public class ExternalEmployeeIdMapping : Entity, ISeedData, ITenantScoped
     {
         [Required]
         [MaxLength(ITenantScoped.TenantIdMaxLength)]

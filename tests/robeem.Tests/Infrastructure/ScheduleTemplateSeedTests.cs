@@ -17,7 +17,7 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
     public void Dispose() => _database.Dispose();
 
     [Fact]
-    public async Task EveryTenant_GetsTheEightSchedules_Once_EachWithOneDefaultTeam()
+    public async Task EveryTenant_GetsTheNineSchedules_Once_EachWithOneDefaultTeam()
     {
         await SeedAsync();
         await SeedAsync();
@@ -29,6 +29,7 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
                 "Continuous Operations (7-Day)",
                 "Custom Workweek",
                 "Four-Day Workweek",
+                "On Demand (Hourly Staff)",
                 "Six-Day Workweek",
                 "Standard Week",
                 "Sunday-Thursday Workweek",
@@ -38,7 +39,11 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
         foreach (var schedule in db.TimeSchedules.ToList())
         {
             Assert.Single(db.TimeScheduleTeams.Where(t => t.TimeScheduleId == schedule.Id && t.AllInclusive));
-            Assert.NotEmpty(db.TimeScheduleShifts.Where(s => s.TimeScheduleId == schedule.Id));
+
+            // An on-demand schedule is for people paid by the hour: it has no shifts.
+            var onDemand = db.OnDemandTimeSchedules.Any(o => o.TimeScheduleId == schedule.Id);
+            Assert.Equal(!onDemand, db.TimeScheduleShifts.Any(s => s.TimeScheduleId == schedule.Id));
+            Assert.Equal(schedule.Title == "On Demand (Hourly Staff)", onDemand);
         }
     }
 
@@ -60,20 +65,23 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
     }
 
     [Fact]
-    public async Task TheAlternateWeekendSchedule_WorksEveryOtherWeekend_TheDefaultTeamTheFirstAndTheOtherTeamTheSecond()
+    public async Task TheAlternateWeekendSchedule_WorksEveryOtherWeekend_WeekendATheFirstAndWeekendBTheSecond()
     {
         await SeedAsync();
 
-        // 2026-10-10 and 2026-10-24 are the default team's weekends; the 3rd and 17th, the other team's.
+        // 2026-10-10 and 2026-10-24 are Weekend A's weekends; the 3rd and 17th, Weekend B's.
         var first = new[] { new DateTime(2026, 10, 10), new DateTime(2026, 10, 11), new DateTime(2026, 10, 24), new DateTime(2026, 10, 25) };
         var second = new[] { new DateTime(2026, 10, 3), new DateTime(2026, 10, 4), new DateTime(2026, 10, 17), new DateTime(2026, 10, 18) };
         var title = "Alternate Weekend Schedule";
 
-        Assert.Equal(first, Worked(title, "All Employees", new DateTime(2026, 10, 1), 28));
-        Assert.Equal(second, Worked(title, "Alternate Weekend", new DateTime(2026, 10, 1), 28));
+        Assert.Equal(first, Worked(title, "Weekend A", new DateTime(2026, 10, 1), 28));
+        Assert.Equal(second, Worked(title, "Weekend B", new DateTime(2026, 10, 1), 28));
+
+        // The team for everyone has no lines of its own: they would apply to the members of both weekend teams, who would then work every weekend.
+        Assert.Empty(Worked(title, "All Employees", new DateTime(2026, 10, 1), 28));
 
         // The pattern holds before the fixed starting date as well.
-        Assert.Equal(new DateTime(2025, 12, 27), Worked(title, "Alternate Weekend", new DateTime(2025, 12, 20), 14).First());
+        Assert.Equal(new DateTime(2025, 12, 27), Worked(title, "Weekend B", new DateTime(2025, 12, 20), 14).First());
     }
 
     [Fact]
@@ -82,7 +90,8 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
         await SeedAsync();
 
         var title = "Continuous Operations (7-Day)";
-        Assert.Equal("Mon Tue Wed Thu Fri Sat Sun", string.Join(' ', DaysWorked(title, "All Employees", Monday, 7)));
+        Assert.Empty(DaysWorked(title, "All Employees", Monday, 7));
+        Assert.Equal("Mon Tue Wed Thu Fri Sat Sun", string.Join(' ', DaysWorked(title, "Morning Team", Monday, 7)));
         Assert.Equal("Mon Tue Wed Thu Fri Sat Sun", string.Join(' ', DaysWorked(title, "Afternoon Team", Monday, 7)));
         Assert.Equal("Mon Tue Wed Thu Fri Sat Sun", string.Join(' ', DaysWorked(title, "Night Team", Monday, 7)));
 
@@ -113,7 +122,7 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
         await SeedAsync();
 
         using var check = _database.CreateContext(TestDatabase.TenantA);
-        Assert.Equal(8, check.TimeSchedules.Count());
+        Assert.Equal(9, check.TimeSchedules.Count());
         var kept = Assert.Single(check.TimeSchedules, s => s.Title.ToLower() == "standard week");
         Assert.Equal("Our own description.", kept.Description);
     }
@@ -130,7 +139,7 @@ public sealed class ScheduleTemplateSeedTests : IDisposable
         await SeedAsync(TestDatabase.TenantB);
 
         using var db = _database.CreateContext(TestDatabase.TenantB);
-        Assert.Equal(8, db.TimeSchedules.Count());
+        Assert.Equal(9, db.TimeSchedules.Count());
     }
 
     private async Task SeedAsync(string tenant = TestDatabase.TenantA)

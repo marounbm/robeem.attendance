@@ -1,0 +1,65 @@
+@model robeem.Web.Models.TestEmployeesViewModel
+@{
+    var summary = Model.Summary;
+    ViewData["Title"] = "Load test employees";
+}
+
+<h1 class="h3 mb-3">Load test employees</h1>
+
+<p class="text-muted">
+    Loads made-up employees into <strong>@summary.TenantId</strong> from a CSV file, so that attendance can be tried on them: each employee is put on a time schedule
+    (and team), and their employee number is mapped to a punch device, so that a file of punches made for them is found when it is uploaded
+    (<a asp-controller="Uploads" asp-action="Index">Upload attendance</a>). The tenant has @summary.EmployeeCount employee(s) now.
+</p>
+
+<partial name="_StatusMessage" />
+
+@if (!summary.Enabled)
+{
+    <div class="alert alert-secondary">
+        Loading test employees is not turned on for this host. It is turned on by the setting <code>Attendance:TestEmployees:Enabled</code>, which is off unless a host chooses it.
+    </div>
+}
+else
+{
+    <form method="post" asp-action="Load" enctype="multipart/form-data" class="card card-body mb-4" style="max-width: 40rem;">
+        <label for="file" class="form-label">CSV file</label>
+        <input id="file" name="file" type="file" accept=".csv,text/csv" class="form-control mb-3" required />
+        <label for="timeZone" class="form-label">Time zone of a device the file names and this tenant does not have yet</label>
+        <input id="timeZone" name="timeZone" class="form-control mb-1" value="@summary.DefaultTimeZone" />
+        <div class="form-text mb-3">An IANA name, such as <code>@summary.DefaultTimeZone</code>. A punch file is read in the time zone of its device.</div>
+        <div>
+            <button type="submit" class="btn btn-primary">Load employees</button>
+            <a asp-action="Example" class="btn btn-link">Download an example file</a>
+        </div>
+        <div class="form-text mt-2">
+            The whole file is checked first: if any row is wrong nothing is loaded, and every wrong row is listed. An employee number the tenant already has is left as it is,
+            so a file can be loaded again. The load is recorded in the audit log.
+        </div>
+    </form>
+}
+
+<h2 class="h5">The file</h2>
+<p class="small text-muted">
+    The first row names the columns (in any order; capitals, spaces and underscores do not matter, so <em>Employee Number</em> and <code>employee_number</code> are the same).
+    The employees of <code>tests/scenario-data/employees.csv</code> are in this format.
+</p>
+<div class="card mb-3">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr><th scope="col">Column</th><th scope="col">Needed</th><th scope="col">What it is</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var column in summary.Columns)
+                {
+                    <tr>
+                        <td><code>@column.Name</code></td>
+                        <td>@(column.Required ? "Yes" : "No")</td>
+                        <td>@column.Description</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

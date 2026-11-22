@@ -1,0 +1,63 @@
+@model robeem.Web.Models.TestEmployeesViewModel
+@{
+    var summary = Model.Summary;
+    ViewData["Title"] = "Delete test employees";
+}
+
+<h1 class="h3 mb-3">Delete test employees</h1>
+
+<p class="text-muted">
+    Deletes the employees named in a CSV file from <strong>@summary.TenantId</strong>, with <strong>everything of theirs</strong>: their corrections, exceptions, approvals,
+    calculated days, normalized and raw punches (and any sent under their numbers on their devices), the uploaded files that held nothing else, their schedule assignments,
+    leaves and employee-id mappings. It can't be undone. Use the file the employees were loaded from
+    (<a asp-controller="TestEmployees" asp-action="Index">Load test employees</a>); only its <code>employee_number</code> column is read.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100 border-danger">
+            <div class="card-header text-danger">Deleted</div>
+            <div class="card-body small">
+                The employees in the file, and their corrections, exceptions, exception groups, approvals, attendance records, day summaries, normalized and raw transactions,
+                the uploaded files and batches that held only their punches, schedule assignments, leaves and employee-id mappings.
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">Kept</div>
+            <div class="card-body small">
+                Everyone not in the file and their data, the time schedules, policies and rules, devices and integrations, and the <strong>audit log</strong>: the deletion is
+                recorded there, in an entry that is kept.
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!summary.Enabled)
+{
+    <div class="alert alert-secondary">
+        Deleting test employees is not turned on for this host. It is turned on by the setting <code>Attendance:TestEmployees:Enabled</code>, which is off unless a host chooses it.
+    </div>
+}
+else
+{
+    <form method="post" enctype="multipart/form-data" class="card card-body border-danger" style="max-width: 40rem;">
+        <label for="file" class="form-label">CSV file of the employees to delete</label>
+        <input id="file" name="file" type="file" accept=".csv,text/csv" class="form-control mb-3" required />
+        <div class="mb-3">
+            <button type="submit" asp-action="Preview" class="btn btn-outline-secondary">Show what would be deleted</button>
+            <span class="form-text ms-2">Deletes nothing.</span>
+        </div>
+        <hr />
+        <label for="confirmation" class="form-label">Type the tenant id <code>@summary.TenantId</code> to confirm</label>
+        <input id="confirmation" name="confirmation" class="form-control mb-3" autocomplete="off" />
+        <div>
+            <button type="submit" asp-action="Delete" class="btn btn-danger"
+                    onclick="return confirm('Delete the employees of this file from @summary.TenantId, with all their data? This can not be undone.');">Delete the employees and their data</button>
+        </div>
+        <div class="form-text mt-2">Whatever is wrong, nothing is deleted: it is all or nothing.</div>
+    </form>
+}

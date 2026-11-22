@@ -81,6 +81,8 @@ public static class NavigationMenu
         [
             new NavItem("Background jobs", "Jobs", "Index", "When the jobs that normalize punches, calculate days and sync integrations run next, how each run ended, and run one now.", Integration, Hr),
             new NavItem("Audit log", "Audit", "Index", "Who decided, changed or read what, newest first.", Hr),
+            new NavItem("Load test employees", "TestEmployees", "Index", "Load made-up employees from a CSV file: their time schedule and team, and their numbers mapped to a device, so that a file of punches made for them is found.", Integration),
+            new NavItem("Delete test employees", "DeleteTestEmployees", "Index", "Delete the employees of a CSV file, loaded as test employees, with everything of theirs: their punches, calculated days, exceptions and corrections.", Integration),
             new NavItem("Delete all data", "DataReset", "Index", "Delete everything imported or calculated for this tenant so that it can be imported again. The configuration is kept.", Integration),
         ]);
 

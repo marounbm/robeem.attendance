@@ -97,6 +97,15 @@ public interface IRobeemDbContext
     /// </summary>
     Task<IReadOnlyList<AttendanceDataCount>> DeleteAllAttendanceDataAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Deletes the given employees and everything of theirs: their corrections, exceptions, approvals, calculated days, normalized punches, the raw punches
+    /// those came from (and any sent under their id on their devices), the uploaded files and batches that held nothing else, their employee-id mappings,
+    /// schedule assignments and leaves, and the employees themselves. Returns how many of each (with <paramref name="dryRun"/>, how many there would be, and
+    /// nothing is deleted). It keeps the audit log. This is the second bulk path that deletes raw attendance, and only <c>TestEmployeeRemover</c> uses it: the
+    /// caller must have a transaction open for a real delete (so it is all or nothing), checks that the host allows it, and audits it.
+    /// </summary>
+    Task<IReadOnlyList<AttendanceDataCount>> DeleteEmployeesAndTheirDataAsync(IReadOnlyCollection<int> employeeIds, bool dryRun, CancellationToken cancellationToken);
+
     void AddRange(params object[] entities);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

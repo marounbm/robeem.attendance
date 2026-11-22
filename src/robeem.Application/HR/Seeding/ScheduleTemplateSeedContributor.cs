@@ -8,7 +8,7 @@ namespace robeem.Application.HR.Seeding;
 /// <summary>
 /// Gives every tenant the common work patterns as ready-made time schedules, so an administrator picks one instead of building it:
 /// Standard Week, Six-Day Workweek, Weekend Schedule, Sunday-Thursday Workweek, Alternate Weekend Schedule, Four-Day Workweek,
-/// Continuous Operations (7-Day) and Custom Workweek. Each has its shifts and its all-inclusive default team, as the schedule form makes them.
+/// Continuous Operations (7-Day), Custom Workweek and On Demand (Hourly Staff) (no shifts, for employees paid by the hour). Each has its shifts and its all-inclusive default team, as the schedule form makes them.
 /// Adds only the ones a tenant has no schedule of that name for (compared ignoring case), so an administrator's edit is never overwritten;
 /// a template that was deleted is made again at the next start.
 /// </summary>
@@ -84,15 +84,16 @@ public sealed class ScheduleTemplateSeedContributor : ISeedContributor
             [DayShift],
             [new("All Employees", true, Days(DayShift, 1, 2, 3, 4, 5))]),
 
-        // A fortnight, from a fixed Saturday: the default team works the first weekend (cycle days 1-2), the other team the second (days 8-9).
+        // A fortnight, from a fixed Saturday: Weekend A works the first weekend (cycle days 1-2), Weekend B the second (days 8-9). The team for
+        // everyone has no lines: its lines apply to every employee of the schedule, so a shift on it would be worked by both weekends' teams.
         new(
             "Alternate Weekend Schedule",
-            "Every other Saturday and Sunday, 09:00-17:00 with a one-hour break: the all-employees team works the first weekend of the fortnight, the Alternate Weekend team the next. Rotational teams.",
+            "Every other Saturday and Sunday, 09:00-17:00 with a one-hour break: Weekend A works the first weekend of the fortnight, Weekend B the next. Put each employee in one of the two teams.",
             DayOfWeek.Saturday,
             14,
             AlternateWeekendAnchor,
             [DayShift],
-            [new("All Employees", true, Days(DayShift, 1, 2)), new("Alternate Weekend", false, Days(DayShift, 8, 9))]),
+            [new("All Employees", true, []), new("Weekend A", false, Days(DayShift, 1, 2)), new("Weekend B", false, Days(DayShift, 8, 9))]),
 
         new(
             "Four-Day Workweek",
@@ -103,16 +104,18 @@ public sealed class ScheduleTemplateSeedContributor : ISeedContributor
             [CompressedDay],
             [new("All Employees", true, Days(CompressedDay, 1, 2, 3, 4))]),
 
-        // Three crews cover the clock: each works every day of the week, on a different shift.
+        // Three crews cover the clock: each works every day of the week, on a different shift. The team for everyone has no lines: its lines apply
+        // to every employee of the schedule, so a shift on it would be worked by the other crews as well.
         new(
             "Continuous Operations (7-Day)",
-            "Every day of the week, around the clock: the all-employees team works the morning shift, the Afternoon and Night teams the others. Move employees between teams to cover the clock.",
+            "Every day of the week, around the clock: the Morning, Afternoon and Night teams each work one shift. Put each employee in one of the three teams to cover the clock.",
             DayOfWeek.Monday,
             7,
             null,
             [MorningShift, AfternoonShift, NightShift],
             [
-                new("All Employees", true, Days(MorningShift, 1, 2, 3, 4, 5, 6, 7)),
+                new("All Employees", true, []),
+                new("Morning Team", false, Days(MorningShift, 1, 2, 3, 4, 5, 6, 7)),
                 new("Afternoon Team", false, Days(AfternoonShift, 1, 2, 3, 4, 5, 6, 7)),
                 new("Night Team", false, Days(NightShift, 1, 2, 3, 4, 5, 6, 7)),
             ]),
@@ -126,6 +129,17 @@ public sealed class ScheduleTemplateSeedContributor : ISeedContributor
             null,
             [DayShift],
             [new("All Employees", true, [])]),
+
+        // No shifts and no roster: for employees paid by the hour, who work when they are needed. The group they are in has its own policy and rules.
+        new(
+            "On Demand (Hourly Staff)",
+            "For employees paid by the hour: no shifts and no roster, they work when they are needed and are paid for the hours they punch.",
+            DayOfWeek.Monday,
+            7,
+            null,
+            [],
+            [new("All Employees", true, [])],
+            OnDemand: true),
     ];
 
     private static IReadOnlyList<(int CycleDay, ShiftSpec Shift)> Days(ShiftSpec shift, params int[] cycleDays) =>
@@ -147,6 +161,10 @@ public sealed class ScheduleTemplateSeedContributor : ISeedContributor
         }
 
         db.TimeSchedules.Add(schedule);
+        if (template.OnDemand)
+        {
+            db.OnDemandTimeSchedules.Add(new OnDemandTimeSchedule { TimeSchedule = schedule });
+        }
 
         var shifts = template.Shifts.ToDictionary(
             spec => spec.Title,
@@ -183,5 +201,5 @@ public sealed class ScheduleTemplateSeedContributor : ISeedContributor
 
     private sealed record TeamSpec(string Title, bool AllInclusive, IReadOnlyList<(int CycleDay, ShiftSpec Shift)> Lines);
 
-    private sealed record Template(string Title, string Description, DayOfWeek FirstCycleDay, int CyclePeriod, DateTime? Anchor, IReadOnlyList<ShiftSpec> Shifts, IReadOnlyList<TeamSpec> Teams);
+    private sealed record Template(string Title, string Description, DayOfWeek FirstCycleDay, int CyclePeriod, DateTime? Anchor, IReadOnlyList<ShiftSpec> Shifts, IReadOnlyList<TeamSpec> Teams, bool OnDemand = false);
 }

@@ -42,6 +42,12 @@ public static class AttendanceAuditActions
     /// <summary>An administrator deleted all of a tenant's attendance data to import it again. The widest deletion of raw attendance; the entry lists how much of each kind went and is itself kept.</summary>
     public const string AttendanceDataReset = "AttendanceDataReset";
 
+    /// <summary>An administrator loaded test employees from a file: how many were made, put on a schedule and mapped to a device, and any device made for them.</summary>
+    public const string TestEmployeesLoaded = "TestEmployeesLoaded";
+
+    /// <summary>An administrator deleted employees named in a file, with all their attendance data (raw punches included). The entry lists the employees and how much of each kind went, and is itself kept.</summary>
+    public const string TestEmployeesDeleted = "TestEmployeesDeleted";
+
     /// <summary>Raw or normalized attendance read outside normalization and processing.</summary>
     public const string AttendanceDataRead = "AttendanceDataRead";
 
