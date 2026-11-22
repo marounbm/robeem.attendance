@@ -91,6 +91,19 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 : days.Where(d => !((d.Status == AttendanceRecordStatus.Approved || d.Status == AttendanceRecordStatus.Calculated) && d.ExceptionCount == 0 && d.TotalUndertimeHours > TimeSpan.Zero));
         }
 
+        // A day whose current calculation used a punch type that was inferred, not given by the machine or a person: the days the list marks with a dot.
+        if (filter.Inferred is { } inferred)
+        {
+            days = days.Where(d => _db.AttendanceRecords.Any(r =>
+                r.IsCurrent
+                && r.EmployeeId == d.EmployeeId
+                && r.AttendanceDate == d.AttendanceDate
+                && (r.ActualCheckInSource == AttendancePunchSource.Inferred
+                    || r.ActualCheckOutSource == AttendancePunchSource.Inferred
+                    || r.ActualBreakOutSource == AttendancePunchSource.Inferred
+                    || r.ActualBreakInSource == AttendancePunchSource.Inferred)) == inferred);
+        }
+
         if (filter.OnlyWithExceptions)
         {
             days = days.Where(d => d.ExceptionCount > 0);

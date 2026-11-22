@@ -21,14 +21,14 @@ public sealed class RecordsWebTests
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[],"total":0,"page":1,"pageSize":25}""");
         var client = new RecordsApiClient(handler.CreateClient());
 
-        await client.ListAsync(null, null, null, null, false, 1, 25, RecordSortField.Date, false, null, CancellationToken.None);
-        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, RecordSortField.Worked, true, true, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, false, 1, 25, RecordSortField.Date, false, null, null, CancellationToken.None);
+        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, RecordSortField.Worked, true, true, true, CancellationToken.None);
 
         var day = new StubHttpHandler(HttpStatusCode.OK, """{"employeeId":7,"employeeName":"Ada Lovelace","processed":true,"versions":[{"id":3,"version":2,"isCurrent":true,"workingHours":"08:00:00"}]}""");
         var detail = await new RecordsApiClient(day.CreateClient()).GetDayAsync(7, new DateTime(2026, 10, 5, 9, 0, 0), CancellationToken.None);
 
         Assert.Equal(
-            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true&sort=Worked&descending=true&underTime=true"],
+            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true&sort=Worked&descending=true&underTime=true&inferred=true"],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
         Assert.Equal("/api/attendance/records/7/2026-10-05", day.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal(TimeSpan.FromHours(8), Assert.Single(detail!.Versions).WorkingHours);
@@ -40,7 +40,7 @@ public sealed class RecordsWebTests
         var page = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"employeeId":7,"employeeName":"Ada Lovelace"}],"total":61,"page":2,"pageSize":25}""");
         var options = new StubHttpHandler(HttpStatusCode.OK, """[{"id":7,"name":"Ada Lovelace (E-1)"}]""");
 
-        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, RecordSortField.Date, false, null, CancellationToken.None);
+        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, RecordSortField.Date, false, null, null, CancellationToken.None);
         var employees = await new RecordsApiClient(options.CreateClient()).ListEmployeeOptionsAsync(CancellationToken.None);
 
         Assert.Equal((61, 2, 25, 3), (result.Total, result.Page, result.PageSize, result.PageCount));
@@ -170,17 +170,25 @@ public sealed class RecordsWebTests
     }
 
     [Theory]
-    [InlineData("UnderTimed", "Approved", true)]
-    [InlineData("Approved", "Approved", false)]
-    [InlineData("PendingReview", "PendingReview", null)]
-    [InlineData("Any", null, null)]
-    public async Task TheStatusFilter_AsksForUnderTimedDaysAsApprovedOnesWithTheUnderTimeFilter_AndApprovedLeavesThemOut(string chosen, string? status, bool? underTime)
+    [InlineData("UnderTimed", "Approved", true, null)]
+    [InlineData("Approved", "Approved", false, null)]
+    [InlineData("PendingReview", "PendingReview", null, null)]
+    [InlineData("Inferred", null, null, true)]
+    [InlineData("Any", null, null, null)]
+    public async Task TheStatusFilter_AsksForUnderTimedAndInferredDaysByTheirOwnFilters_AndApprovedLeavesTheUnderTimedOut(string chosen, string? status, bool? underTime, bool? inferred)
     {
         var records = new FakeRecords();
 
         await Controller(records, ["HRAdministrator"]).Index(chosen, null, null, false, null, 1, 20, null, null, CancellationToken.None);
 
-        Assert.Equal((status, underTime), (records.StatusAsked, records.UnderTimeAsked));
+        Assert.Equal((status, underTime, inferred), (records.StatusAsked, records.UnderTimeAsked, records.InferredAsked));
+    }
+
+    [Fact]
+    public void TheStatusFilter_OffersInferred_AndTheOpenExceptionsAndTheOtherChoicesToo()
+    {
+        Assert.Equal(["Any", "OpenExceptions", "PendingReview", "Approved", "UnderTimed", "Inferred", "Rejected"], RecordsIndexViewModel.Statuses);
+        Assert.Equal("Inferred", DisplayFormats.Words(RecordsIndexViewModel.Inferred));
     }
 
     [Theory]
@@ -526,6 +534,8 @@ public sealed class RecordsWebTests
 
         public bool? UnderTimeAsked { get; private set; }
 
+        public bool? InferredAsked { get; private set; }
+
         public string? StatusAsked { get; private set; }
 
         public int Total { get; set; }
@@ -538,9 +548,9 @@ public sealed class RecordsWebTests
 
         public int ServerPage { get; set; } = 1;
 
-        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, bool? underTime, CancellationToken cancellationToken)
+        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, bool? underTime, bool? inferred, CancellationToken cancellationToken)
         {
-            (SortAsked, DescendingAsked, UnderTimeAsked, StatusAsked) = (sort, descending, underTime, status);
+            (SortAsked, DescendingAsked, UnderTimeAsked, StatusAsked, InferredAsked) = (sort, descending, underTime, status, inferred);
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             (PageAsked, PageSizeAsked) = (page, pageSize);
             ListCalls++;

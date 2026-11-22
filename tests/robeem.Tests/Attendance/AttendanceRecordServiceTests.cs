@@ -367,6 +367,41 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task TheInferredFilter_FindsTheDaysTheListMarksWithADot_OnlyWhileTheInferredRecordIsTheCurrentOne()
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDaySummaries.AddRange(
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday, Status = AttendanceRecordStatus.Approved },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(1), Status = AttendanceRecordStatus.Approved },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(2), Status = AttendanceRecordStatus.PendingReview },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(3), Status = AttendanceRecordStatus.Approved });
+
+            // The last day's inferred version was replaced by a newer one, which does not count.
+            db.AttendanceRecords.AddRange(
+                new AttendanceRecord { EmployeeId = EmployeeId, AttendanceDate = Monday, Version = 1, IsCurrent = true, ActualCheckInSource = AttendancePunchSource.Inferred },
+                new AttendanceRecord { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(1), Version = 1, IsCurrent = true, ActualCheckInSource = AttendancePunchSource.Normalized },
+                new AttendanceRecord { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(2), Version = 1, IsCurrent = true, ActualBreakInSource = AttendancePunchSource.Inferred },
+                new AttendanceRecord { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(3), Version = 1, IsCurrent = false, ActualCheckOutSource = AttendancePunchSource.Inferred },
+                new AttendanceRecord { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(3), Version = 2, IsCurrent = true, ActualCheckOutSource = AttendancePunchSource.Normalized });
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var inferred = await ListAsync(Everything with { Inferred = true }, hr);
+        var rest = await ListAsync(Everything with { Inferred = false }, hr);
+        var pendingInferred = await ListAsync(Everything with { Inferred = true, Status = AttendanceRecordStatus.PendingReview }, hr);
+        var all = await ListAsync(Everything, hr);
+
+        Assert.Equal([Monday, Monday.AddDays(2)], inferred.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(1), Monday.AddDays(3)], rest.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(2)], pendingInferred.Select(d => d.AttendanceDate));
+
+        // The filter finds exactly the days the list marks.
+        Assert.Equal(inferred.Select(d => d.AttendanceDate), all.Where(d => d.HasInferredPunches).Select(d => d.AttendanceDate));
+    }
+
+    [Fact]
     public async Task TheDaySummary_StoresTheTimeOffOnLeave_AndTheTimeWorkedShort()
     {
         // Leave over the end of the shift: the two hours are time off, and nothing is short.
