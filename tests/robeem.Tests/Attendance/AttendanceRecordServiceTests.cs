@@ -339,6 +339,34 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task TheUnderTimeFilter_FindsApprovedDaysThatWorkedShort_AndLeavesThemOutOfTheRest()
+    {
+        var short1 = TimeSpan.FromMinutes(45);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDaySummaries.AddRange(
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday, Status = AttendanceRecordStatus.Approved, TotalUndertimeHours = short1 },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(1), Status = AttendanceRecordStatus.Calculated, TotalUndertimeHours = short1 },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(2), Status = AttendanceRecordStatus.Approved },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(3), Status = AttendanceRecordStatus.PendingReview, TotalUndertimeHours = short1 },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(4), Status = AttendanceRecordStatus.Approved, TotalUndertimeHours = short1, ExceptionCount = 1 });
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var underTimed = await ListAsync(Everything with { UnderTime = true }, hr);
+        var rest = await ListAsync(Everything with { UnderTime = false }, hr);
+        var approvedRest = await ListAsync(Everything with { Status = AttendanceRecordStatus.Approved, UnderTime = false }, hr);
+        var all = await ListAsync(Everything, hr);
+
+        // Under timed: approved (or nothing to review), short, with no exception open. The pending day and the one with an exception are not.
+        Assert.Equal([Monday, Monday.AddDays(1)], underTimed.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(2), Monday.AddDays(3), Monday.AddDays(4)], rest.Select(d => d.AttendanceDate));
+        Assert.Equal([Monday.AddDays(2), Monday.AddDays(4)], approvedRest.Select(d => d.AttendanceDate));
+        Assert.Equal(5, all.Count);
+    }
+
+    [Fact]
     public async Task TheDaySummary_StoresTheTimeOffOnLeave_AndTheTimeWorkedShort()
     {
         // Leave over the end of the shift: the two hours are time off, and nothing is short.

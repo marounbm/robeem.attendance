@@ -10,11 +10,15 @@ public sealed class RecordsIndexViewModel
     /// <summary>The Status filter's choice for days with an open exception.</summary>
     public const string OpenExceptions = "OpenExceptions";
 
+    /// <summary>The Status filter's choice for approved days that worked less than scheduled.</summary>
+    public const string UnderTimed = "UnderTimed";
+
     /// <summary>
     /// Gets what the Status filter offers. <see cref="OpenExceptions"/> is not a status the Api knows: it is what the list calls a day that waits for
-    /// its exceptions, and the controller asks the Api for the days with an open exception.
+    /// its exceptions, and the controller asks the Api for the days with an open exception. Nor is <see cref="UnderTimed"/>: it is an approved day with
+    /// under time, and the controller asks the Api for the approved days with the under-time filter on.
     /// </summary>
-    public static IReadOnlyList<string> Statuses { get; } = ["Any", OpenExceptions, "PendingReview", "Approved", "Rejected"];
+    public static IReadOnlyList<string> Statuses { get; } = ["Any", OpenExceptions, "PendingReview", "Approved", UnderTimed, "Rejected"];
 
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];

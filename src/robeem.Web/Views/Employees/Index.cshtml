@@ -1,6 +1,23 @@
 @model EmployeeIndexViewModel
+@inject robeem.Web.Actors.ICurrentActor Actor
 @{
     ViewData["Title"] = "Employees";
+
+    // The link to an employee's attendance is shown only to someone who may open the Attendance screen (the menu and the access filter use the same rule).
+    var attendanceScreen = NavigationMenu.Find("Records");
+    var canOpenAttendance = attendanceScreen is not null && NavigationMenu.AccessTo(Actor, attendanceScreen) == NavAccess.Allowed;
+
+    (EmployeeSortField Field, string Title)[] columns =
+    [
+        (EmployeeSortField.Number, "Number"),
+        (EmployeeSortField.Name, "Name"),
+        (EmployeeSortField.Department, "Department"),
+        (EmployeeSortField.JobTitle, "Job title"),
+        (EmployeeSortField.TimeSchedule, "Time schedule"),
+        (EmployeeSortField.Manager, "Manager"),
+        (EmployeeSortField.HireDate, "Hire date"),
+        (EmployeeSortField.Status, "Status"),
+    ];
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -11,6 +28,9 @@
 <partial name="_StatusMessage" />
 
 <form method="get" asp-action="Index" class="row g-2 align-items-center mb-3">
+    @* Searching keeps the sort; the page starts again at the first. *@
+    <input type="hidden" name="sort" value="@EmployeeIndexViewModel.SortName(Model.Sort)" />
+    <input type="hidden" name="dir" value="@(Model.Descending ? "desc" : "asc")" />
     <div class="col-sm-6 col-md-4">
         <input type="search" name="search" value="@Model.Search" class="form-control"
                placeholder="Search number, name, email, department" aria-label="Search employees" />
@@ -47,14 +67,13 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th scope="col">Number</th>
-                        <th scope="col">Name</th>
-                        <th scope="col">Department</th>
-                        <th scope="col">Job title</th>
-                        <th scope="col">Time schedule</th>
-                        <th scope="col">Manager</th>
-                        <th scope="col">Hire date</th>
-                        <th scope="col">Status</th>
+                        @* The headings sort the whole list (on the server, before it is cut into pages); press one again to turn the order round. *@
+                        @foreach (var (field, title) in columns)
+                        {
+                            <th scope="col" aria-sort="@Model.AriaSort(field)">
+                                <a asp-action="Index" asp-all-route-data="Model.SortLink(field)" class="text-reset text-decoration-none">@title@(Model.Sort != field ? string.Empty : Model.Descending ? " ▼" : " ▲")</a>
+                            </th>
+                        }
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
@@ -87,6 +106,10 @@
                             </td>
                             <td class="text-end">
                                 <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@employee.Id">Edit</a>
+                                @if (canOpenAttendance)
+                                {
+                                    <a class="btn btn-sm btn-outline-secondary" asp-controller="Records" asp-action="Index" asp-route-employeeId="@employee.Id" title="The calculated days of @employee.FullName">Attendance</a>
+                                }
                                 <a class="btn btn-sm btn-outline-secondary" asp-controller="Leaves" asp-action="Index" asp-route-employeeId="@employee.Id">Leave</a>
                             </td>
                         </tr>

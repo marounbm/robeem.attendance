@@ -28,36 +28,13 @@
 
 <partial name="_StatusMessage" />
 
-@if (day.TimeOff.Count > 0)
-{
-    <div class="card border-info mb-3">
-        <div class="card-body py-2">
-            <div class="small text-muted">@(day.TimeOff.Any(o => o.Kind == "Leave") ? "Leave and time off" : "Time off")</div>
-            @foreach (var off in day.TimeOff)
-            {
-                <div>
-                    <span class="badge text-bg-info">@(off.Kind == "Leave" ? "Leave applied" : DisplayFormats.Words(off.Kind))</span>
-                    <strong>@DisplayFormats.Words(off.Reference)</strong>
-                    <span class="text-muted">· @(off.IsWholeDay ? "whole day" : $"{off.Start:HH:mm} – {off.End:HH:mm}")</span>
-                    @if (off.LeaveStartDate is { } leaveStart && off.LeaveEndDate is { } leaveEnd && leaveEnd > leaveStart)
-                    {
-                        <span class="text-muted">· leave from @leaveStart.ToString("yyyy-MM-dd") to @leaveEnd.ToString("yyyy-MM-dd")</span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(off.Notes))
-                    {
-                        <div class="small text-muted">@off.Notes</div>
-                    }
-                </div>
-            }
-        </div>
-    </div>
-}
-
 @if (!day.Processed)
 {
     <div class="alert alert-info">
         This day has not been calculated yet@(Model.CanReprocess ? ": use Calculate again once its punches have arrived." : ".")
     </div>
+
+    <partial name="_DayTimeOff" model="day" />
 }
 else
 {
@@ -66,8 +43,9 @@ else
             <div><div class="small text-muted">Worked</div><div class="fs-5">@DisplayFormats.Hours(day.TotalWorkingHours)</div></div>
             <div><div class="small text-muted">Overtime</div><div class="fs-5">@DisplayFormats.Hours(day.TotalOvertimeHours)</div></div>
             <div><div class="small text-muted">Break</div><div class="fs-5">@DisplayFormats.Hours(day.TotalBreakHours)</div></div>
+            <div><div class="small text-muted">Under time</div><div class="fs-5">@DisplayFormats.Hours(day.TotalUndertimeHours)</div></div>
             <div><div class="small text-muted">Open exceptions</div><div class="fs-5">@day.ExceptionCount</div></div>
-            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.DayStatusBadge(day.Status, day.ExceptionCount, hasPendingApproval)" title="@DisplayFormats.DayStatusHint(day.Status, day.ExceptionCount, hasPendingApproval)">@DisplayFormats.DayStatus(day.Status, day.ExceptionCount, hasPendingApproval)</span></div></div>
+            <div><div class="small text-muted">Status</div><div class="fs-5"><span class="badge text-bg-@DisplayFormats.DayStatusBadge(day.Status, day.ExceptionCount, hasPendingApproval, day.TotalUndertimeHours > TimeSpan.Zero)" title="@DisplayFormats.DayStatusHint(day.Status, day.ExceptionCount, hasPendingApproval, day.TotalUndertimeHours > TimeSpan.Zero)">@DisplayFormats.DayStatus(day.Status, day.ExceptionCount, hasPendingApproval, day.TotalUndertimeHours > TimeSpan.Zero)</span></div></div>
         </div>
     </div>
 
@@ -151,10 +129,12 @@ else
             </div>
         }
     </div>
+
+    <partial name="_DayTimeOff" model="day" />
 }
 
 @{
-    var dayDate = day.AttendanceDate.ToString("yyyy-MM-dd");
+    var dayDate =day.AttendanceDate.ToString("yyyy-MM-dd");
     var canCorrect = !day.Exceptions.Any(e => e.Status == "PendingCorrection") && day.Exceptions.Any(e => e.CanCorrect);
     var waiting = day.Exceptions.Any(e => e.Status == "PendingCorrection");
 }

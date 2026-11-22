@@ -42,6 +42,17 @@ public static class AttendanceScenarioCatalog
         new("H_MIXED", "Mixed days", "Paid by the hour: every day is one of the above, chosen at random.", Hourly: true),
     ];
 
+    /// <summary>The number of the first test employee; the rest follow it, one each.</summary>
+    private const int FirstNumber = 100001;
+
+    /// <summary>
+    /// The schedules and teams (by <see cref="Prefix"/>), in the order their test employees are numbered: the most common first. A standard office week,
+    /// then six days, Sunday to Thursday, the compressed four-day week, hourly staff, the weekend schedule, the three crews of a round-the-clock operation,
+    /// the two teams of an every-other-weekend schedule, and last the schedule with no working day, which only a tenant that builds its own uses.
+    /// </summary>
+    private static readonly string[] NumberingOrder =
+        ["SW", "SDW", "STW", "FDW", "ODHS", "WS", "CO7D-MT", "CO7D-AT", "CO7D-NT", "AWS-WA", "AWS-WB", "CW"];
+
     /// <summary>
     /// How many employees a schedule's team needs so that their files together hold every kind of day: a file has a kind of day for each working
     /// day of the period, and a schedule that works few days (a weekend, every other weekend) cannot fit all of them in one. Any other has one.
@@ -90,9 +101,38 @@ public static class AttendanceScenarioCatalog
     public static string Prefix(string scheduleTitle, string? teamTitle) =>
         teamTitle is null ? Initials(scheduleTitle) : $"{Initials(scheduleTitle)}-{Initials(teamTitle)}";
 
+    /// <summary>
+    /// The number of a test employee whose file holds every kind of day (<see cref="CoverageCases"/>): <c>100001</c> for the first, then one more for each
+    /// in <see cref="NumberingOrder"/>, which runs from the most common sort of schedule to the least. So testing in the order of the numbers starts with
+    /// what most tenants use. Any other (the in-memory employees of the rule tests, one for each case) is its schedule's initials, a dash and its case.
+    /// </summary>
+    public static string Number(string scheduleTitle, string? teamTitle, ScenarioCase scenario)
+    {
+        var prefix = Prefix(scheduleTitle, teamTitle);
+        if (!scenario.Code.StartsWith("ALL", StringComparison.Ordinal))
+        {
+            return $"{prefix}-{scenario.Code}";
+        }
+
+        var number = FirstNumber;
+        foreach (var group in NumberingOrder)
+        {
+            var cases = CoverageCases(group);
+            if (group == prefix)
+            {
+                var index = cases.ToList().FindIndex(c => c.Code == scenario.Code);
+                return (number + index).ToString(global::System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            number += cases.Count;
+        }
+
+        throw new InvalidOperationException($"The schedule and team '{prefix}' have no place in the numbering of the test employees.");
+    }
+
     public static ScenarioEmployee Employee(string scheduleTitle, string? teamTitle, ScenarioCase scenario) =>
         new(
-            $"{Prefix(scheduleTitle, teamTitle)}-{scenario.Code}",
+            Number(scheduleTitle, teamTitle, scenario),
             teamTitle is null ? scheduleTitle : $"{scheduleTitle} / {teamTitle}",
             scenario.Title,
             scheduleTitle,

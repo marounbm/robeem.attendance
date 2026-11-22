@@ -7,7 +7,7 @@ namespace robeem.Web.ApiClients;
 public interface IEmployeesApiClient
 {
     /// <summary>Lists one page of employees; a page past the end answers the last.</summary>
-    Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, EmployeeSortField sort, bool descending, CancellationToken cancellationToken);
 
     /// <summary>Gets an employee as editable input, or <c>null</c> when it does not exist.</summary>
     Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken);

@@ -45,9 +45,10 @@ public sealed class AttendanceRecordsController : ControllerBase
     /// <param name="pageSize">Days per page (default 20, at most 200).</param>
     /// <param name="sort">The column to sort by: Date (default), Employee, Worked, Overtime, Break, Exceptions or Status.</param>
     /// <param name="descending">Sort from the highest to the lowest (for a date, newest first). The default is oldest first.</param>
+    /// <param name="underTime">true: only the days shown as Under timed (approved, with time worked short of the schedule); false: not those; absent: all.</param>
     [HttpGet]
     [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
-    public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, string? sort, bool descending, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<RecordDayListItem>>> List(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, string? sort, bool descending, bool? underTime, CancellationToken cancellationToken)
     {
         if (AttendanceViewers.For(_user) is not { } viewer)
         {
@@ -73,7 +74,7 @@ public sealed class AttendanceRecordsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var filter = new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, page <= 0 ? 1 : page, pageSize <= 0 ? DefaultPageSize : pageSize, field, descending);
+        var filter = new RecordFilter(from, to, employeeId, parsed, onlyWithExceptions, page <= 0 ? 1 : page, pageSize <= 0 ? DefaultPageSize : pageSize, field, descending, underTime);
         return Ok(await _records.ListDaysAsync(filter, viewer, cancellationToken));
     }
 

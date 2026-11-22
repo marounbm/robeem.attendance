@@ -71,7 +71,7 @@ public sealed class DevelopmentActorsEndpointTests
                 new ManagerOption { Id = 4, Name = "Alan Turing (H-1)" },
             ]);
 
-        public Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, EmployeeSortField sort, bool descending, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<EmployeeInput?> GetAsync(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
 

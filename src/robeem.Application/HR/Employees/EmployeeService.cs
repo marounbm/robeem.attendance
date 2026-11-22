@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using robeem.Application.Persistence;
 using robeem.Contracts.Common;
@@ -24,7 +25,7 @@ public sealed class EmployeeService : IEmployeeService
         _db = db;
     }
 
-    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, EmployeeSortField sort, bool descending, CancellationToken cancellationToken)
     {
         var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
         var profiles = _db.Profiles.AsNoTracking();
@@ -50,31 +51,32 @@ public sealed class EmployeeService : IEmployeeService
         var total = await profiles.CountAsync(cancellationToken);
         var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
 
-        // The employee number is unique per tenant, so the order is total and pages never overlap.
-        var query =
-            (from p in profiles
-             join a in _db.TimeScheduleEmployees on p.Id equals a.EmployeeId into assignments
-             from a in assignments.DefaultIfEmpty()
-             join s in _db.TimeSchedules on a.TimeScheduleId equals s.Id into schedules
-             from s in schedules.DefaultIfEmpty()
-             join m in _db.Profiles on p.ManagerId equals m.Id into managers
-             from m in managers.DefaultIfEmpty()
-             orderby p.LastName, p.FirstName, p.EmployeeNumber
-             select new { p, s, m })
+        var rows =
+            from p in profiles
+            join a in _db.TimeScheduleEmployees on p.Id equals a.EmployeeId into assignments
+            from a in assignments.DefaultIfEmpty()
+            join s in _db.TimeSchedules on a.TimeScheduleId equals s.Id into schedules
+            from s in schedules.DefaultIfEmpty()
+            join m in _db.Profiles on p.ManagerId equals m.Id into managers
+            from m in managers.DefaultIfEmpty()
+            select new Row { P = p, S = s, M = m };
+
+        // The employee number is unique per tenant and ends every order, so the order is total and pages never overlap.
+        var query = Sorted(rows, sort, descending)
             .Skip((current - 1) * size)
             .Take(size)
             .Select(x => new EmployeeListItem
             {
-                Id = x.p.Id,
-                EmployeeNumber = x.p.EmployeeNumber,
-                FullName = x.p.FirstName + " " + x.p.LastName,
-                Department = x.p.Department,
-                JobTitle = x.p.JobTitle,
-                HireDate = x.p.HireDate,
-                IsActive = x.p.IsActive,
-                PayBasis = x.p.PayBasis.ToString(),
-                TimeScheduleTitle = x.s != null ? x.s.Title : null,
-                ManagerName = x.m != null ? x.m.FirstName + " " + x.m.LastName : null,
+                Id = x.P.Id,
+                EmployeeNumber = x.P.EmployeeNumber,
+                FullName = x.P.FirstName + " " + x.P.LastName,
+                Department = x.P.Department,
+                JobTitle = x.P.JobTitle,
+                HireDate = x.P.HireDate,
+                IsActive = x.P.IsActive,
+                PayBasis = x.P.PayBasis.ToString(),
+                TimeScheduleTitle = x.S != null ? x.S.Title : null,
+                ManagerName = x.M != null ? x.M.FirstName + " " + x.M.LastName : null,
             });
 
         return new PagedResult<EmployeeListItem> { Items = await query.ToListAsync(cancellationToken), Total = total, Page = current, PageSize = size };
@@ -202,6 +204,35 @@ public sealed class EmployeeService : IEmployeeService
         }
 
         return await SaveAsync(profile, input, cancellationToken);
+    }
+
+    /// <summary>
+    /// Orders the rows by a column. A column that can be empty (department, job title, schedule, manager) puts the employees that have nothing last,
+    /// ascending or descending, on every database, and the employee number, in natural order, breaks every tie.
+    /// </summary>
+    private static IOrderedQueryable<Row> Sorted(IQueryable<Row> rows, EmployeeSortField sort, bool descending)
+    {
+        IOrderedQueryable<Row> By<TKey>(Expression<Func<Row, TKey>> key) =>
+            descending ? rows.OrderByDescending(key) : rows.OrderBy(key);
+
+        IOrderedQueryable<Row> ByOptional<TKey>(Expression<Func<Row, bool>> isEmpty, Expression<Func<Row, TKey>> key) =>
+            descending ? rows.OrderBy(isEmpty).ThenByDescending(key) : rows.OrderBy(isEmpty).ThenBy(key);
+
+        return sort switch
+        {
+            EmployeeSortField.Name => (descending ? rows.OrderByDescending(r => r.P.LastName).ThenByDescending(r => r.P.FirstName) : rows.OrderBy(r => r.P.LastName).ThenBy(r => r.P.FirstName)).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            EmployeeSortField.Department => ByOptional(r => r.P.Department == null, r => r.P.Department).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            EmployeeSortField.JobTitle => ByOptional(r => r.P.JobTitle == null, r => r.P.JobTitle).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            EmployeeSortField.TimeSchedule => ByOptional(r => r.S == null, r => r.S!.Title).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            EmployeeSortField.Manager => ByOptional(r => r.M == null, r => r.M!.FirstName + " " + r.M.LastName).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            EmployeeSortField.HireDate => By(r => r.P.HireDate).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+
+            // Ascending lists the active employees first.
+            EmployeeSortField.Status => (descending ? rows.OrderBy(r => r.P.IsActive) : rows.OrderByDescending(r => r.P.IsActive)).ThenBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+            _ => descending
+                ? rows.OrderByDescending(r => r.P.EmployeeNumber.Length).ThenByDescending(r => r.P.EmployeeNumber)
+                : rows.OrderBy(r => r.P.EmployeeNumber.Length).ThenBy(r => r.P.EmployeeNumber),
+        };
     }
 
     private static void Apply(EmployeeInput input, Profile profile)
@@ -375,5 +406,15 @@ public sealed class EmployeeService : IEmployeeService
                 [nameof(EmployeeInput.EmployeeNumber)] = "Another employee already has this employee number.",
             });
         }
+    }
+
+    /// <summary>An employee with their schedule and manager, which is what the list sorts and shows. Built with an initializer, which a query can sort through.</summary>
+    private sealed class Row
+    {
+        public Profile P { get; init; } = null!;
+
+        public TimeSchedule? S { get; init; }
+
+        public Profile? M { get; init; }
     }
 }

@@ -20,10 +20,14 @@ public sealed class EmployeesController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? search, bool includeInactive, int page, int pageSize, string? sort, string? dir, CancellationToken cancellationToken)
     {
         var size = EmployeeIndexViewModel.PageSizes.Contains(pageSize) ? pageSize : EmployeeIndexViewModel.DefaultPageSize;
-        var result = await _employees.ListAsync(search, includeInactive, Math.Max(page, 1), size, cancellationToken);
+
+        // By employee number, ascending, unless a known column and direction are asked for.
+        var field = Enum.TryParse<EmployeeSortField>(sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : EmployeeSortField.Number;
+        var descending = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+        var result = await _employees.ListAsync(search, includeInactive, Math.Max(page, 1), size, field, descending, cancellationToken);
         return View(new EmployeeIndexViewModel
         {
             Employees = result.Items,
@@ -32,6 +36,8 @@ public sealed class EmployeesController : Controller
             Page = result.Page,
             PageSize = size,
             Total = result.Total,
+            Sort = field,
+            Descending = descending,
         });
     }
 
@@ -78,7 +84,7 @@ public sealed class EmployeesController : Controller
 
         // Fetch recent attendance records (last 30 days)
         var from = DateTime.Today.AddDays(-30);
-        var recentRecords = (await _records.ListAsync(from, DateTime.Today, id, null, false, 1, 31, RecordSortField.Date, true, cancellationToken)).Items;
+        var recentRecords = (await _records.ListAsync(from, DateTime.Today, id, null, false, 1, 31, RecordSortField.Date, true, null, cancellationToken)).Items;
 
         return View(new EmployeeFormViewModel
         {

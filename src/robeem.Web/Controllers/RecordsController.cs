@@ -42,7 +42,13 @@ public sealed class RecordsController : Controller
 
         // "Open exceptions" is how the list names a day that waits for its exceptions; to the Api it is the days with an exception that is not closed.
         var openExceptions = chosen == RecordsIndexViewModel.OpenExceptions;
-        var result = await _records.ListAsync(from, to, employeeId, chosen is "Any" or RecordsIndexViewModel.OpenExceptions ? null : chosen, onlyWithExceptions || openExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
+
+        // "Under timed" is an approved day that worked less than scheduled: to the Api, status Approved with the under-time filter on. "Approved" leaves those
+        // out, since the list shows them under their own name.
+        var underTimed = chosen == RecordsIndexViewModel.UnderTimed;
+        var apiStatus = chosen is "Any" or RecordsIndexViewModel.OpenExceptions ? null : underTimed ? "Approved" : chosen;
+        bool? underTime = underTimed ? true : chosen == "Approved" ? false : null;
+        var result = await _records.ListAsync(from, to, employeeId, apiStatus, onlyWithExceptions || openExceptions, Math.Max(page, 1), size, field, descending, underTime, cancellationToken);
         var canCheckMissing = _actor.IsInRole(NavigationMenu.Hr);
         var (checkFrom, checkTo) = canCheckMissing ? await DefaultPeriodAsync(cancellationToken) : (null, null);
         return View(new RecordsIndexViewModel
@@ -175,7 +181,7 @@ public sealed class RecordsController : Controller
         if (chosen is { } employee)
         {
             // The range is short enough for every day to fit on one page of the largest size.
-            days = (await _records.ListAsync(start, end, employee, null, false, 1, 200, RecordSortField.Date, false, cancellationToken)).Items;
+            days = (await _records.ListAsync(start, end, employee, null, false, 1, 200, RecordSortField.Date, false, null, cancellationToken)).Items;
             exceptions = (await _exceptions.ListAsync("All", start, end, employee, 200, cancellationToken)).OrderBy(e => e.AttendanceDate).ThenBy(e => e.Id).ToList();
         }
 

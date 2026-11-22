@@ -1,635 +1,624 @@
 employee_number,date,weekday,case,expected_exceptions,expected_status,expected_hours_worked
-SW-ALL,2026-04-01,Wed,PERFECT,none,Approved,7:00
-SW-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,6:37
-SW-ALL,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,6:29
-SW-ALL,2026-04-04,Sat,OFF_DAY,none,Pending review,4:11
-SW-ALL,2026-04-05,Sun,OFF_DAY,none,Pending review,4:05
-SW-ALL,2026-04-06,Mon,LATE_EARLY,ShortHours,Pending review,6:10
-SW-ALL,2026-04-07,Tue,OVERTIME,none,Approved,8:07
-SW-ALL,2026-04-08,Wed,NO_BREAK,MissingPunch,Pending review,
-SW-ALL,2026-04-09,Thu,LONG_BREAK,none,Approved,6:21
-SW-ALL,2026-04-10,Fri,LATE_BREAK,none,Approved,7:00
-SW-ALL,2026-04-13,Mon,EARLY_BREAK,none,Approved,7:00
-SW-ALL,2026-04-14,Tue,SHORT_BREAK,none,Approved,7:00
-SW-ALL,2026-04-15,Wed,MISSING_OUT,MissingPunch,Pending review,
-SW-ALL,2026-04-16,Thu,MISSING_IN,MissingPunch,Pending review,
-SW-ALL,2026-04-17,Fri,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-04-18,Sat,OFF_DAY,none,Pending review,4:09
-SW-ALL,2026-04-20,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-04-21,Tue,TAP_MORNING,InvalidSequence,Pending review,
-SW-ALL,2026-04-22,Wed,TAP_EVENING,InvalidSequence,Pending review,
-SW-ALL,2026-04-23,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
-SW-ALL,2026-04-24,Fri,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
-SW-ALL,2026-04-28,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
-SW-ALL,2026-04-29,Wed,ABSENT,NoShow,Pending review,
-SW-ALL,2026-04-30,Thu,PERFECT,none,Approved,7:00
-SW-ALL,2026-05-01,Fri,LATE,ShortHours,Pending review,6:32
-SW-ALL,2026-05-04,Mon,EARLY_OUT,ShortHours,Pending review,6:20
-SW-ALL,2026-05-05,Tue,LATE_EARLY,ShortHours,Pending review,6:24
-SW-ALL,2026-05-06,Wed,OVERTIME,none,Approved,7:36
-SW-ALL,2026-05-07,Thu,NO_BREAK,MissingPunch,Pending review,
-SW-ALL,2026-05-08,Fri,LONG_BREAK,none,Approved,6:22
-SW-ALL,2026-05-10,Sun,OFF_DAY,none,Pending review,4:28
-SW-ALL,2026-05-11,Mon,LATE_BREAK,none,Approved,7:00
-SW-ALL,2026-05-12,Tue,EARLY_BREAK,none,Approved,7:00
-SW-ALL,2026-05-13,Wed,SHORT_BREAK,none,Approved,7:00
-SW-ALL,2026-05-14,Thu,MISSING_OUT,MissingPunch,Pending review,
-SW-ALL,2026-05-15,Fri,MISSING_IN,MissingPunch,Pending review,
-SW-ALL,2026-05-18,Mon,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-05-19,Tue,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-05-20,Wed,TAP_MORNING,InvalidSequence,Pending review,
-SW-ALL,2026-05-21,Thu,TAP_EVENING,InvalidSequence,Pending review,
-SW-ALL,2026-05-22,Fri,BREAK_IN_TWICE,MissingPunch,Pending review,
-SW-ALL,2026-05-25,Mon,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-SW-ALL,2026-05-26,Tue,NO_TYPES,NoShow,Pending review,
-SW-ALL,2026-05-27,Wed,IN_OUT_ONLY,MissingPunch,Pending review,
-SW-ALL,2026-05-28,Thu,ABSENT,NoShow,Pending review,
-SW-ALL,2026-05-29,Fri,PERFECT,none,Approved,7:00
-SDW-ALL,2026-04-01,Wed,PERFECT,none,Approved,7:00
-SDW-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,6:30
-SDW-ALL,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,6:22
-SDW-ALL,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,6:21
-SDW-ALL,2026-04-06,Mon,OVERTIME,none,Approved,8:05
-SDW-ALL,2026-04-07,Tue,NO_BREAK,MissingPunch,Pending review,
-SDW-ALL,2026-04-08,Wed,LONG_BREAK,none,Approved,6:22
-SDW-ALL,2026-04-09,Thu,LATE_BREAK,none,Approved,7:00
-SDW-ALL,2026-04-10,Fri,EARLY_BREAK,none,Approved,7:00
-SDW-ALL,2026-04-11,Sat,SHORT_BREAK,none,Approved,7:00
-SDW-ALL,2026-04-13,Mon,MISSING_OUT,MissingPunch,Pending review,
-SDW-ALL,2026-04-14,Tue,MISSING_IN,MissingPunch,Pending review,
-SDW-ALL,2026-04-15,Wed,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-04-16,Thu,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-04-17,Fri,TAP_MORNING,InvalidSequence,Pending review,
-SDW-ALL,2026-04-18,Sat,TAP_EVENING,InvalidSequence,Pending review,
-SDW-ALL,2026-04-19,Sun,OFF_DAY,none,Pending review,4:27
-SDW-ALL,2026-04-20,Mon,BREAK_IN_TWICE,MissingPunch,Pending review,
-SDW-ALL,2026-04-21,Tue,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-04-22,Wed,NO_TYPES,NoShow,Pending review,
-SDW-ALL,2026-04-23,Thu,IN_OUT_ONLY,MissingPunch,Pending review,
-SDW-ALL,2026-04-24,Fri,ABSENT,NoShow,Pending review,
-SDW-ALL,2026-04-25,Sat,PERFECT,none,Approved,7:00
-SDW-ALL,2026-04-27,Mon,LATE,ShortHours,Pending review,6:27
-SDW-ALL,2026-04-28,Tue,EARLY_OUT,ShortHours,Pending review,6:16
-SDW-ALL,2026-04-29,Wed,LATE_EARLY,ShortHours,Pending review,6:27
-SDW-ALL,2026-04-30,Thu,OVERTIME,none,Approved,7:27
-SDW-ALL,2026-05-01,Fri,NO_BREAK,MissingPunch,Pending review,
-SDW-ALL,2026-05-02,Sat,LONG_BREAK,none,Approved,6:38
-SDW-ALL,2026-05-04,Mon,LATE_BREAK,none,Approved,7:00
-SDW-ALL,2026-05-05,Tue,EARLY_BREAK,none,Approved,7:00
-SDW-ALL,2026-05-06,Wed,SHORT_BREAK,none,Approved,7:00
-SDW-ALL,2026-05-07,Thu,MISSING_OUT,MissingPunch,Pending review,
-SDW-ALL,2026-05-08,Fri,MISSING_IN,MissingPunch,Pending review,
-SDW-ALL,2026-05-09,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-05-11,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-05-12,Tue,TAP_MORNING,InvalidSequence,Pending review,
-SDW-ALL,2026-05-13,Wed,TAP_EVENING,InvalidSequence,Pending review,
-SDW-ALL,2026-05-14,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
-SDW-ALL,2026-05-15,Fri,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-SDW-ALL,2026-05-16,Sat,NO_TYPES,NoShow,Pending review,
-SDW-ALL,2026-05-17,Sun,OFF_DAY,none,Pending review,4:20
-SDW-ALL,2026-05-18,Mon,IN_OUT_ONLY,MissingPunch,Pending review,
-SDW-ALL,2026-05-19,Tue,ABSENT,NoShow,Pending review,
-SDW-ALL,2026-05-20,Wed,PERFECT,none,Approved,7:00
-SDW-ALL,2026-05-21,Thu,LATE,ShortHours,Pending review,6:27
-SDW-ALL,2026-05-22,Fri,EARLY_OUT,ShortHours,Pending review,6:34
-SDW-ALL,2026-05-23,Sat,LATE_EARLY,ShortHours,Pending review,6:15
-SDW-ALL,2026-05-24,Sun,OFF_DAY,none,Pending review,4:19
-SDW-ALL,2026-05-25,Mon,OVERTIME,none,Approved,7:57
-SDW-ALL,2026-05-26,Tue,NO_BREAK,MissingPunch,Pending review,
-SDW-ALL,2026-05-27,Wed,LONG_BREAK,none,Approved,6:47
-SDW-ALL,2026-05-28,Thu,LATE_BREAK,none,Approved,7:00
-SDW-ALL,2026-05-29,Fri,EARLY_BREAK,none,Approved,7:00
-SDW-ALL,2026-05-30,Sat,SHORT_BREAK,none,Approved,7:00
-WS-ALL1,2026-04-04,Sat,PERFECT,none,Approved,7:00
-WS-ALL1,2026-04-05,Sun,EARLY_OUT,ShortHours,Pending review,6:39
-WS-ALL1,2026-04-06,Mon,OFF_DAY,none,Pending review,4:08
-WS-ALL1,2026-04-07,Tue,OFF_DAY,none,Pending review,4:14
-WS-ALL1,2026-04-11,Sat,OVERTIME,none,Approved,7:46
-WS-ALL1,2026-04-12,Sun,LONG_BREAK,none,Approved,6:28
-WS-ALL1,2026-04-14,Tue,OFF_DAY,none,Pending review,4:15
-WS-ALL1,2026-04-17,Fri,OFF_DAY,none,Pending review,4:21
-WS-ALL1,2026-04-18,Sat,EARLY_BREAK,none,Approved,7:00
-WS-ALL1,2026-04-19,Sun,MISSING_OUT,MissingPunch,Pending review,
-WS-ALL1,2026-04-24,Fri,OFF_DAY,none,Pending review,4:19
-WS-ALL1,2026-04-25,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-WS-ALL1,2026-04-26,Sun,TAP_MORNING,InvalidSequence,Pending review,
-WS-ALL1,2026-04-30,Thu,OFF_DAY,none,Pending review,4:05
-WS-ALL1,2026-05-02,Sat,BREAK_IN_TWICE,MissingPunch,Pending review,
-WS-ALL1,2026-05-03,Sun,NO_TYPES,NoShow,Pending review,
-WS-ALL1,2026-05-04,Mon,OFF_DAY,none,Pending review,4:15
-WS-ALL1,2026-05-09,Sat,ABSENT,NoShow,Pending review,
-WS-ALL1,2026-05-10,Sun,PERFECT,none,Approved,7:00
-WS-ALL1,2026-05-11,Mon,OFF_DAY,none,Pending review,4:04
-WS-ALL1,2026-05-16,Sat,EARLY_OUT,ShortHours,Pending review,6:25
-WS-ALL1,2026-05-17,Sun,OVERTIME,none,Approved,7:51
-WS-ALL1,2026-05-18,Mon,OFF_DAY,none,Pending review,4:13
-WS-ALL1,2026-05-19,Tue,OFF_DAY,none,Pending review,4:19
-WS-ALL1,2026-05-20,Wed,OFF_DAY,none,Pending review,4:24
-WS-ALL1,2026-05-23,Sat,LONG_BREAK,none,Approved,6:21
-WS-ALL1,2026-05-24,Sun,EARLY_BREAK,none,Approved,7:00
-WS-ALL1,2026-05-28,Thu,OFF_DAY,none,Pending review,4:10
-WS-ALL1,2026-05-30,Sat,MISSING_OUT,MissingPunch,Pending review,
-WS-ALL2,2026-04-03,Fri,OFF_DAY,none,Pending review,4:17
-WS-ALL2,2026-04-04,Sat,LATE,ShortHours,Pending review,6:16
-WS-ALL2,2026-04-05,Sun,LATE_EARLY,ShortHours,Pending review,6:21
-WS-ALL2,2026-04-11,Sat,NO_BREAK,MissingPunch,Pending review,
-WS-ALL2,2026-04-12,Sun,LATE_BREAK,none,Approved,7:00
-WS-ALL2,2026-04-18,Sat,SHORT_BREAK,none,Approved,7:00
-WS-ALL2,2026-04-19,Sun,MISSING_IN,MissingPunch,Pending review,
-WS-ALL2,2026-04-22,Wed,OFF_DAY,none,Pending review,4:18
-WS-ALL2,2026-04-23,Thu,OFF_DAY,none,Pending review,4:12
-WS-ALL2,2026-04-25,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-WS-ALL2,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
-WS-ALL2,2026-04-30,Thu,OFF_DAY,none,Pending review,4:28
-WS-ALL2,2026-05-02,Sat,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-WS-ALL2,2026-05-03,Sun,IN_OUT_ONLY,MissingPunch,Pending review,
-WS-ALL2,2026-05-09,Sat,LATE,ShortHours,Pending review,6:27
-WS-ALL2,2026-05-10,Sun,LATE_EARLY,ShortHours,Pending review,6:15
-WS-ALL2,2026-05-12,Tue,OFF_DAY,none,Pending review,4:25
-WS-ALL2,2026-05-13,Wed,OFF_DAY,none,Pending review,4:20
-WS-ALL2,2026-05-16,Sat,NO_BREAK,MissingPunch,Pending review,
-WS-ALL2,2026-05-17,Sun,LATE_BREAK,none,Approved,7:00
-WS-ALL2,2026-05-21,Thu,OFF_DAY,none,Pending review,4:24
-WS-ALL2,2026-05-22,Fri,OFF_DAY,none,Pending review,4:00
-WS-ALL2,2026-05-23,Sat,SHORT_BREAK,none,Approved,7:00
-WS-ALL2,2026-05-24,Sun,MISSING_IN,MissingPunch,Pending review,
-WS-ALL2,2026-05-29,Fri,OFF_DAY,none,Pending review,4:08
-WS-ALL2,2026-05-30,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-04-01,Wed,PERFECT,none,Approved,7:00
-STW-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,6:18
-STW-ALL,2026-04-04,Sat,OFF_DAY,none,Pending review,4:20
-STW-ALL,2026-04-05,Sun,EARLY_OUT,ShortHours,Pending review,6:23
-STW-ALL,2026-04-06,Mon,LATE_EARLY,ShortHours,Pending review,6:13
-STW-ALL,2026-04-07,Tue,OVERTIME,none,Approved,7:31
-STW-ALL,2026-04-08,Wed,NO_BREAK,MissingPunch,Pending review,
-STW-ALL,2026-04-09,Thu,LONG_BREAK,none,Approved,6:36
-STW-ALL,2026-04-10,Fri,OFF_DAY,none,Pending review,4:04
-STW-ALL,2026-04-12,Sun,LATE_BREAK,none,Approved,7:00
-STW-ALL,2026-04-13,Mon,EARLY_BREAK,none,Approved,7:00
-STW-ALL,2026-04-14,Tue,SHORT_BREAK,none,Approved,7:00
-STW-ALL,2026-04-15,Wed,MISSING_OUT,MissingPunch,Pending review,
-STW-ALL,2026-04-16,Thu,MISSING_IN,MissingPunch,Pending review,
-STW-ALL,2026-04-17,Fri,OFF_DAY,none,Pending review,4:14
-STW-ALL,2026-04-18,Sat,OFF_DAY,none,Pending review,4:19
-STW-ALL,2026-04-19,Sun,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-04-20,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-04-21,Tue,TAP_MORNING,InvalidSequence,Pending review,
-STW-ALL,2026-04-22,Wed,TAP_EVENING,InvalidSequence,Pending review,
-STW-ALL,2026-04-23,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
-STW-ALL,2026-04-24,Fri,OFF_DAY,none,Pending review,4:14
-STW-ALL,2026-04-25,Sat,OFF_DAY,none,Pending review,4:08
-STW-ALL,2026-04-26,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
-STW-ALL,2026-04-28,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
-STW-ALL,2026-04-29,Wed,ABSENT,NoShow,Pending review,
-STW-ALL,2026-04-30,Thu,PERFECT,none,Approved,7:00
-STW-ALL,2026-05-01,Fri,OFF_DAY,none,Pending review,4:08
-STW-ALL,2026-05-03,Sun,LATE,ShortHours,Pending review,6:15
-STW-ALL,2026-05-04,Mon,EARLY_OUT,ShortHours,Pending review,6:19
-STW-ALL,2026-05-05,Tue,LATE_EARLY,ShortHours,Pending review,6:26
-STW-ALL,2026-05-06,Wed,OVERTIME,none,Approved,7:38
-STW-ALL,2026-05-07,Thu,NO_BREAK,MissingPunch,Pending review,
-STW-ALL,2026-05-09,Sat,OFF_DAY,none,Pending review,4:23
-STW-ALL,2026-05-10,Sun,LONG_BREAK,none,Approved,6:34
-STW-ALL,2026-05-11,Mon,LATE_BREAK,none,Approved,7:00
-STW-ALL,2026-05-12,Tue,EARLY_BREAK,none,Approved,7:00
-STW-ALL,2026-05-13,Wed,SHORT_BREAK,none,Approved,7:00
-STW-ALL,2026-05-14,Thu,MISSING_OUT,MissingPunch,Pending review,
-STW-ALL,2026-05-15,Fri,OFF_DAY,none,Pending review,4:15
-STW-ALL,2026-05-17,Sun,MISSING_IN,MissingPunch,Pending review,
-STW-ALL,2026-05-18,Mon,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-05-19,Tue,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-05-20,Wed,TAP_MORNING,InvalidSequence,Pending review,
-STW-ALL,2026-05-21,Thu,TAP_EVENING,InvalidSequence,Pending review,
-STW-ALL,2026-05-23,Sat,OFF_DAY,none,Pending review,4:05
-STW-ALL,2026-05-24,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
-STW-ALL,2026-05-25,Mon,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-STW-ALL,2026-05-26,Tue,NO_TYPES,NoShow,Pending review,
-STW-ALL,2026-05-27,Wed,IN_OUT_ONLY,MissingPunch,Pending review,
-STW-ALL,2026-05-28,Thu,ABSENT,NoShow,Pending review,
-STW-ALL,2026-05-30,Sat,OFF_DAY,none,Pending review,4:11
-AWS-WA-ALL1,2026-04-01,Wed,OFF_DAY,none,Pending review,4:00
-AWS-WA-ALL1,2026-04-02,Thu,OFF_DAY,none,Pending review,4:05
-AWS-WA-ALL1,2026-04-09,Thu,OFF_DAY,none,Pending review,4:14
-AWS-WA-ALL1,2026-04-11,Sat,PERFECT,none,Approved,7:00
-AWS-WA-ALL1,2026-04-12,Sun,LATE_EARLY,ShortHours,Pending review,6:04
-AWS-WA-ALL1,2026-04-14,Tue,OFF_DAY,none,Pending review,4:12
-AWS-WA-ALL1,2026-04-15,Wed,OFF_DAY,none,Pending review,4:07
-AWS-WA-ALL1,2026-04-22,Wed,OFF_DAY,none,Pending review,4:15
-AWS-WA-ALL1,2026-04-25,Sat,LONG_BREAK,none,Approved,6:30
-AWS-WA-ALL1,2026-04-26,Sun,SHORT_BREAK,none,Approved,7:00
-AWS-WA-ALL1,2026-05-02,Sat,OFF_DAY,none,Pending review,4:26
-AWS-WA-ALL1,2026-05-05,Tue,OFF_DAY,none,Pending review,4:16
-AWS-WA-ALL1,2026-05-09,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-AWS-WA-ALL1,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
-AWS-WA-ALL1,2026-05-11,Mon,OFF_DAY,none,Pending review,4:09
-AWS-WA-ALL1,2026-05-18,Mon,OFF_DAY,none,Pending review,4:19
-AWS-WA-ALL1,2026-05-19,Tue,OFF_DAY,none,Pending review,4:24
-AWS-WA-ALL1,2026-05-23,Sat,NO_TYPES,NoShow,Pending review,
-AWS-WA-ALL1,2026-05-24,Sun,PERFECT,none,Approved,7:00
-AWS-WA-ALL1,2026-05-26,Tue,OFF_DAY,none,Pending review,4:17
-AWS-WA-ALL1,2026-05-27,Wed,OFF_DAY,none,Pending review,4:11
-AWS-WA-ALL2,2026-04-01,Wed,OFF_DAY,none,Pending review,4:07
-AWS-WA-ALL2,2026-04-06,Mon,OFF_DAY,none,Pending review,4:17
-AWS-WA-ALL2,2026-04-09,Thu,OFF_DAY,none,Pending review,4:23
-AWS-WA-ALL2,2026-04-11,Sat,LATE,ShortHours,Pending review,6:23
-AWS-WA-ALL2,2026-04-12,Sun,OVERTIME,none,Approved,7:47
-AWS-WA-ALL2,2026-04-14,Tue,OFF_DAY,none,Pending review,4:29
-AWS-WA-ALL2,2026-04-17,Fri,OFF_DAY,none,Pending review,4:24
-AWS-WA-ALL2,2026-04-20,Mon,OFF_DAY,none,Pending review,4:29
-AWS-WA-ALL2,2026-04-25,Sat,LATE_BREAK,none,Approved,7:00
-AWS-WA-ALL2,2026-04-26,Sun,MISSING_OUT,MissingPunch,Pending review,
-AWS-WA-ALL2,2026-04-27,Mon,OFF_DAY,none,Pending review,4:04
-AWS-WA-ALL2,2026-04-28,Tue,OFF_DAY,none,Pending review,4:13
-AWS-WA-ALL2,2026-05-01,Fri,OFF_DAY,none,Pending review,4:07
-AWS-WA-ALL2,2026-05-08,Fri,OFF_DAY,none,Pending review,4:16
-AWS-WA-ALL2,2026-05-09,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-AWS-WA-ALL2,2026-05-10,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
-AWS-WA-ALL2,2026-05-14,Thu,OFF_DAY,none,Pending review,4:18
-AWS-WA-ALL2,2026-05-15,Fri,OFF_DAY,none,Pending review,4:12
-AWS-WA-ALL2,2026-05-22,Fri,OFF_DAY,none,Pending review,4:25
-AWS-WA-ALL2,2026-05-23,Sat,IN_OUT_ONLY,MissingPunch,Pending review,
-AWS-WA-ALL2,2026-05-24,Sun,LATE,ShortHours,Pending review,6:30
-AWS-WA-ALL2,2026-05-25,Mon,OFF_DAY,none,Pending review,4:19
-AWS-WA-ALL2,2026-05-30,Sat,OFF_DAY,none,Pending review,4:27
-AWS-WA-ALL3,2026-04-06,Mon,OFF_DAY,none,Pending review,4:23
-AWS-WA-ALL3,2026-04-07,Tue,OFF_DAY,none,Pending review,4:28
-AWS-WA-ALL3,2026-04-11,Sat,EARLY_OUT,ShortHours,Pending review,6:38
-AWS-WA-ALL3,2026-04-12,Sun,NO_BREAK,MissingPunch,Pending review,
-AWS-WA-ALL3,2026-04-16,Thu,OFF_DAY,none,Pending review,4:23
-AWS-WA-ALL3,2026-04-17,Fri,OFF_DAY,none,Pending review,4:17
-AWS-WA-ALL3,2026-04-21,Tue,OFF_DAY,none,Pending review,4:24
-AWS-WA-ALL3,2026-04-22,Wed,OFF_DAY,none,Pending review,4:29
-AWS-WA-ALL3,2026-04-25,Sat,EARLY_BREAK,none,Approved,7:00
-AWS-WA-ALL3,2026-04-26,Sun,MISSING_IN,MissingPunch,Pending review,
-AWS-WA-ALL3,2026-05-07,Thu,OFF_DAY,none,Pending review,4:01
-AWS-WA-ALL3,2026-05-08,Fri,OFF_DAY,none,Pending review,4:09
-AWS-WA-ALL3,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
-AWS-WA-ALL3,2026-05-10,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-AWS-WA-ALL3,2026-05-15,Fri,OFF_DAY,none,Pending review,4:00
-AWS-WA-ALL3,2026-05-16,Sat,OFF_DAY,none,Pending review,4:06
-AWS-WA-ALL3,2026-05-23,Sat,ABSENT,NoShow,Pending review,
-AWS-WA-ALL3,2026-05-24,Sun,EARLY_OUT,ShortHours,Pending review,6:36
-AWS-WA-ALL3,2026-05-26,Tue,OFF_DAY,none,Pending review,4:01
-AWS-WA-ALL3,2026-05-27,Wed,OFF_DAY,none,Pending review,4:26
-AWS-WB-ALL1,2026-04-04,Sat,PERFECT,none,Approved,7:00
-AWS-WB-ALL1,2026-04-05,Sun,LATE_EARLY,ShortHours,Pending review,6:30
-AWS-WB-ALL1,2026-04-06,Mon,OFF_DAY,none,Pending review,4:04
-AWS-WB-ALL1,2026-04-07,Tue,OFF_DAY,none,Pending review,4:28
-AWS-WB-ALL1,2026-04-16,Thu,OFF_DAY,none,Pending review,4:03
-AWS-WB-ALL1,2026-04-17,Fri,OFF_DAY,none,Pending review,4:09
-AWS-WB-ALL1,2026-04-18,Sat,LONG_BREAK,none,Approved,6:46
-AWS-WB-ALL1,2026-04-19,Sun,SHORT_BREAK,none,Approved,7:00
-AWS-WB-ALL1,2026-04-21,Tue,OFF_DAY,none,Pending review,4:07
-AWS-WB-ALL1,2026-04-26,Sun,OFF_DAY,none,Pending review,4:01
-AWS-WB-ALL1,2026-04-29,Wed,OFF_DAY,none,Pending review,4:21
-AWS-WB-ALL1,2026-05-02,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-AWS-WB-ALL1,2026-05-03,Sun,TAP_EVENING,InvalidSequence,Pending review,
-AWS-WB-ALL1,2026-05-11,Mon,OFF_DAY,none,Pending review,4:12
-AWS-WB-ALL1,2026-05-16,Sat,NO_TYPES,NoShow,Pending review,
-AWS-WB-ALL1,2026-05-17,Sun,PERFECT,none,Approved,7:00
-AWS-WB-ALL1,2026-05-19,Tue,OFF_DAY,none,Pending review,4:27
-AWS-WB-ALL1,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,6:26
-AWS-WB-ALL2,2026-04-02,Thu,OFF_DAY,none,Pending review,4:15
-AWS-WB-ALL2,2026-04-03,Fri,OFF_DAY,none,Pending review,4:21
-AWS-WB-ALL2,2026-04-04,Sat,LATE,ShortHours,Pending review,6:17
-AWS-WB-ALL2,2026-04-05,Sun,OVERTIME,none,Approved,8:08
-AWS-WB-ALL2,2026-04-10,Fri,OFF_DAY,none,Pending review,4:06
-AWS-WB-ALL2,2026-04-11,Sat,OFF_DAY,none,Pending review,4:00
-AWS-WB-ALL2,2026-04-18,Sat,LATE_BREAK,none,Approved,7:00
-AWS-WB-ALL2,2026-04-19,Sun,MISSING_OUT,MissingPunch,Pending review,
-AWS-WB-ALL2,2026-04-20,Mon,OFF_DAY,none,Pending review,4:10
-AWS-WB-ALL2,2026-04-27,Mon,OFF_DAY,none,Pending review,4:20
-AWS-WB-ALL2,2026-04-28,Tue,OFF_DAY,none,Pending review,4:24
-AWS-WB-ALL2,2026-05-02,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-AWS-WB-ALL2,2026-05-03,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
-AWS-WB-ALL2,2026-05-04,Mon,OFF_DAY,none,Pending review,4:15
-AWS-WB-ALL2,2026-05-13,Wed,OFF_DAY,none,Pending review,4:13
-AWS-WB-ALL2,2026-05-14,Thu,OFF_DAY,none,Pending review,4:04
-AWS-WB-ALL2,2026-05-16,Sat,IN_OUT_ONLY,MissingPunch,Pending review,
-AWS-WB-ALL2,2026-05-17,Sun,LATE,ShortHours,Pending review,6:45
-AWS-WB-ALL2,2026-05-24,Sun,OFF_DAY,none,Pending review,4:01
-AWS-WB-ALL2,2026-05-25,Mon,OFF_DAY,none,Pending review,4:26
-AWS-WB-ALL2,2026-05-30,Sat,OVERTIME,none,Approved,8:09
-AWS-WB-ALL3,2026-04-02,Thu,OFF_DAY,none,Pending review,4:14
-AWS-WB-ALL3,2026-04-04,Sat,EARLY_OUT,ShortHours,Pending review,6:15
-AWS-WB-ALL3,2026-04-05,Sun,NO_BREAK,MissingPunch,Pending review,
-AWS-WB-ALL3,2026-04-10,Fri,OFF_DAY,none,Pending review,4:09
-AWS-WB-ALL3,2026-04-13,Mon,OFF_DAY,none,Pending review,4:03
-AWS-WB-ALL3,2026-04-18,Sat,EARLY_BREAK,none,Approved,7:00
-AWS-WB-ALL3,2026-04-19,Sun,MISSING_IN,MissingPunch,Pending review,
-AWS-WB-ALL3,2026-04-20,Mon,OFF_DAY,none,Pending review,4:06
-AWS-WB-ALL3,2026-04-27,Mon,OFF_DAY,none,Pending review,4:27
-AWS-WB-ALL3,2026-05-01,Fri,OFF_DAY,none,Pending review,4:13
-AWS-WB-ALL3,2026-05-02,Sat,TAP_MORNING,InvalidSequence,Pending review,
-AWS-WB-ALL3,2026-05-03,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-AWS-WB-ALL3,2026-05-09,Sat,OFF_DAY,none,Pending review,4:28
-AWS-WB-ALL3,2026-05-13,Wed,OFF_DAY,none,Pending review,4:13
-AWS-WB-ALL3,2026-05-14,Thu,OFF_DAY,none,Pending review,4:07
-AWS-WB-ALL3,2026-05-16,Sat,ABSENT,NoShow,Pending review,
-AWS-WB-ALL3,2026-05-17,Sun,EARLY_OUT,ShortHours,Pending review,6:48
-AWS-WB-ALL3,2026-05-22,Fri,OFF_DAY,none,Pending review,4:00
-AWS-WB-ALL3,2026-05-23,Sat,OFF_DAY,none,Pending review,4:06
-AWS-WB-ALL3,2026-05-30,Sat,NO_BREAK,MissingPunch,Pending review,
-FDW-ALL,2026-04-01,Wed,PERFECT,none,Approved,10:00
-FDW-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,9:36
-FDW-ALL,2026-04-06,Mon,EARLY_OUT,ShortHours,Pending review,9:39
-FDW-ALL,2026-04-07,Tue,LATE_EARLY,ShortHours,Pending review,9:28
-FDW-ALL,2026-04-08,Wed,OVERTIME,none,Approved,11:04
-FDW-ALL,2026-04-09,Thu,NO_BREAK,MissingPunch,Pending review,
-FDW-ALL,2026-04-13,Mon,LONG_BREAK,none,Approved,9:33
-FDW-ALL,2026-04-14,Tue,LATE_BREAK,none,Approved,10:00
-FDW-ALL,2026-04-15,Wed,EARLY_BREAK,none,Approved,10:00
-FDW-ALL,2026-04-16,Thu,SHORT_BREAK,none,Approved,10:00
-FDW-ALL,2026-04-20,Mon,MISSING_OUT,MissingPunch,Pending review,
-FDW-ALL,2026-04-21,Tue,MISSING_IN,MissingPunch,Pending review,
-FDW-ALL,2026-04-22,Wed,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-FDW-ALL,2026-04-23,Thu,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-FDW-ALL,2026-04-24,Fri,OFF_DAY,none,Pending review,4:15
-FDW-ALL,2026-04-25,Sat,OFF_DAY,none,Pending review,4:20
-FDW-ALL,2026-04-27,Mon,TAP_MORNING,InvalidSequence,Pending review,
-FDW-ALL,2026-04-28,Tue,TAP_EVENING,InvalidSequence,Pending review,
-FDW-ALL,2026-04-29,Wed,BREAK_IN_TWICE,MissingPunch,Pending review,
-FDW-ALL,2026-04-30,Thu,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
-FDW-ALL,2026-05-04,Mon,NO_TYPES,NoShow,Pending review,
-FDW-ALL,2026-05-05,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
-FDW-ALL,2026-05-06,Wed,ABSENT,NoShow,Pending review,
-FDW-ALL,2026-05-07,Thu,PERFECT,none,Approved,10:00
-FDW-ALL,2026-05-11,Mon,LATE,ShortHours,Pending review,9:15
-FDW-ALL,2026-05-12,Tue,EARLY_OUT,ShortHours,Pending review,9:26
-FDW-ALL,2026-05-13,Wed,LATE_EARLY,ShortHours,Pending review,9:29
-FDW-ALL,2026-05-14,Thu,OVERTIME,none,Approved,10:38
-FDW-ALL,2026-05-16,Sat,OFF_DAY,none,Pending review,4:19
-FDW-ALL,2026-05-17,Sun,OFF_DAY,none,Pending review,4:25
-FDW-ALL,2026-05-18,Mon,NO_BREAK,MissingPunch,Pending review,
-FDW-ALL,2026-05-19,Tue,LONG_BREAK,none,Approved,9:45
-FDW-ALL,2026-05-20,Wed,LATE_BREAK,none,Approved,10:00
-FDW-ALL,2026-05-21,Thu,EARLY_BREAK,none,Approved,10:00
-FDW-ALL,2026-05-25,Mon,SHORT_BREAK,none,Approved,10:00
-FDW-ALL,2026-05-26,Tue,MISSING_OUT,MissingPunch,Pending review,
-FDW-ALL,2026-05-27,Wed,MISSING_IN,MissingPunch,Pending review,
-FDW-ALL,2026-05-28,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-01,Wed,PERFECT,none,Approved,8:00
-CO7D-MT-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,7:46
-CO7D-MT-ALL,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:19
-CO7D-MT-ALL,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:21
-CO7D-MT-ALL,2026-04-05,Sun,OVERTIME,none,Approved,8:32
-CO7D-MT-ALL,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-MT-ALL,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-MT-ALL,2026-04-14,Tue,ABSENT,NoShow,Pending review,
-CO7D-MT-ALL,2026-04-15,Wed,PERFECT,none,Approved,8:00
-CO7D-MT-ALL,2026-04-16,Thu,LATE,ShortHours,Pending review,7:44
-CO7D-MT-ALL,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:36
-CO7D-MT-ALL,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:16
-CO7D-MT-ALL,2026-04-19,Sun,OVERTIME,none,Approved,9:11
-CO7D-MT-ALL,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-MT-ALL,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-MT-ALL,2026-04-28,Tue,ABSENT,NoShow,Pending review,
-CO7D-MT-ALL,2026-04-29,Wed,PERFECT,none,Approved,8:00
-CO7D-MT-ALL,2026-04-30,Thu,LATE,ShortHours,Pending review,7:28
-CO7D-MT-ALL,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:22
-CO7D-MT-ALL,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:27
-CO7D-MT-ALL,2026-05-03,Sun,OVERTIME,none,Approved,8:32
-CO7D-MT-ALL,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-MT-ALL,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-MT-ALL,2026-05-12,Tue,ABSENT,NoShow,Pending review,
-CO7D-MT-ALL,2026-05-13,Wed,PERFECT,none,Approved,8:00
-CO7D-MT-ALL,2026-05-14,Thu,LATE,ShortHours,Pending review,7:29
-CO7D-MT-ALL,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:36
-CO7D-MT-ALL,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:31
-CO7D-MT-ALL,2026-05-17,Sun,OVERTIME,none,Approved,9:24
-CO7D-MT-ALL,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-MT-ALL,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-MT-ALL,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-MT-ALL,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-MT-ALL,2026-05-26,Tue,ABSENT,NoShow,Pending review,
-CO7D-MT-ALL,2026-05-27,Wed,PERFECT,none,Approved,8:00
-CO7D-MT-ALL,2026-05-28,Thu,LATE,ShortHours,Pending review,7:33
-CO7D-MT-ALL,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:25
-CO7D-MT-ALL,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:12
-CO7D-AT-ALL,2026-04-01,Wed,PERFECT,none,Approved,8:00
-CO7D-AT-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,7:25
-CO7D-AT-ALL,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:33
-CO7D-AT-ALL,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:30
-CO7D-AT-ALL,2026-04-05,Sun,OVERTIME,none,Approved,9:24
-CO7D-AT-ALL,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-AT-ALL,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-AT-ALL,2026-04-14,Tue,ABSENT,NoShow,Pending review,
-CO7D-AT-ALL,2026-04-15,Wed,PERFECT,none,Approved,8:00
-CO7D-AT-ALL,2026-04-16,Thu,LATE,ShortHours,Pending review,7:17
-CO7D-AT-ALL,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:44
-CO7D-AT-ALL,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:30
-CO7D-AT-ALL,2026-04-19,Sun,OVERTIME,none,Approved,8:39
-CO7D-AT-ALL,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-AT-ALL,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-AT-ALL,2026-04-28,Tue,ABSENT,NoShow,Pending review,
-CO7D-AT-ALL,2026-04-29,Wed,PERFECT,none,Approved,8:00
-CO7D-AT-ALL,2026-04-30,Thu,LATE,ShortHours,Pending review,7:43
-CO7D-AT-ALL,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:45
-CO7D-AT-ALL,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:20
-CO7D-AT-ALL,2026-05-03,Sun,OVERTIME,none,Approved,9:00
-CO7D-AT-ALL,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-AT-ALL,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-AT-ALL,2026-05-12,Tue,ABSENT,NoShow,Pending review,
-CO7D-AT-ALL,2026-05-13,Wed,PERFECT,none,Approved,8:00
-CO7D-AT-ALL,2026-05-14,Thu,LATE,ShortHours,Pending review,7:23
-CO7D-AT-ALL,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:30
-CO7D-AT-ALL,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:17
-CO7D-AT-ALL,2026-05-17,Sun,OVERTIME,none,Approved,8:21
-CO7D-AT-ALL,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-AT-ALL,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-AT-ALL,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-AT-ALL,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-AT-ALL,2026-05-26,Tue,ABSENT,NoShow,Pending review,
-CO7D-AT-ALL,2026-05-27,Wed,PERFECT,none,Approved,8:00
-CO7D-AT-ALL,2026-05-28,Thu,LATE,ShortHours,Pending review,7:44
-CO7D-AT-ALL,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:36
-CO7D-AT-ALL,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:16
-CO7D-NT-ALL,2026-04-01,Wed,PERFECT,none,Approved,8:00
-CO7D-NT-ALL,2026-04-02,Thu,LATE,ShortHours,Pending review,7:23
-CO7D-NT-ALL,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:15
-CO7D-NT-ALL,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:19
-CO7D-NT-ALL,2026-04-05,Sun,OVERTIME,none,Approved,8:54
-CO7D-NT-ALL,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-NT-ALL,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-NT-ALL,2026-04-14,Tue,ABSENT,NoShow,Pending review,
-CO7D-NT-ALL,2026-04-15,Wed,PERFECT,none,Approved,8:00
-CO7D-NT-ALL,2026-04-16,Thu,LATE,ShortHours,Pending review,7:32
-CO7D-NT-ALL,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:40
-CO7D-NT-ALL,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:18
-CO7D-NT-ALL,2026-04-19,Sun,OVERTIME,none,Approved,8:23
-CO7D-NT-ALL,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-NT-ALL,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-NT-ALL,2026-04-28,Tue,ABSENT,NoShow,Pending review,
-CO7D-NT-ALL,2026-04-29,Wed,PERFECT,none,Approved,8:00
-CO7D-NT-ALL,2026-04-30,Thu,LATE,ShortHours,Pending review,7:48
-CO7D-NT-ALL,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:22
-CO7D-NT-ALL,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:10
-CO7D-NT-ALL,2026-05-03,Sun,OVERTIME,none,Approved,8:41
-CO7D-NT-ALL,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-NT-ALL,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-NT-ALL,2026-05-12,Tue,ABSENT,NoShow,Pending review,
-CO7D-NT-ALL,2026-05-13,Wed,PERFECT,none,Approved,8:00
-CO7D-NT-ALL,2026-05-14,Thu,LATE,ShortHours,Pending review,7:19
-CO7D-NT-ALL,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:46
-CO7D-NT-ALL,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:27
-CO7D-NT-ALL,2026-05-17,Sun,OVERTIME,none,Approved,8:57
-CO7D-NT-ALL,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
-CO7D-NT-ALL,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
-CO7D-NT-ALL,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
-CO7D-NT-ALL,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
-CO7D-NT-ALL,2026-05-26,Tue,ABSENT,NoShow,Pending review,
-CO7D-NT-ALL,2026-05-27,Wed,PERFECT,none,Approved,8:00
-CO7D-NT-ALL,2026-05-28,Thu,LATE,ShortHours,Pending review,7:49
-CO7D-NT-ALL,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:22
-CO7D-NT-ALL,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:13
-CW-ALL,2026-04-03,Fri,OFF_DAY,none,Pending review,4:18
-CW-ALL,2026-04-04,Sat,OFF_DAY,none,Pending review,4:28
-CW-ALL,2026-04-05,Sun,OFF_DAY,none,Pending review,4:23
-CW-ALL,2026-04-06,Mon,OFF_DAY,none,Pending review,4:17
-CW-ALL,2026-04-10,Fri,OFF_DAY,none,Pending review,4:12
-CW-ALL,2026-04-11,Sat,OFF_DAY,none,Pending review,4:18
-CW-ALL,2026-04-12,Sun,OFF_DAY,none,Pending review,4:24
-CW-ALL,2026-04-17,Fri,OFF_DAY,none,Pending review,4:22
-CW-ALL,2026-04-18,Sat,OFF_DAY,none,Pending review,4:27
-CW-ALL,2026-04-19,Sun,OFF_DAY,none,Pending review,4:02
-CW-ALL,2026-04-20,Mon,OFF_DAY,none,Pending review,4:08
-CW-ALL,2026-04-21,Tue,OFF_DAY,none,Pending review,4:02
-CW-ALL,2026-04-23,Thu,OFF_DAY,none,Pending review,4:14
-CW-ALL,2026-04-26,Sun,OFF_DAY,none,Pending review,4:12
-CW-ALL,2026-04-28,Tue,OFF_DAY,none,Pending review,4:23
-CW-ALL,2026-04-29,Wed,OFF_DAY,none,Pending review,4:18
-CW-ALL,2026-04-30,Thu,OFF_DAY,none,Pending review,4:29
-CW-ALL,2026-05-02,Sat,OFF_DAY,none,Pending review,4:11
-CW-ALL,2026-05-04,Mon,OFF_DAY,none,Pending review,4:15
-CW-ALL,2026-05-05,Tue,OFF_DAY,none,Pending review,4:20
-CW-ALL,2026-05-07,Thu,OFF_DAY,none,Pending review,4:09
-CW-ALL,2026-05-10,Sun,OFF_DAY,none,Pending review,4:15
-CW-ALL,2026-05-11,Mon,OFF_DAY,none,Pending review,4:10
-CW-ALL,2026-05-12,Tue,OFF_DAY,none,Pending review,4:27
-CW-ALL,2026-05-13,Wed,OFF_DAY,none,Pending review,4:21
-CW-ALL,2026-05-16,Sat,OFF_DAY,none,Pending review,4:04
-CW-ALL,2026-05-18,Mon,OFF_DAY,none,Pending review,4:01
-CW-ALL,2026-05-19,Tue,OFF_DAY,none,Pending review,4:25
-CW-ALL,2026-05-20,Wed,OFF_DAY,none,Pending review,4:20
-CW-ALL,2026-05-21,Thu,OFF_DAY,none,Pending review,4:25
-CW-ALL,2026-05-22,Fri,OFF_DAY,none,Pending review,4:01
-CW-ALL,2026-05-27,Wed,OFF_DAY,none,Pending review,4:14
-CW-ALL,2026-05-28,Thu,OFF_DAY,none,Pending review,4:04
-CW-ALL,2026-05-29,Fri,OFF_DAY,none,Pending review,4:10
-CW-ALL,2026-05-30,Sat,OFF_DAY,none,Pending review,4:01
-ODHS-ALL,2026-04-01,Wed,H_PERFECT,none,Approved,5:05
-ODHS-ALL,2026-04-02,Thu,H_OVERNIGHT,none,Approved,8:12
-ODHS-ALL,2026-04-03,Fri,H_SPLIT,none,Approved,7:30
-ODHS-ALL,2026-04-04,Sat,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-04-06,Mon,H_PERFECT,none,Approved,5:53
-ODHS-ALL,2026-04-07,Tue,H_OVERNIGHT,none,Approved,8:16
-ODHS-ALL,2026-04-08,Wed,H_SPLIT,none,Approved,7:48
-ODHS-ALL,2026-04-09,Thu,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-04-11,Sat,H_PERFECT,none,Approved,8:03
-ODHS-ALL,2026-04-12,Sun,H_OVERNIGHT,none,Approved,8:13
-ODHS-ALL,2026-04-13,Mon,H_SPLIT,none,Approved,8:12
-ODHS-ALL,2026-04-14,Tue,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-04-16,Thu,H_PERFECT,none,Approved,6:08
-ODHS-ALL,2026-04-17,Fri,H_OVERNIGHT,none,Approved,8:03
-ODHS-ALL,2026-04-18,Sat,H_SPLIT,none,Approved,7:09
-ODHS-ALL,2026-04-19,Sun,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-04-21,Tue,H_PERFECT,none,Approved,7:12
-ODHS-ALL,2026-04-22,Wed,H_OVERNIGHT,none,Approved,8:25
-ODHS-ALL,2026-04-23,Thu,H_SPLIT,none,Approved,8:02
-ODHS-ALL,2026-04-24,Fri,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-04-26,Sun,H_PERFECT,none,Approved,8:34
-ODHS-ALL,2026-04-27,Mon,H_OVERNIGHT,none,Approved,8:29
-ODHS-ALL,2026-04-28,Tue,H_SPLIT,none,Approved,8:02
-ODHS-ALL,2026-04-29,Wed,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-01,Fri,H_PERFECT,none,Approved,7:19
-ODHS-ALL,2026-05-02,Sat,H_OVERNIGHT,none,Approved,8:07
-ODHS-ALL,2026-05-03,Sun,H_SPLIT,none,Approved,7:52
-ODHS-ALL,2026-05-04,Mon,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-06,Wed,H_PERFECT,none,Approved,4:50
-ODHS-ALL,2026-05-07,Thu,H_OVERNIGHT,none,Approved,8:27
-ODHS-ALL,2026-05-08,Fri,H_SPLIT,none,Approved,7:36
-ODHS-ALL,2026-05-09,Sat,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-11,Mon,H_PERFECT,none,Approved,4:21
-ODHS-ALL,2026-05-12,Tue,H_OVERNIGHT,none,Approved,8:11
-ODHS-ALL,2026-05-13,Wed,H_SPLIT,none,Approved,7:45
-ODHS-ALL,2026-05-14,Thu,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-16,Sat,H_PERFECT,none,Approved,6:50
-ODHS-ALL,2026-05-17,Sun,H_OVERNIGHT,none,Approved,8:21
-ODHS-ALL,2026-05-18,Mon,H_SPLIT,none,Approved,8:30
-ODHS-ALL,2026-05-19,Tue,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-21,Thu,H_PERFECT,none,Approved,8:28
-ODHS-ALL,2026-05-22,Fri,H_OVERNIGHT,none,Approved,8:15
-ODHS-ALL,2026-05-23,Sat,H_SPLIT,none,Approved,7:28
-ODHS-ALL,2026-05-24,Sun,H_MISSING_OUT,MissingPunch,Pending review,
-ODHS-ALL,2026-05-26,Tue,H_PERFECT,none,Approved,7:40
-ODHS-ALL,2026-05-27,Wed,H_OVERNIGHT,none,Approved,8:11
-ODHS-ALL,2026-05-28,Thu,H_SPLIT,none,Approved,7:09
-ODHS-ALL,2026-05-29,Fri,H_MISSING_OUT,MissingPunch,Pending review,
+100001,2026-04-01,Wed,PERFECT,none,Approved,7:00
+100001,2026-04-02,Thu,LATE,ShortHours,Pending review,6:15
+100001,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,6:42
+100001,2026-04-04,Sat,OFF_DAY,none,Pending review,4:17
+100001,2026-04-06,Mon,LATE_EARLY,ShortHours,Pending review,6:18
+100001,2026-04-07,Tue,OVERTIME,none,Approved,7:38
+100001,2026-04-08,Wed,NO_BREAK,MissingPunch,Pending review,
+100001,2026-04-09,Thu,LONG_BREAK,none,Approved,6:36
+100001,2026-04-10,Fri,LATE_BREAK,none,Approved,7:00
+100001,2026-04-13,Mon,EARLY_BREAK,none,Approved,7:00
+100001,2026-04-14,Tue,SHORT_BREAK,none,Approved,7:00
+100001,2026-04-15,Wed,MISSING_OUT,MissingPunch,Pending review,
+100001,2026-04-16,Thu,MISSING_IN,MissingPunch,Pending review,
+100001,2026-04-17,Fri,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100001,2026-04-20,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100001,2026-04-21,Tue,TAP_MORNING,InvalidSequence,Pending review,
+100001,2026-04-22,Wed,TAP_EVENING,InvalidSequence,Pending review,
+100001,2026-04-23,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
+100001,2026-04-24,Fri,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100001,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
+100001,2026-04-28,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
+100001,2026-04-29,Wed,ABSENT,NoShow,Pending review,
+100001,2026-04-30,Thu,PERFECT,none,Approved,7:00
+100001,2026-05-01,Fri,LATE,ShortHours,Pending review,6:31
+100001,2026-05-02,Sat,OFF_DAY,none,Pending review,4:11
+100001,2026-05-03,Sun,OFF_DAY,none,Pending review,4:16
+100001,2026-05-04,Mon,EARLY_OUT,ShortHours,Pending review,6:20
+100001,2026-05-05,Tue,LATE_EARLY,ShortHours,Pending review,6:08
+100001,2026-05-06,Wed,OVERTIME,none,Approved,7:45
+100001,2026-05-07,Thu,NO_BREAK,MissingPunch,Pending review,
+100001,2026-05-08,Fri,LONG_BREAK,none,Approved,6:21
+100001,2026-05-11,Mon,LATE_BREAK,none,Approved,7:00
+100001,2026-05-12,Tue,EARLY_BREAK,none,Approved,7:00
+100001,2026-05-13,Wed,SHORT_BREAK,none,Approved,7:00
+100001,2026-05-14,Thu,MISSING_OUT,MissingPunch,Pending review,
+100001,2026-05-15,Fri,MISSING_IN,MissingPunch,Pending review,
+100001,2026-05-18,Mon,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100001,2026-05-19,Tue,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100001,2026-05-20,Wed,TAP_MORNING,InvalidSequence,Pending review,
+100001,2026-05-21,Thu,TAP_EVENING,InvalidSequence,Pending review,
+100001,2026-05-22,Fri,BREAK_IN_TWICE,MissingPunch,Pending review,
+100001,2026-05-25,Mon,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100001,2026-05-26,Tue,NO_TYPES,NoShow,Pending review,
+100001,2026-05-27,Wed,IN_OUT_ONLY,MissingPunch,Pending review,
+100001,2026-05-28,Thu,ABSENT,NoShow,Pending review,
+100001,2026-05-29,Fri,PERFECT,none,Approved,7:00
+100001,2026-05-30,Sat,OFF_DAY,none,Pending review,4:18
+100002,2026-04-01,Wed,PERFECT,none,Approved,7:00
+100002,2026-04-02,Thu,LATE,ShortHours,Pending review,6:24
+100002,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,6:32
+100002,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,6:24
+100002,2026-04-05,Sun,OFF_DAY,none,Pending review,4:25
+100002,2026-04-06,Mon,OVERTIME,none,Approved,8:02
+100002,2026-04-07,Tue,NO_BREAK,MissingPunch,Pending review,
+100002,2026-04-08,Wed,LONG_BREAK,none,Approved,6:39
+100002,2026-04-09,Thu,LATE_BREAK,none,Approved,7:00
+100002,2026-04-10,Fri,EARLY_BREAK,none,Approved,7:00
+100002,2026-04-11,Sat,SHORT_BREAK,none,Approved,7:00
+100002,2026-04-13,Mon,MISSING_OUT,MissingPunch,Pending review,
+100002,2026-04-14,Tue,MISSING_IN,MissingPunch,Pending review,
+100002,2026-04-15,Wed,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100002,2026-04-16,Thu,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100002,2026-04-17,Fri,TAP_MORNING,InvalidSequence,Pending review,
+100002,2026-04-18,Sat,TAP_EVENING,InvalidSequence,Pending review,
+100002,2026-04-19,Sun,OFF_DAY,none,Pending review,4:16
+100002,2026-04-20,Mon,BREAK_IN_TWICE,MissingPunch,Pending review,
+100002,2026-04-21,Tue,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100002,2026-04-22,Wed,NO_TYPES,NoShow,Pending review,
+100002,2026-04-23,Thu,IN_OUT_ONLY,MissingPunch,Pending review,
+100002,2026-04-24,Fri,ABSENT,NoShow,Pending review,
+100002,2026-04-25,Sat,PERFECT,none,Approved,7:00
+100002,2026-04-26,Sun,OFF_DAY,none,Pending review,4:10
+100002,2026-04-27,Mon,LATE,ShortHours,Pending review,6:28
+100002,2026-04-28,Tue,EARLY_OUT,ShortHours,Pending review,6:46
+100002,2026-04-29,Wed,LATE_EARLY,ShortHours,Pending review,6:08
+100002,2026-04-30,Thu,OVERTIME,none,Approved,7:17
+100002,2026-05-01,Fri,NO_BREAK,MissingPunch,Pending review,
+100002,2026-05-02,Sat,LONG_BREAK,none,Approved,6:23
+100002,2026-05-04,Mon,LATE_BREAK,none,Approved,7:00
+100002,2026-05-05,Tue,EARLY_BREAK,none,Approved,7:00
+100002,2026-05-06,Wed,SHORT_BREAK,none,Approved,7:00
+100002,2026-05-07,Thu,MISSING_OUT,MissingPunch,Pending review,
+100002,2026-05-08,Fri,MISSING_IN,MissingPunch,Pending review,
+100002,2026-05-09,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100002,2026-05-10,Sun,OFF_DAY,none,Pending review,4:03
+100002,2026-05-11,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100002,2026-05-12,Tue,TAP_MORNING,InvalidSequence,Pending review,
+100002,2026-05-13,Wed,TAP_EVENING,InvalidSequence,Pending review,
+100002,2026-05-14,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
+100002,2026-05-15,Fri,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100002,2026-05-16,Sat,NO_TYPES,NoShow,Pending review,
+100002,2026-05-18,Mon,IN_OUT_ONLY,MissingPunch,Pending review,
+100002,2026-05-19,Tue,ABSENT,NoShow,Pending review,
+100002,2026-05-20,Wed,PERFECT,none,Approved,7:00
+100002,2026-05-21,Thu,LATE,ShortHours,Pending review,6:23
+100002,2026-05-22,Fri,EARLY_OUT,ShortHours,Pending review,6:15
+100002,2026-05-23,Sat,LATE_EARLY,ShortHours,Pending review,6:31
+100002,2026-05-25,Mon,OVERTIME,none,Approved,8:06
+100002,2026-05-26,Tue,NO_BREAK,MissingPunch,Pending review,
+100002,2026-05-27,Wed,LONG_BREAK,none,Approved,6:47
+100002,2026-05-28,Thu,LATE_BREAK,none,Approved,7:00
+100002,2026-05-29,Fri,EARLY_BREAK,none,Approved,7:00
+100002,2026-05-30,Sat,SHORT_BREAK,none,Approved,7:00
+100003,2026-04-01,Wed,PERFECT,none,Approved,7:00
+100003,2026-04-02,Thu,LATE,ShortHours,Pending review,6:30
+100003,2026-04-05,Sun,EARLY_OUT,ShortHours,Pending review,6:34
+100003,2026-04-06,Mon,LATE_EARLY,ShortHours,Pending review,6:17
+100003,2026-04-07,Tue,OVERTIME,none,Approved,8:22
+100003,2026-04-08,Wed,NO_BREAK,MissingPunch,Pending review,
+100003,2026-04-09,Thu,LONG_BREAK,none,Approved,6:34
+100003,2026-04-10,Fri,OFF_DAY,none,Pending review,4:20
+100003,2026-04-11,Sat,OFF_DAY,none,Pending review,4:25
+100003,2026-04-12,Sun,LATE_BREAK,none,Approved,7:00
+100003,2026-04-13,Mon,EARLY_BREAK,none,Approved,7:00
+100003,2026-04-14,Tue,SHORT_BREAK,none,Approved,7:00
+100003,2026-04-15,Wed,MISSING_OUT,MissingPunch,Pending review,
+100003,2026-04-16,Thu,MISSING_IN,MissingPunch,Pending review,
+100003,2026-04-19,Sun,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100003,2026-04-20,Mon,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100003,2026-04-21,Tue,TAP_MORNING,InvalidSequence,Pending review,
+100003,2026-04-22,Wed,TAP_EVENING,InvalidSequence,Pending review,
+100003,2026-04-23,Thu,BREAK_IN_TWICE,MissingPunch,Pending review,
+100003,2026-04-26,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100003,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
+100003,2026-04-28,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
+100003,2026-04-29,Wed,ABSENT,NoShow,Pending review,
+100003,2026-04-30,Thu,PERFECT,none,Approved,7:00
+100003,2026-05-03,Sun,LATE,ShortHours,Pending review,6:34
+100003,2026-05-04,Mon,EARLY_OUT,ShortHours,Pending review,6:39
+100003,2026-05-05,Tue,LATE_EARLY,ShortHours,Pending review,6:29
+100003,2026-05-06,Wed,OVERTIME,none,Approved,8:13
+100003,2026-05-07,Thu,NO_BREAK,MissingPunch,Pending review,
+100003,2026-05-10,Sun,LONG_BREAK,none,Approved,6:42
+100003,2026-05-11,Mon,LATE_BREAK,none,Approved,7:00
+100003,2026-05-12,Tue,EARLY_BREAK,none,Approved,7:00
+100003,2026-05-13,Wed,SHORT_BREAK,none,Approved,7:00
+100003,2026-05-14,Thu,MISSING_OUT,MissingPunch,Pending review,
+100003,2026-05-17,Sun,MISSING_IN,MissingPunch,Pending review,
+100003,2026-05-18,Mon,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100003,2026-05-19,Tue,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100003,2026-05-20,Wed,TAP_MORNING,InvalidSequence,Pending review,
+100003,2026-05-21,Thu,TAP_EVENING,InvalidSequence,Pending review,
+100003,2026-05-24,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
+100003,2026-05-25,Mon,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100003,2026-05-26,Tue,NO_TYPES,NoShow,Pending review,
+100003,2026-05-27,Wed,IN_OUT_ONLY,MissingPunch,Pending review,
+100003,2026-05-28,Thu,ABSENT,NoShow,Pending review,
+100003,2026-05-30,Sat,OFF_DAY,none,Pending review,4:20
+100004,2026-04-01,Wed,PERFECT,none,Approved,10:00
+100004,2026-04-02,Thu,LATE,ShortHours,Pending review,9:27
+100004,2026-04-06,Mon,EARLY_OUT,ShortHours,Pending review,9:30
+100004,2026-04-07,Tue,LATE_EARLY,ShortHours,Pending review,9:21
+100004,2026-04-08,Wed,OVERTIME,none,Approved,10:43
+100004,2026-04-09,Thu,NO_BREAK,MissingPunch,Pending review,
+100004,2026-04-13,Mon,LONG_BREAK,none,Approved,9:50
+100004,2026-04-14,Tue,LATE_BREAK,none,Approved,10:00
+100004,2026-04-15,Wed,EARLY_BREAK,none,Approved,10:00
+100004,2026-04-16,Thu,SHORT_BREAK,none,Approved,10:00
+100004,2026-04-20,Mon,MISSING_OUT,MissingPunch,Pending review,
+100004,2026-04-21,Tue,MISSING_IN,MissingPunch,Pending review,
+100004,2026-04-22,Wed,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100004,2026-04-23,Thu,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100004,2026-04-27,Mon,TAP_MORNING,InvalidSequence,Pending review,
+100004,2026-04-28,Tue,TAP_EVENING,InvalidSequence,Pending review,
+100004,2026-04-29,Wed,BREAK_IN_TWICE,MissingPunch,Pending review,
+100004,2026-04-30,Thu,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100004,2026-05-04,Mon,NO_TYPES,NoShow,Pending review,
+100004,2026-05-05,Tue,IN_OUT_ONLY,MissingPunch,Pending review,
+100004,2026-05-06,Wed,ABSENT,NoShow,Pending review,
+100004,2026-05-07,Thu,PERFECT,none,Approved,10:00
+100004,2026-05-11,Mon,LATE,ShortHours,Pending review,9:29
+100004,2026-05-12,Tue,EARLY_OUT,ShortHours,Pending review,9:37
+100004,2026-05-13,Wed,LATE_EARLY,ShortHours,Pending review,9:34
+100004,2026-05-14,Thu,OVERTIME,none,Approved,11:09
+100004,2026-05-16,Sat,OFF_DAY,none,Pending review,4:05
+100004,2026-05-17,Sun,OFF_DAY,none,Pending review,4:11
+100004,2026-05-18,Mon,NO_BREAK,MissingPunch,Pending review,
+100004,2026-05-19,Tue,LONG_BREAK,none,Approved,9:38
+100004,2026-05-20,Wed,LATE_BREAK,none,Approved,10:00
+100004,2026-05-21,Thu,EARLY_BREAK,none,Approved,10:00
+100004,2026-05-25,Mon,SHORT_BREAK,none,Approved,10:00
+100004,2026-05-26,Tue,MISSING_OUT,MissingPunch,Pending review,
+100004,2026-05-27,Wed,MISSING_IN,MissingPunch,Pending review,
+100004,2026-05-28,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100005,2026-04-01,Wed,H_PERFECT,none,Approved,4:28
+100005,2026-04-02,Thu,H_OVERNIGHT,none,Approved,8:03
+100005,2026-04-03,Fri,H_SPLIT,none,Approved,7:16
+100005,2026-04-04,Sat,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-04-06,Mon,H_PERFECT,none,Approved,5:49
+100005,2026-04-07,Tue,H_OVERNIGHT,none,Approved,8:15
+100005,2026-04-08,Wed,H_SPLIT,none,Approved,7:45
+100005,2026-04-09,Thu,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-04-11,Sat,H_PERFECT,none,Approved,7:26
+100005,2026-04-12,Sun,H_OVERNIGHT,none,Approved,8:07
+100005,2026-04-13,Mon,H_SPLIT,none,Approved,7:51
+100005,2026-04-14,Tue,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-04-16,Thu,H_PERFECT,none,Approved,6:04
+100005,2026-04-17,Fri,H_OVERNIGHT,none,Approved,8:03
+100005,2026-04-18,Sat,H_SPLIT,none,Approved,8:37
+100005,2026-04-19,Sun,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-04-21,Tue,H_PERFECT,none,Approved,6:35
+100005,2026-04-22,Wed,H_OVERNIGHT,none,Approved,8:19
+100005,2026-04-23,Thu,H_SPLIT,none,Approved,8:55
+100005,2026-04-24,Fri,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-04-26,Sun,H_PERFECT,none,Approved,7:22
+100005,2026-04-27,Mon,H_OVERNIGHT,none,Approved,8:23
+100005,2026-04-28,Tue,H_SPLIT,none,Approved,7:13
+100005,2026-04-29,Wed,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-01,Fri,H_PERFECT,none,Approved,9:27
+100005,2026-05-02,Sat,H_OVERNIGHT,none,Approved,8:20
+100005,2026-05-03,Sun,H_SPLIT,none,Approved,8:34
+100005,2026-05-04,Mon,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-06,Wed,H_PERFECT,none,Approved,7:31
+100005,2026-05-07,Thu,H_OVERNIGHT,none,Approved,8:10
+100005,2026-05-08,Fri,H_SPLIT,none,Approved,7:33
+100005,2026-05-09,Sat,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-11,Mon,H_PERFECT,none,Approved,6:29
+100005,2026-05-12,Tue,H_OVERNIGHT,none,Approved,8:19
+100005,2026-05-13,Wed,H_SPLIT,none,Approved,7:52
+100005,2026-05-14,Thu,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-16,Sat,H_PERFECT,none,Approved,7:16
+100005,2026-05-17,Sun,H_OVERNIGHT,none,Approved,8:23
+100005,2026-05-18,Mon,H_SPLIT,none,Approved,8:09
+100005,2026-05-19,Tue,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-21,Thu,H_PERFECT,none,Approved,9:48
+100005,2026-05-22,Fri,H_OVERNIGHT,none,Approved,8:19
+100005,2026-05-23,Sat,H_SPLIT,none,Approved,8:32
+100005,2026-05-24,Sun,H_MISSING_OUT,MissingPunch,Pending review,
+100005,2026-05-26,Tue,H_PERFECT,none,Approved,8:27
+100005,2026-05-27,Wed,H_OVERNIGHT,none,Approved,8:15
+100005,2026-05-28,Thu,H_SPLIT,none,Approved,7:47
+100005,2026-05-29,Fri,H_MISSING_OUT,MissingPunch,Pending review,
+100006,2026-04-03,Fri,OFF_DAY,none,Pending review,4:12
+100006,2026-04-04,Sat,PERFECT,none,Approved,7:00
+100006,2026-04-05,Sun,EARLY_OUT,ShortHours,Pending review,6:41
+100006,2026-04-11,Sat,OVERTIME,none,Approved,8:05
+100006,2026-04-12,Sun,LONG_BREAK,none,Approved,6:23
+100006,2026-04-18,Sat,EARLY_BREAK,none,Approved,7:00
+100006,2026-04-19,Sun,MISSING_OUT,MissingPunch,Pending review,
+100006,2026-04-20,Mon,OFF_DAY,none,Pending review,4:00
+100006,2026-04-21,Tue,OFF_DAY,none,Pending review,4:05
+100006,2026-04-25,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100006,2026-04-26,Sun,TAP_MORNING,InvalidSequence,Pending review,
+100006,2026-04-28,Tue,OFF_DAY,none,Pending review,4:15
+100006,2026-04-29,Wed,OFF_DAY,none,Pending review,4:21
+100006,2026-05-02,Sat,BREAK_IN_TWICE,MissingPunch,Pending review,
+100006,2026-05-03,Sun,NO_TYPES,NoShow,Pending review,
+100006,2026-05-09,Sat,ABSENT,NoShow,Pending review,
+100006,2026-05-10,Sun,PERFECT,none,Approved,7:00
+100006,2026-05-12,Tue,OFF_DAY,none,Pending review,4:04
+100006,2026-05-13,Wed,OFF_DAY,none,Pending review,4:10
+100006,2026-05-16,Sat,EARLY_OUT,ShortHours,Pending review,6:19
+100006,2026-05-17,Sun,OVERTIME,none,Approved,8:03
+100006,2026-05-23,Sat,LONG_BREAK,none,Approved,6:47
+100006,2026-05-24,Sun,EARLY_BREAK,none,Approved,7:00
+100006,2026-05-25,Mon,OFF_DAY,none,Pending review,4:09
+100006,2026-05-30,Sat,MISSING_OUT,MissingPunch,Pending review,
+100007,2026-04-04,Sat,LATE,ShortHours,Pending review,6:48
+100007,2026-04-05,Sun,LATE_EARLY,ShortHours,Pending review,6:31
+100007,2026-04-07,Tue,OFF_DAY,none,Pending review,4:22
+100007,2026-04-08,Wed,OFF_DAY,none,Pending review,4:16
+100007,2026-04-10,Fri,OFF_DAY,none,Pending review,4:21
+100007,2026-04-11,Sat,NO_BREAK,MissingPunch,Pending review,
+100007,2026-04-12,Sun,LATE_BREAK,none,Approved,7:00
+100007,2026-04-17,Fri,OFF_DAY,none,Pending review,4:15
+100007,2026-04-18,Sat,SHORT_BREAK,none,Approved,7:00
+100007,2026-04-19,Sun,MISSING_IN,MissingPunch,Pending review,
+100007,2026-04-20,Mon,OFF_DAY,none,Pending review,4:16
+100007,2026-04-21,Tue,OFF_DAY,none,Pending review,4:11
+100007,2026-04-25,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100007,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100007,2026-04-28,Tue,OFF_DAY,none,Pending review,4:02
+100007,2026-04-29,Wed,OFF_DAY,none,Pending review,4:26
+100007,2026-05-02,Sat,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100007,2026-05-03,Sun,IN_OUT_ONLY,MissingPunch,Pending review,
+100007,2026-05-06,Wed,OFF_DAY,none,Pending review,4:14
+100007,2026-05-07,Thu,OFF_DAY,none,Pending review,4:20
+100007,2026-05-09,Sat,LATE,ShortHours,Pending review,6:17
+100007,2026-05-10,Sun,LATE_EARLY,ShortHours,Pending review,6:30
+100007,2026-05-16,Sat,NO_BREAK,MissingPunch,Pending review,
+100007,2026-05-17,Sun,LATE_BREAK,none,Approved,7:00
+100007,2026-05-23,Sat,SHORT_BREAK,none,Approved,7:00
+100007,2026-05-24,Sun,MISSING_IN,MissingPunch,Pending review,
+100007,2026-05-25,Mon,OFF_DAY,none,Pending review,4:12
+100007,2026-05-26,Tue,OFF_DAY,none,Pending review,4:18
+100007,2026-05-30,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100008,2026-04-01,Wed,PERFECT,none,Approved,8:00
+100008,2026-04-02,Thu,LATE,ShortHours,Pending review,7:17
+100008,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:25
+100008,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:16
+100008,2026-04-05,Sun,OVERTIME,none,Approved,8:41
+100008,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
+100008,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
+100008,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
+100008,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100008,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100008,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100008,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100008,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
+100008,2026-04-14,Tue,ABSENT,NoShow,Pending review,
+100008,2026-04-15,Wed,PERFECT,none,Approved,8:00
+100008,2026-04-16,Thu,LATE,ShortHours,Pending review,7:15
+100008,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:42
+100008,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:22
+100008,2026-04-19,Sun,OVERTIME,none,Approved,9:26
+100008,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
+100008,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
+100008,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
+100008,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100008,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100008,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100008,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100008,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
+100008,2026-04-28,Tue,ABSENT,NoShow,Pending review,
+100008,2026-04-29,Wed,PERFECT,none,Approved,8:00
+100008,2026-04-30,Thu,LATE,ShortHours,Pending review,7:33
+100008,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:19
+100008,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:19
+100008,2026-05-03,Sun,OVERTIME,none,Approved,8:40
+100008,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
+100008,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
+100008,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
+100008,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100008,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100008,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100008,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100008,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
+100008,2026-05-12,Tue,ABSENT,NoShow,Pending review,
+100008,2026-05-13,Wed,PERFECT,none,Approved,8:00
+100008,2026-05-14,Thu,LATE,ShortHours,Pending review,7:25
+100008,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:33
+100008,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:22
+100008,2026-05-17,Sun,OVERTIME,none,Approved,8:15
+100008,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
+100008,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
+100008,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
+100008,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100008,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100008,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100008,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100008,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
+100008,2026-05-26,Tue,ABSENT,NoShow,Pending review,
+100008,2026-05-27,Wed,PERFECT,none,Approved,8:00
+100008,2026-05-28,Thu,LATE,ShortHours,Pending review,7:18
+100008,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:45
+100008,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:23
+100009,2026-04-01,Wed,PERFECT,none,Approved,8:00
+100009,2026-04-02,Thu,LATE,ShortHours,Pending review,7:24
+100009,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:16
+100009,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:21
+100009,2026-04-05,Sun,OVERTIME,none,Approved,8:54
+100009,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
+100009,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
+100009,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
+100009,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100009,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100009,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100009,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100009,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
+100009,2026-04-14,Tue,ABSENT,NoShow,Pending review,
+100009,2026-04-15,Wed,PERFECT,none,Approved,8:00
+100009,2026-04-16,Thu,LATE,ShortHours,Pending review,7:41
+100009,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:49
+100009,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:12
+100009,2026-04-19,Sun,OVERTIME,none,Approved,8:51
+100009,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
+100009,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
+100009,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
+100009,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100009,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100009,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100009,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100009,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
+100009,2026-04-28,Tue,ABSENT,NoShow,Pending review,
+100009,2026-04-29,Wed,PERFECT,none,Approved,8:00
+100009,2026-04-30,Thu,LATE,ShortHours,Pending review,7:47
+100009,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:48
+100009,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:13
+100009,2026-05-03,Sun,OVERTIME,none,Approved,8:59
+100009,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
+100009,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
+100009,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
+100009,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100009,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100009,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100009,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100009,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
+100009,2026-05-12,Tue,ABSENT,NoShow,Pending review,
+100009,2026-05-13,Wed,PERFECT,none,Approved,8:00
+100009,2026-05-14,Thu,LATE,ShortHours,Pending review,7:35
+100009,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:27
+100009,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:16
+100009,2026-05-17,Sun,OVERTIME,none,Approved,8:21
+100009,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
+100009,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
+100009,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
+100009,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100009,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100009,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100009,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100009,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
+100009,2026-05-26,Tue,ABSENT,NoShow,Pending review,
+100009,2026-05-27,Wed,PERFECT,none,Approved,8:00
+100009,2026-05-28,Thu,LATE,ShortHours,Pending review,7:43
+100009,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:16
+100009,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:12
+100010,2026-04-01,Wed,PERFECT,none,Approved,8:00
+100010,2026-04-02,Thu,LATE,ShortHours,Pending review,7:49
+100010,2026-04-03,Fri,EARLY_OUT,ShortHours,Pending review,7:41
+100010,2026-04-04,Sat,LATE_EARLY,ShortHours,Pending review,7:18
+100010,2026-04-05,Sun,OVERTIME,none,Approved,9:22
+100010,2026-04-06,Mon,SHORT_BREAK,none,Approved,8:00
+100010,2026-04-07,Tue,MISSING_OUT,MissingPunch,Pending review,
+100010,2026-04-08,Wed,MISSING_IN,MissingPunch,Pending review,
+100010,2026-04-09,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100010,2026-04-10,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100010,2026-04-11,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100010,2026-04-12,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100010,2026-04-13,Mon,NO_TYPES,NoShow,Pending review,
+100010,2026-04-14,Tue,ABSENT,NoShow,Pending review,
+100010,2026-04-15,Wed,PERFECT,none,Approved,8:00
+100010,2026-04-16,Thu,LATE,ShortHours,Pending review,7:44
+100010,2026-04-17,Fri,EARLY_OUT,ShortHours,Pending review,7:17
+100010,2026-04-18,Sat,LATE_EARLY,ShortHours,Pending review,7:18
+100010,2026-04-19,Sun,OVERTIME,none,Approved,8:50
+100010,2026-04-20,Mon,SHORT_BREAK,none,Approved,8:00
+100010,2026-04-21,Tue,MISSING_OUT,MissingPunch,Pending review,
+100010,2026-04-22,Wed,MISSING_IN,MissingPunch,Pending review,
+100010,2026-04-23,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100010,2026-04-24,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100010,2026-04-25,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100010,2026-04-26,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100010,2026-04-27,Mon,NO_TYPES,NoShow,Pending review,
+100010,2026-04-28,Tue,ABSENT,NoShow,Pending review,
+100010,2026-04-29,Wed,PERFECT,none,Approved,8:00
+100010,2026-04-30,Thu,LATE,ShortHours,Pending review,7:28
+100010,2026-05-01,Fri,EARLY_OUT,ShortHours,Pending review,7:34
+100010,2026-05-02,Sat,LATE_EARLY,ShortHours,Pending review,7:24
+100010,2026-05-03,Sun,OVERTIME,none,Approved,9:22
+100010,2026-05-04,Mon,SHORT_BREAK,none,Approved,8:00
+100010,2026-05-05,Tue,MISSING_OUT,MissingPunch,Pending review,
+100010,2026-05-06,Wed,MISSING_IN,MissingPunch,Pending review,
+100010,2026-05-07,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100010,2026-05-08,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100010,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100010,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100010,2026-05-11,Mon,NO_TYPES,NoShow,Pending review,
+100010,2026-05-12,Tue,ABSENT,NoShow,Pending review,
+100010,2026-05-13,Wed,PERFECT,none,Approved,8:00
+100010,2026-05-14,Thu,LATE,ShortHours,Pending review,7:28
+100010,2026-05-15,Fri,EARLY_OUT,ShortHours,Pending review,7:20
+100010,2026-05-16,Sat,LATE_EARLY,ShortHours,Pending review,7:27
+100010,2026-05-17,Sun,OVERTIME,none,Approved,8:45
+100010,2026-05-18,Mon,SHORT_BREAK,none,Approved,8:00
+100010,2026-05-19,Tue,MISSING_OUT,MissingPunch,Pending review,
+100010,2026-05-20,Wed,MISSING_IN,MissingPunch,Pending review,
+100010,2026-05-21,Thu,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100010,2026-05-22,Fri,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100010,2026-05-23,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100010,2026-05-24,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100010,2026-05-25,Mon,NO_TYPES,NoShow,Pending review,
+100010,2026-05-26,Tue,ABSENT,NoShow,Pending review,
+100010,2026-05-27,Wed,PERFECT,none,Approved,8:00
+100010,2026-05-28,Thu,LATE,ShortHours,Pending review,7:23
+100010,2026-05-29,Fri,EARLY_OUT,ShortHours,Pending review,7:31
+100010,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,7:22
+100011,2026-04-01,Wed,OFF_DAY,none,Pending review,4:29
+100011,2026-04-02,Thu,OFF_DAY,none,Pending review,4:05
+100011,2026-04-09,Thu,OFF_DAY,none,Pending review,4:15
+100011,2026-04-11,Sat,PERFECT,none,Approved,7:00
+100011,2026-04-12,Sun,LATE_EARLY,ShortHours,Pending review,6:32
+100011,2026-04-13,Mon,OFF_DAY,none,Pending review,4:00
+100011,2026-04-14,Tue,OFF_DAY,none,Pending review,4:24
+100011,2026-04-22,Wed,OFF_DAY,none,Pending review,4:17
+100011,2026-04-23,Thu,OFF_DAY,none,Pending review,4:22
+100011,2026-04-25,Sat,LONG_BREAK,none,Approved,6:42
+100011,2026-04-26,Sun,SHORT_BREAK,none,Approved,7:00
+100011,2026-05-02,Sat,OFF_DAY,none,Pending review,4:00
+100011,2026-05-05,Tue,OFF_DAY,none,Pending review,4:20
+100011,2026-05-09,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100011,2026-05-10,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100011,2026-05-13,Wed,OFF_DAY,none,Pending review,4:20
+100011,2026-05-18,Mon,OFF_DAY,none,Pending review,4:10
+100011,2026-05-23,Sat,NO_TYPES,NoShow,Pending review,
+100011,2026-05-24,Sun,PERFECT,none,Approved,7:00
+100011,2026-05-25,Mon,OFF_DAY,none,Pending review,4:04
+100012,2026-04-02,Thu,OFF_DAY,none,Pending review,4:14
+100012,2026-04-03,Fri,OFF_DAY,none,Pending review,4:08
+100012,2026-04-11,Sat,LATE,ShortHours,Pending review,6:27
+100012,2026-04-12,Sun,OVERTIME,none,Approved,7:40
+100012,2026-04-13,Mon,OFF_DAY,none,Pending review,4:04
+100012,2026-04-23,Thu,OFF_DAY,none,Pending review,4:11
+100012,2026-04-24,Fri,OFF_DAY,none,Pending review,4:21
+100012,2026-04-25,Sat,LATE_BREAK,none,Approved,7:00
+100012,2026-04-26,Sun,MISSING_OUT,MissingPunch,Pending review,
+100012,2026-05-03,Sun,OFF_DAY,none,Pending review,4:06
+100012,2026-05-04,Mon,OFF_DAY,none,Pending review,4:12
+100012,2026-05-09,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100012,2026-05-10,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
+100012,2026-05-11,Mon,OFF_DAY,none,Pending review,4:07
+100012,2026-05-12,Tue,OFF_DAY,none,Pending review,4:01
+100012,2026-05-19,Tue,OFF_DAY,none,Pending review,4:22
+100012,2026-05-21,Thu,OFF_DAY,none,Pending review,4:11
+100012,2026-05-23,Sat,IN_OUT_ONLY,MissingPunch,Pending review,
+100012,2026-05-24,Sun,LATE,ShortHours,Pending review,6:23
+100012,2026-05-26,Tue,OFF_DAY,none,Pending review,4:01
+100013,2026-04-04,Sat,OFF_DAY,none,Pending review,4:01
+100013,2026-04-05,Sun,OFF_DAY,none,Pending review,4:06
+100013,2026-04-10,Fri,OFF_DAY,none,Pending review,4:01
+100013,2026-04-11,Sat,EARLY_OUT,ShortHours,Pending review,6:20
+100013,2026-04-12,Sun,NO_BREAK,MissingPunch,Pending review,
+100013,2026-04-13,Mon,OFF_DAY,none,Pending review,4:07
+100013,2026-04-18,Sat,OFF_DAY,none,Pending review,4:16
+100013,2026-04-19,Sun,OFF_DAY,none,Pending review,4:10
+100013,2026-04-20,Mon,OFF_DAY,none,Pending review,4:03
+100013,2026-04-25,Sat,EARLY_BREAK,none,Approved,7:00
+100013,2026-04-26,Sun,MISSING_IN,MissingPunch,Pending review,
+100013,2026-04-27,Mon,OFF_DAY,none,Pending review,4:28
+100013,2026-04-28,Tue,OFF_DAY,none,Pending review,4:19
+100013,2026-05-01,Fri,OFF_DAY,none,Pending review,4:14
+100013,2026-05-08,Fri,OFF_DAY,none,Pending review,4:05
+100013,2026-05-09,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100013,2026-05-10,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100013,2026-05-14,Thu,OFF_DAY,none,Pending review,4:19
+100013,2026-05-15,Fri,OFF_DAY,none,Pending review,4:24
+100013,2026-05-23,Sat,ABSENT,NoShow,Pending review,
+100013,2026-05-24,Sun,EARLY_OUT,ShortHours,Pending review,6:43
+100013,2026-05-27,Wed,OFF_DAY,none,Pending review,4:22
+100014,2026-04-01,Wed,OFF_DAY,none,Pending review,4:22
+100014,2026-04-04,Sat,PERFECT,none,Approved,7:00
+100014,2026-04-05,Sun,LATE_EARLY,ShortHours,Pending review,6:14
+100014,2026-04-08,Wed,OFF_DAY,none,Pending review,4:12
+100014,2026-04-09,Thu,OFF_DAY,none,Pending review,4:06
+100014,2026-04-14,Tue,OFF_DAY,none,Pending review,4:12
+100014,2026-04-18,Sat,LONG_BREAK,none,Approved,6:22
+100014,2026-04-19,Sun,SHORT_BREAK,none,Approved,7:00
+100014,2026-04-24,Fri,OFF_DAY,none,Pending review,4:07
+100014,2026-04-25,Sat,OFF_DAY,none,Pending review,4:01
+100014,2026-05-01,Fri,OFF_DAY,none,Pending review,4:20
+100014,2026-05-02,Sat,FIRST_IS_OUT,MissingPunch + InvalidSequence,Pending review,
+100014,2026-05-03,Sun,TAP_EVENING,InvalidSequence,Pending review,
+100014,2026-05-08,Fri,OFF_DAY,none,Pending review,4:00
+100014,2026-05-09,Sat,OFF_DAY,none,Pending review,4:05
+100014,2026-05-14,Thu,OFF_DAY,none,Pending review,4:00
+100014,2026-05-16,Sat,NO_TYPES,NoShow,Pending review,
+100014,2026-05-17,Sun,PERFECT,none,Approved,7:00
+100014,2026-05-23,Sat,OFF_DAY,none,Pending review,4:27
+100014,2026-05-24,Sun,OFF_DAY,none,Pending review,4:02
+100014,2026-05-30,Sat,LATE_EARLY,ShortHours,Pending review,6:06
+100015,2026-04-01,Wed,OFF_DAY,none,Pending review,4:28
+100015,2026-04-04,Sat,LATE,ShortHours,Pending review,6:40
+100015,2026-04-05,Sun,OVERTIME,none,Approved,7:17
+100015,2026-04-08,Wed,OFF_DAY,none,Pending review,4:08
+100015,2026-04-09,Thu,OFF_DAY,none,Pending review,4:14
+100015,2026-04-16,Thu,OFF_DAY,none,Pending review,4:15
+100015,2026-04-17,Fri,OFF_DAY,none,Pending review,4:10
+100015,2026-04-18,Sat,LATE_BREAK,none,Approved,7:00
+100015,2026-04-19,Sun,MISSING_OUT,MissingPunch,Pending review,
+100015,2026-04-22,Wed,OFF_DAY,none,Pending review,4:16
+100015,2026-04-25,Sat,OFF_DAY,none,Pending review,4:10
+100015,2026-04-30,Thu,OFF_DAY,none,Pending review,4:21
+100015,2026-05-01,Fri,OFF_DAY,none,Pending review,4:01
+100015,2026-05-02,Sat,LAST_IS_IN,MissingPunch + InvalidSequence,Pending review,
+100015,2026-05-03,Sun,BREAK_IN_TWICE,MissingPunch,Pending review,
+100015,2026-05-06,Wed,OFF_DAY,none,Pending review,4:11
+100015,2026-05-09,Sat,OFF_DAY,none,Pending review,4:15
+100015,2026-05-14,Thu,OFF_DAY,none,Pending review,4:20
+100015,2026-05-16,Sat,IN_OUT_ONLY,MissingPunch,Pending review,
+100015,2026-05-17,Sun,LATE,ShortHours,Pending review,6:35
+100015,2026-05-20,Wed,OFF_DAY,none,Pending review,4:20
+100015,2026-05-27,Wed,OFF_DAY,none,Pending review,4:25
+100015,2026-05-28,Thu,OFF_DAY,none,Pending review,4:05
+100015,2026-05-30,Sat,OVERTIME,none,Approved,7:28
+100016,2026-04-02,Thu,OFF_DAY,none,Pending review,4:14
+100016,2026-04-04,Sat,EARLY_OUT,ShortHours,Pending review,6:16
+100016,2026-04-05,Sun,NO_BREAK,MissingPunch,Pending review,
+100016,2026-04-11,Sat,OFF_DAY,none,Pending review,4:27
+100016,2026-04-16,Thu,OFF_DAY,none,Pending review,4:03
+100016,2026-04-18,Sat,EARLY_BREAK,none,Approved,7:00
+100016,2026-04-19,Sun,MISSING_IN,MissingPunch,Pending review,
+100016,2026-04-21,Tue,OFF_DAY,none,Pending review,4:25
+100016,2026-04-22,Wed,OFF_DAY,none,Pending review,4:19
+100016,2026-04-29,Wed,OFF_DAY,none,Pending review,4:09
+100016,2026-05-02,Sat,TAP_MORNING,InvalidSequence,Pending review,
+100016,2026-05-03,Sun,BREAK_OUT_TWICE,MissingPunch + InvalidSequence,Pending review,
+100016,2026-05-06,Wed,OFF_DAY,none,Pending review,4:22
+100016,2026-05-07,Thu,OFF_DAY,none,Pending review,4:28
+100016,2026-05-10,Sun,OFF_DAY,none,Pending review,4:15
+100016,2026-05-16,Sat,ABSENT,NoShow,Pending review,
+100016,2026-05-17,Sun,EARLY_OUT,ShortHours,Pending review,6:40
+100016,2026-05-18,Mon,OFF_DAY,none,Pending review,4:29
+100016,2026-05-24,Sun,OFF_DAY,none,Pending review,4:28
+100016,2026-05-27,Wed,OFF_DAY,none,Pending review,4:23
+100016,2026-05-30,Sat,NO_BREAK,MissingPunch,Pending review,
+100017,2026-04-01,Wed,OFF_DAY,none,Pending review,4:00
+100017,2026-04-06,Mon,OFF_DAY,none,Pending review,4:21
+100017,2026-04-07,Tue,OFF_DAY,none,Pending review,4:26
+100017,2026-04-09,Thu,OFF_DAY,none,Pending review,4:16
+100017,2026-04-12,Sun,OFF_DAY,none,Pending review,4:17
+100017,2026-04-14,Tue,OFF_DAY,none,Pending review,4:29
+100017,2026-04-15,Wed,OFF_DAY,none,Pending review,4:23
+100017,2026-04-17,Fri,OFF_DAY,none,Pending review,4:04
+100017,2026-04-22,Wed,OFF_DAY,none,Pending review,4:19
+100017,2026-04-23,Thu,OFF_DAY,none,Pending review,4:25
+100017,2026-04-24,Fri,OFF_DAY,none,Pending review,4:01
+100017,2026-04-25,Sat,OFF_DAY,none,Pending review,4:07
+100017,2026-04-30,Thu,OFF_DAY,none,Pending review,4:01
+100017,2026-05-01,Fri,OFF_DAY,none,Pending review,4:03
+100017,2026-05-06,Wed,OFF_DAY,none,Pending review,4:04
+100017,2026-05-07,Thu,OFF_DAY,none,Pending review,4:28
+100017,2026-05-08,Fri,OFF_DAY,none,Pending review,4:23
+100017,2026-05-09,Sat,OFF_DAY,none,Pending review,4:17
+100017,2026-05-14,Thu,OFF_DAY,none,Pending review,4:22
+100017,2026-05-15,Fri,OFF_DAY,none,Pending review,4:28
+100017,2026-05-16,Sat,OFF_DAY,none,Pending review,4:04
+100017,2026-05-17,Sun,OFF_DAY,none,Pending review,4:09
+100017,2026-05-21,Thu,OFF_DAY,none,Pending review,4:05
+100017,2026-05-24,Sun,OFF_DAY,none,Pending review,4:18
+100017,2026-05-25,Mon,OFF_DAY,none,Pending review,4:12
+100017,2026-05-26,Tue,OFF_DAY,none,Pending review,4:29
+100017,2026-05-27,Wed,OFF_DAY,none,Pending review,4:24
+100017,2026-05-29,Fri,OFF_DAY,none,Pending review,4:20
+100017,2026-05-30,Sat,OFF_DAY,none,Pending review,4:17

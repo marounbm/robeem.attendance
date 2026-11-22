@@ -52,10 +52,13 @@ public sealed class ScheduleScenarioTests
         // The employees of the files are named the same way, one (or a few) for each schedule and team that works.
         var files = ScenarioGroup.All.SelectMany(g => g.CoverageCases.Select(c => g.EmployeeFor(c).Number)).ToList();
         Assert.Equal(files.Count, files.Distinct(StringComparer.Ordinal).Count());
-        Assert.Contains("SW-ALL", files);
-        Assert.Contains("AWS-WA-ALL3", files);
-        Assert.Contains("ODHS-ALL", files);
         Assert.Equal(17, files.Count);
+
+        // Numbered from 100001 in the order of the numbering (the most common sort of schedule first), one after another, with no gap.
+        Assert.Equal(Enumerable.Range(100001, 17).Select(n => n.ToString(global::System.Globalization.CultureInfo.InvariantCulture)), files.Order(StringComparer.Ordinal));
+        var standard = ScenarioGroup.All.First(g => g.ScheduleTitle == "Standard Week");
+        var custom = ScenarioGroup.All.First(g => g.ScheduleTitle == "Custom Workweek");
+        Assert.Equal(("100001", "100017"), (standard.EmployeeFor(standard.CoverageCases[0]).Number, custom.EmployeeFor(custom.CoverageCases[0]).Number));
     }
 
     [Fact]
@@ -253,23 +256,23 @@ public sealed class ScheduleScenarioTests
         var files = new SortedDictionary<string, string>(StringComparer.Ordinal);
         var employees = new StringBuilder("employee_number,first_name,last_name,department,time_schedule,team,pay_basis,device_id\r\n");
         var expected = new StringBuilder("employee_number,date,weekday,case,expected_exceptions,expected_status,expected_hours_worked\r\n");
-        foreach (var group in ScenarioGroup.All)
+        var people = ScenarioGroup.All
+            .SelectMany(g => g.CoverageCases.Select(c => (Group: g, Scenario: c)))
+            .OrderBy(p => p.Group.EmployeeFor(p.Scenario).Number, StringComparer.Ordinal);
+        foreach (var (group, scenario) in people)
         {
-            foreach (var scenario in group.CoverageCases)
-            {
-                var employee = group.EmployeeFor(scenario);
-                var plans = ScenarioPlanner.PlanAll(group, scenario, ScenarioGroup.FirstDay, ScenarioGroup.LastDay);
-                files[$"{employee.Number}.csv"] = ScenarioCsv.Build(employee.Number, plans);
-                employees.Append($"{employee.Number},\"{employee.FirstName}\",\"{employee.LastName}\",\"{employee.Department}\",\"{employee.ScheduleTitle}\",{(employee.TeamTitle is null ? string.Empty : $"\"{employee.TeamTitle}\"")},{(group.OnDemand ? "Hourly" : "Scheduled")},{ScenarioCsv.DeviceId}\r\n");
+            var employee = group.EmployeeFor(scenario);
+            var plans = ScenarioPlanner.PlanAll(group, scenario, ScenarioGroup.FirstDay, ScenarioGroup.LastDay);
+            files[$"{employee.Number}.csv"] = ScenarioCsv.Build(employee.Number, plans);
+            employees.Append($"{employee.Number},\"{employee.FirstName}\",\"{employee.LastName}\",\"{employee.Department}\",\"{employee.ScheduleTitle}\",{(employee.TeamTitle is null ? string.Empty : $"\"{employee.TeamTitle}\"")},{(group.OnDemand ? "Hourly" : "Scheduled")},{ScenarioCsv.DeviceId}\r\n");
 
-                foreach (var plan in plans.Where(p => p.Shift is not null || p.Punches.Count > 0))
-                {
-                    var day = ScenarioOracle.Expect(plan, startingRules);
-                    var exceptions = day.Exceptions.Count == 0 ? "none" : string.Join(" + ", day.Exceptions.OrderBy(e => e));
-                    var status = day.HasRecord ? (day.NeedsReview ? "Pending review" : "Approved") : "no record";
-                    var worked = day.WorkedMinutes is { } minutes ? $"{minutes / 60}:{minutes % 60:00}" : string.Empty;
-                    expected.Append($"{employee.Number},{plan.Date:yyyy-MM-dd},{plan.Date:ddd},{ScenarioPlanner.CodeOf(plan.Kind)},{exceptions},{status},{worked}\r\n");
-                }
+            foreach (var plan in plans.Where(p => p.Shift is not null || p.Punches.Count > 0))
+            {
+                var day = ScenarioOracle.Expect(plan, startingRules);
+                var exceptions = day.Exceptions.Count == 0 ? "none" : string.Join(" + ", day.Exceptions.OrderBy(e => e));
+                var status = day.HasRecord ? (day.NeedsReview ? "Pending review" : "Approved") : "no record";
+                var worked = day.WorkedMinutes is { } minutes ? $"{minutes / 60}:{minutes % 60:00}" : string.Empty;
+                expected.Append($"{employee.Number},{plan.Date:yyyy-MM-dd},{plan.Date:ddd},{ScenarioPlanner.CodeOf(plan.Kind)},{exceptions},{status},{worked}\r\n");
             }
         }
 
@@ -295,7 +298,8 @@ public sealed class ScheduleScenarioTests
         text.AppendLine("  on *System → Delete test employees* with the same file. Nothing creates them at startup.");
         text.AppendLine("- `expected-results.csv` says, for every day, which kind of day it is and what the **starting rules** make of it: the exceptions, whether it waits");
         text.AppendLine("  for review or is approved, and the hours worked. Other rules give other answers.");
-        text.AppendLine("- The employee number is the initials of the schedule (and of the team), a dash and `ALL`. The punches vary from day to day but are the same every run.");
+        text.AppendLine("- The employees are numbered `100001` to `100017`, from the most common sort of schedule to the least (the table at the end): test them in that order.");
+        text.AppendLine("  Their names are the schedule's (and team's), so they are easy to tell apart. The punches vary from day to day but are the same every run.");
         text.AppendLine("- These files are generated by `ScheduleScenarioTests`, which also checks what the engine makes of them against `expected-results.csv`'s rule.");
         text.AppendLine();
         text.AppendLine("| Kind of day | What happens |");
@@ -306,11 +310,12 @@ public sealed class ScheduleScenarioTests
         }
 
         text.AppendLine();
-        text.AppendLine("| Schedule | Team | Number prefix | Employees |");
+        text.AppendLine("| Number | Schedule | Team | File |");
         text.AppendLine("|---|---|---|---|");
-        foreach (var group in ScenarioGroup.All)
+        var employees = ScenarioGroup.All.SelectMany(g => g.CoverageCases.Select(c => (Group: g, Employee: g.EmployeeFor(c)))).OrderBy(e => e.Employee.Number, StringComparer.Ordinal);
+        foreach (var (group, employee) in employees)
         {
-            text.AppendLine($"| {group.ScheduleTitle} | {group.TeamTitle ?? "(everyone)"} | `{group.Prefix}` | {group.CoverageCases.Count} |");
+            text.AppendLine($"| `{employee.Number}` | {group.ScheduleTitle} | {group.TeamTitle ?? "(everyone)"} | `{employee.Number}.csv` |");
         }
 
         return text.ToString();

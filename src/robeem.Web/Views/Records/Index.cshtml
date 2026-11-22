@@ -175,7 +175,7 @@
                             <td class="text-end">@DisplayFormats.Hours(item.TotalUndertimeHours)</td>
                             <td class="text-end">@item.PunchCount</td>
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
-                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span>@if (item.HasInferredPunches)
+                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval, item.TotalUndertimeHours > TimeSpan.Zero)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval, item.TotalUndertimeHours > TimeSpan.Zero)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval, item.TotalUndertimeHours > TimeSpan.Zero)</span>@if (item.HasInferredPunches)
                             {
                                 <span class="inferred-dot" title="Inferred: a punch of this day had no type from the machine, so a rule or the policy chose it." aria-label="Inferred"></span>
                             }</td>

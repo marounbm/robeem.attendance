@@ -11,7 +11,8 @@ public interface IRecordsApiClient
     /// <param name="pageSize">Days per page.</param>
     /// <param name="sort">The column the whole list is sorted by, before it is cut into pages.</param>
     /// <param name="descending">Whether the sort runs from the highest to the lowest.</param>
-    Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken);
+    /// <param name="underTime">true: only the days shown as Under timed; false: not those; null: all.</param>
+    Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, bool? underTime, CancellationToken cancellationToken);
 
     /// <summary>Lists the employees whose days the user may see, to filter the list by one of them.</summary>
     Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(CancellationToken cancellationToken);

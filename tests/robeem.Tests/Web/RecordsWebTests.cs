@@ -21,14 +21,14 @@ public sealed class RecordsWebTests
         var handler = new StubHttpHandler(HttpStatusCode.OK, """{"items":[],"total":0,"page":1,"pageSize":25}""");
         var client = new RecordsApiClient(handler.CreateClient());
 
-        await client.ListAsync(null, null, null, null, false, 1, 25, RecordSortField.Date, false, CancellationToken.None);
-        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, RecordSortField.Worked, true, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, false, 1, 25, RecordSortField.Date, false, null, CancellationToken.None);
+        await client.ListAsync(new DateTime(2026, 10, 1, 14, 30, 0), new DateTime(2026, 10, 31), 12, "PendingReview", true, 3, 50, RecordSortField.Worked, true, true, CancellationToken.None);
 
         var day = new StubHttpHandler(HttpStatusCode.OK, """{"employeeId":7,"employeeName":"Ada Lovelace","processed":true,"versions":[{"id":3,"version":2,"isCurrent":true,"workingHours":"08:00:00"}]}""");
         var detail = await new RecordsApiClient(day.CreateClient()).GetDayAsync(7, new DateTime(2026, 10, 5, 9, 0, 0), CancellationToken.None);
 
         Assert.Equal(
-            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true&sort=Worked&descending=true"],
+            ["/api/attendance/records?page=1&pageSize=25", "/api/attendance/records?page=3&pageSize=50&from=2026-10-01&to=2026-10-31&employeeId=12&status=PendingReview&onlyWithExceptions=true&sort=Worked&descending=true&underTime=true"],
             handler.Requests.Select(r => r.RequestUri!.PathAndQuery));
         Assert.Equal("/api/attendance/records/7/2026-10-05", day.Requests.Single().RequestUri!.PathAndQuery);
         Assert.Equal(TimeSpan.FromHours(8), Assert.Single(detail!.Versions).WorkingHours);
@@ -40,7 +40,7 @@ public sealed class RecordsWebTests
         var page = new StubHttpHandler(HttpStatusCode.OK, """{"items":[{"employeeId":7,"employeeName":"Ada Lovelace"}],"total":61,"page":2,"pageSize":25}""");
         var options = new StubHttpHandler(HttpStatusCode.OK, """[{"id":7,"name":"Ada Lovelace (E-1)"}]""");
 
-        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, RecordSortField.Date, false, CancellationToken.None);
+        var result = await new RecordsApiClient(page.CreateClient()).ListAsync(null, null, null, null, false, 2, 25, RecordSortField.Date, false, null, CancellationToken.None);
         var employees = await new RecordsApiClient(options.CreateClient()).ListEmployeeOptionsAsync(CancellationToken.None);
 
         Assert.Equal((61, 2, 25, 3), (result.Total, result.Page, result.PageSize, result.PageCount));
@@ -156,6 +156,45 @@ public sealed class RecordsWebTests
 
         Assert.Equal((expected, descending), (records.SortAsked, records.DescendingAsked));
         Assert.Equal((expected, descending), (model.Sort, model.Descending));
+    }
+
+    [Fact]
+    public void TheEmployeesScreensLinkToAnEmployeesAttendance_OnlyForWhoMayOpenTheAttendanceScreen()
+    {
+        // The Employees list shows its Attendance link by the rule the menu and the access filter use.
+        var attendance = NavigationMenu.Find("Records")!;
+
+        Assert.Equal(NavAccess.Allowed, NavigationMenu.AccessTo(new FakeActor(["HRAdministrator"]), attendance));
+        Assert.Equal(NavAccess.MissingRole, NavigationMenu.AccessTo(new FakeActor(["PayrollAdministrator"]), attendance));
+        Assert.Equal(NavAccess.MissingRole, NavigationMenu.AccessTo(new FakeActor(["IntegrationAdministrator"]), attendance));
+    }
+
+    [Theory]
+    [InlineData("UnderTimed", "Approved", true)]
+    [InlineData("Approved", "Approved", false)]
+    [InlineData("PendingReview", "PendingReview", null)]
+    [InlineData("Any", null, null)]
+    public async Task TheStatusFilter_AsksForUnderTimedDaysAsApprovedOnesWithTheUnderTimeFilter_AndApprovedLeavesThemOut(string chosen, string? status, bool? underTime)
+    {
+        var records = new FakeRecords();
+
+        await Controller(records, ["HRAdministrator"]).Index(chosen, null, null, false, null, 1, 20, null, null, CancellationToken.None);
+
+        Assert.Equal((status, underTime), (records.StatusAsked, records.UnderTimeAsked));
+    }
+
+    [Theory]
+    [InlineData("Approved", 0, false, true, "Under timed", "primary")]
+    [InlineData("Calculated", 0, false, true, "Under timed", "primary")]
+    [InlineData("Approved", 0, false, false, "Approved", "success")]
+    [InlineData("Approved", 1, false, true, "Approved", "success")]
+    [InlineData("PendingReview", 0, false, true, "Pending review", "warning")]
+    [InlineData("PendingReview", 2, false, true, "Open exceptions", "info")]
+    [InlineData("Approved", 0, true, true, "Pending approval", "warning")]
+    [InlineData("Rejected", 0, false, true, "Rejected", "danger")]
+    public void ADayThatWorkedLessThanScheduled_IsUnderTimed_OnlyWhenNothingIsLeftToDecide(string status, int exceptions, bool pending, bool underTime, string label, string badge)
+    {
+        Assert.Equal((label, badge), (DisplayFormats.DayStatus(status, exceptions, pending, underTime), DisplayFormats.DayStatusBadge(status, exceptions, pending, underTime)));
     }
 
     [Fact]
@@ -485,6 +524,10 @@ public sealed class RecordsWebTests
 
         public bool DescendingAsked { get; private set; }
 
+        public bool? UnderTimeAsked { get; private set; }
+
+        public string? StatusAsked { get; private set; }
+
         public int Total { get; set; }
 
         public IReadOnlyList<RecordDayListItem> Days { get; set; } = Array.Empty<RecordDayListItem>();
@@ -495,9 +538,9 @@ public sealed class RecordsWebTests
 
         public int ServerPage { get; set; } = 1;
 
-        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, CancellationToken cancellationToken)
+        public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, bool? underTime, CancellationToken cancellationToken)
         {
-            (SortAsked, DescendingAsked) = (sort, descending);
+            (SortAsked, DescendingAsked, UnderTimeAsked, StatusAsked) = (sort, descending, underTime, status);
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             (PageAsked, PageSizeAsked) = (page, pageSize);
             ListCalls++;

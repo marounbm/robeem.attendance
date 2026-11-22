@@ -83,6 +83,14 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 : days.Where(d => d.Status == status);
         }
 
+        // A day approved (or with nothing to review) that worked less than scheduled, with no exception open on it, is shown as Under timed.
+        if (filter.UnderTime is { } underTime)
+        {
+            days = underTime
+                ? days.Where(d => (d.Status == AttendanceRecordStatus.Approved || d.Status == AttendanceRecordStatus.Calculated) && d.ExceptionCount == 0 && d.TotalUndertimeHours > TimeSpan.Zero)
+                : days.Where(d => !((d.Status == AttendanceRecordStatus.Approved || d.Status == AttendanceRecordStatus.Calculated) && d.ExceptionCount == 0 && d.TotalUndertimeHours > TimeSpan.Zero));
+        }
+
         if (filter.OnlyWithExceptions)
         {
             days = days.Where(d => d.ExceptionCount > 0);
@@ -248,6 +256,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             TotalWorkingHours = summary?.TotalWorkingHours ?? TimeSpan.Zero,
             TotalOvertimeHours = summary?.TotalOvertimeHours ?? TimeSpan.Zero,
             TotalBreakHours = summary?.TotalBreakHours ?? TimeSpan.Zero,
+            TotalUndertimeHours = summary?.TotalUndertimeHours ?? TimeSpan.Zero,
             ExceptionCount = summary?.ExceptionCount ?? 0,
             Status = (summary?.Status ?? AttendanceRecordStatus.Calculated).ToString(),
             TimeOff = timeOff,

@@ -23,9 +23,20 @@ public sealed class EmployeesController : ControllerBase
     /// <param name="includeInactive">Also the employees who are no longer active.</param>
     /// <param name="page">The 1-based page (default 1). A page past the end answers the last page.</param>
     /// <param name="pageSize">Employees per page (default 20, at most 200).</param>
+    /// <param name="sort">The column to sort by: Number (default, in natural order), Name, Department, JobTitle, TimeSchedule, Manager, HireDate or Status.</param>
+    /// <param name="descending">Sort from the highest to the lowest. The default is ascending.</param>
     [HttpGet]
-    public async Task<PagedResult<EmployeeListItem>> List(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
-        => await _employees.ListAsync(search, includeInactive, page <= 0 ? 1 : page, pageSize, cancellationToken);
+    public async Task<ActionResult<PagedResult<EmployeeListItem>>> List(string? search, bool includeInactive, int page, int pageSize, string? sort, bool descending, CancellationToken cancellationToken)
+    {
+        var field = EmployeeSortField.Number;
+        if (!string.IsNullOrWhiteSpace(sort) && (!Enum.TryParse(sort, ignoreCase: true, out field) || !Enum.IsDefined(field)))
+        {
+            ModelState.AddModelError(nameof(sort), $"The sort must be one of: {string.Join(", ", Enum.GetNames<EmployeeSortField>())}.");
+            return ValidationProblem(ModelState);
+        }
+
+        return await _employees.ListAsync(search, includeInactive, page <= 0 ? 1 : page, pageSize, field, descending, cancellationToken);
+    }
 
     /// <summary>Employees who can be chosen as a manager; <paramref name="excludeId"/> is left out (nobody manages themselves).</summary>
     [HttpGet("manager-options")]

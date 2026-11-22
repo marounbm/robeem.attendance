@@ -65,20 +65,28 @@ public static class DisplayFormats
     /// A day whose correction the employee has sent is <c>Pending approval</c> for everyone who sees it (the employee, their manager and HR),
     /// whatever else is open on it, until the approver decides.
     /// </remarks>
-    public static string DayStatus(string? status, int exceptionCount, bool pendingApproval = false) =>
-        pendingApproval ? "Pending approval" : WaitsForExceptions(status, exceptionCount) ? "Open exceptions" : Words(status == "Calculated" ? "Approved" : status);
+    public static string DayStatus(string? status, int exceptionCount, bool pendingApproval = false, bool underTime = false) =>
+        pendingApproval ? "Pending approval"
+        : WaitsForExceptions(status, exceptionCount) ? "Open exceptions"
+        : IsUnderTimed(status, exceptionCount, underTime) ? "Under timed"
+        : Words(status == "Calculated" ? "Approved" : status);
 
     /// <summary>The Bootstrap badge colour of a day's status; see <see cref="DayStatus"/>.</summary>
-    public static string DayStatusBadge(string? status, int exceptionCount, bool pendingApproval = false) =>
-        pendingApproval ? "warning" : WaitsForExceptions(status, exceptionCount) ? "info" : Badge(status == "Calculated" ? "Approved" : status);
+    public static string DayStatusBadge(string? status, int exceptionCount, bool pendingApproval = false, bool underTime = false) =>
+        pendingApproval ? "warning"
+        : WaitsForExceptions(status, exceptionCount) ? "info"
+        : IsUnderTimed(status, exceptionCount, underTime) ? "primary"
+        : Badge(status == "Calculated" ? "Approved" : status);
 
     /// <summary>Explains a day's status when the name alone would mislead; null when it needs no explanation.</summary>
-    public static string? DayStatusHint(string? status, int exceptionCount, bool pendingApproval = false) =>
+    public static string? DayStatusHint(string? status, int exceptionCount, bool pendingApproval = false, bool underTime = false) =>
         pendingApproval
             ? "A correction was sent for this day and waits for the approver's decision (see Approvals)."
             : WaitsForExceptions(status, exceptionCount)
                 ? "Not ready for review: its open exceptions come first. Once they are corrected, the day appears in Approvals if it still needs a decision."
-                : null;
+                : IsUnderTimed(status, exceptionCount, underTime)
+                    ? "Approved, but less was worked than the shift schedules. The time short is in the Under time column; it is not an exception."
+                    : null;
 
     /// <summary>The Bootstrap badge colour of a status name.</summary>
     public static string Badge(string? status) => status switch
@@ -91,4 +99,7 @@ public static class DisplayFormats
     };
 
     private static bool WaitsForExceptions(string? status, int exceptionCount) => status == "PendingReview" && exceptionCount > 0;
+
+    /// <summary>A day with nothing left to decide (approved, or calculated with nothing to review) that worked less than the shift schedules.</summary>
+    private static bool IsUnderTimed(string? status, int exceptionCount, bool underTime) => underTime && exceptionCount == 0 && status is "Approved" or "Calculated";
 }

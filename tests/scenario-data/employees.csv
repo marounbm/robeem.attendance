@@ -1,18 +1,18 @@
 employee_number,first_name,last_name,department,time_schedule,team,pay_basis,device_id
-SW-ALL,"Standard Week","Every case","Standard Week","Standard Week",,Scheduled,SCN-1
-SDW-ALL,"Six-Day Workweek","Every case","Six-Day Workweek","Six-Day Workweek",,Scheduled,SCN-1
-WS-ALL1,"Weekend Schedule","Every case (1 of 2)","Weekend Schedule","Weekend Schedule",,Scheduled,SCN-1
-WS-ALL2,"Weekend Schedule","Every case (2 of 2)","Weekend Schedule","Weekend Schedule",,Scheduled,SCN-1
-STW-ALL,"Sunday-Thursday Workweek","Every case","Sunday-Thursday Workweek","Sunday-Thursday Workweek",,Scheduled,SCN-1
-AWS-WA-ALL1,"Alternate Weekend Schedule / Weekend A","Every case (1 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
-AWS-WA-ALL2,"Alternate Weekend Schedule / Weekend A","Every case (2 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
-AWS-WA-ALL3,"Alternate Weekend Schedule / Weekend A","Every case (3 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
-AWS-WB-ALL1,"Alternate Weekend Schedule / Weekend B","Every case (1 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
-AWS-WB-ALL2,"Alternate Weekend Schedule / Weekend B","Every case (2 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
-AWS-WB-ALL3,"Alternate Weekend Schedule / Weekend B","Every case (3 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
-FDW-ALL,"Four-Day Workweek","Every case","Four-Day Workweek","Four-Day Workweek",,Scheduled,SCN-1
-CO7D-MT-ALL,"Continuous Operations (7-Day) / Morning Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Morning Team",Scheduled,SCN-1
-CO7D-AT-ALL,"Continuous Operations (7-Day) / Afternoon Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Afternoon Team",Scheduled,SCN-1
-CO7D-NT-ALL,"Continuous Operations (7-Day) / Night Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Night Team",Scheduled,SCN-1
-CW-ALL,"Custom Workweek","Every case","Custom Workweek","Custom Workweek",,Scheduled,SCN-1
-ODHS-ALL,"On Demand (Hourly Staff)","Every case","On Demand (Hourly Staff)","On Demand (Hourly Staff)",,Hourly,SCN-1
+100001,"Standard Week","Every case","Standard Week","Standard Week",,Scheduled,SCN-1
+100002,"Six-Day Workweek","Every case","Six-Day Workweek","Six-Day Workweek",,Scheduled,SCN-1
+100003,"Sunday-Thursday Workweek","Every case","Sunday-Thursday Workweek","Sunday-Thursday Workweek",,Scheduled,SCN-1
+100004,"Four-Day Workweek","Every case","Four-Day Workweek","Four-Day Workweek",,Scheduled,SCN-1
+100005,"On Demand (Hourly Staff)","Every case","On Demand (Hourly Staff)","On Demand (Hourly Staff)",,Hourly,SCN-1
+100006,"Weekend Schedule","Every case (1 of 2)","Weekend Schedule","Weekend Schedule",,Scheduled,SCN-1
+100007,"Weekend Schedule","Every case (2 of 2)","Weekend Schedule","Weekend Schedule",,Scheduled,SCN-1
+100008,"Continuous Operations (7-Day) / Morning Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Morning Team",Scheduled,SCN-1
+100009,"Continuous Operations (7-Day) / Afternoon Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Afternoon Team",Scheduled,SCN-1
+100010,"Continuous Operations (7-Day) / Night Team","Every case","Continuous Operations (7-Day)","Continuous Operations (7-Day)","Night Team",Scheduled,SCN-1
+100011,"Alternate Weekend Schedule / Weekend A","Every case (1 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
+100012,"Alternate Weekend Schedule / Weekend A","Every case (2 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
+100013,"Alternate Weekend Schedule / Weekend A","Every case (3 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend A",Scheduled,SCN-1
+100014,"Alternate Weekend Schedule / Weekend B","Every case (1 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
+100015,"Alternate Weekend Schedule / Weekend B","Every case (2 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
+100016,"Alternate Weekend Schedule / Weekend B","Every case (3 of 3)","Alternate Weekend Schedule","Alternate Weekend Schedule","Weekend B",Scheduled,SCN-1
+100017,"Custom Workweek","Every case","Custom Workweek","Custom Workweek",,Scheduled,SCN-1

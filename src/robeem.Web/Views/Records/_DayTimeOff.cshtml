@@ -1,0 +1,26 @@
+@model robeem.Contracts.Attendance.RecordDayDetail
+@* Leave applied and public holidays that touch the day. Shown after the calculated shifts, or after the note that the day is not calculated yet. *@
+@if (Model.TimeOff.Count > 0)
+{
+    <div class="card border-info mb-3">
+        <div class="card-body py-2">
+            <div class="small text-muted">@(Model.TimeOff.Any(o => o.Kind == "Leave") ? "Leave and time off" : "Time off")</div>
+            @foreach (var off in Model.TimeOff)
+            {
+                <div>
+                    <span class="badge text-bg-info">@(off.Kind == "Leave" ? "Leave applied" : DisplayFormats.Words(off.Kind))</span>
+                    <strong>@DisplayFormats.Words(off.Reference)</strong>
+                    <span class="text-muted">· @(off.IsWholeDay ? "whole day" : $"{off.Start:HH:mm} – {off.End:HH:mm}")</span>
+                    @if (off.LeaveStartDate is { } leaveStart && off.LeaveEndDate is { } leaveEnd && leaveEnd > leaveStart)
+                    {
+                        <span class="text-muted">· leave from @leaveStart.ToString("yyyy-MM-dd") to @leaveEnd.ToString("yyyy-MM-dd")</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(off.Notes))
+                    {
+                        <div class="small text-muted">@off.Notes</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}

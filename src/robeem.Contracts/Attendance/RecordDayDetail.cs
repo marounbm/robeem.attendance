@@ -20,6 +20,9 @@ public sealed class RecordDayDetail
 
     public TimeSpan TotalBreakHours { get; init; }
 
+    /// <summary>Gets how much less than scheduled was worked, after approved leave.</summary>
+    public TimeSpan TotalUndertimeHours { get; init; }
+
     public int ExceptionCount { get; init; }
 
     public string Status { get; init; } = string.Empty;

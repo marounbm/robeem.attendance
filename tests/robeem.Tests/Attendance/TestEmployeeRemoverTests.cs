@@ -28,7 +28,7 @@ public sealed class TestEmployeeRemoverTests : IDisposable
         await PrepareAsync();
         var before = Snapshot();
 
-        var outcome = await RemoveAsync(File("SW-ALL"), preview: true);
+        var outcome = await RemoveAsync(File("100001"), preview: true);
 
         Assert.Equal(TestEmployeeDeleteStatus.Done, outcome.Status);
         var result = outcome.Result!;
@@ -43,10 +43,10 @@ public sealed class TestEmployeeRemoverTests : IDisposable
     public async Task Deleting_RemovesTheEmployeeAndEverythingOfTheirs_AndLeavesTheOtherEmployeeUntouched()
     {
         await PrepareAsync();
-        var other = Snapshot("FDW-ALL");
-        var previewed = (await RemoveAsync(File("SW-ALL"), preview: true)).Result!;
+        var other = Snapshot("100004");
+        var previewed = (await RemoveAsync(File("100001"), preview: true)).Result!;
 
-        var outcome = await RemoveAsync(File("SW-ALL", "NO-SUCH"), confirmation: TestDatabase.TenantA);
+        var outcome = await RemoveAsync(File("100001", "NO-SUCH"), confirmation: TestDatabase.TenantA);
 
         Assert.Equal(TestEmployeeDeleteStatus.Done, outcome.Status);
         var result = outcome.Result!;
@@ -59,16 +59,16 @@ public sealed class TestEmployeeRemoverTests : IDisposable
         // Nothing of the deleted employee is left, however it is found: not the employee, the calculated days, the punches (the ones that failed too), the file.
         using (var db = _harness.Database.CreateContext(TestDatabase.TenantA))
         {
-            Assert.DoesNotContain(db.Profiles, p => p.EmployeeNumber == "SW-ALL");
-            Assert.DoesNotContain(db.RawAttendanceTransactions, r => r.ExternalEmployeeId == "SW-ALL");
-            Assert.Empty(db.AttendanceUploadedFiles.Where(f => f.FileName.StartsWith("SW-ALL")));
-            Assert.DoesNotContain(db.ExternalEmployeeIdMappings, m => m.ExternalEmployeeId == "SW-ALL");
+            Assert.DoesNotContain(db.Profiles, p => p.EmployeeNumber == "100001");
+            Assert.DoesNotContain(db.RawAttendanceTransactions, r => r.ExternalEmployeeId == "100001");
+            Assert.Empty(db.AttendanceUploadedFiles.Where(f => f.FileName.StartsWith("100001")));
+            Assert.DoesNotContain(db.ExternalEmployeeIdMappings, m => m.ExternalEmployeeId == "100001");
             var entry = Assert.Single(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.TestEmployeesDeleted);
-            Assert.Contains("SW-ALL", entry.Details);
+            Assert.Contains("100001", entry.Details);
         }
 
         // The other employee has all of theirs, as it was.
-        Assert.Equal(other, Snapshot("FDW-ALL"));
+        Assert.Equal(other, Snapshot("100004"));
         Assert.True(other.Raw > 0 && other.Records > 0);
     }
 
@@ -78,10 +78,10 @@ public sealed class TestEmployeeRemoverTests : IDisposable
         await PrepareAsync();
         var before = Snapshot();
 
-        Assert.Equal(TestEmployeeDeleteStatus.ConfirmationMismatch, (await RemoveAsync(File("SW-ALL"), confirmation: "tenant")).Status);
-        Assert.Equal(TestEmployeeDeleteStatus.ConfirmationMismatch, (await RemoveAsync(File("SW-ALL"), confirmation: string.Empty)).Status);
-        Assert.Equal(TestEmployeeDeleteStatus.Disabled, (await RemoveAsync(File("SW-ALL"), confirmation: TestDatabase.TenantA, enabled: false)).Status);
-        Assert.Equal(TestEmployeeDeleteStatus.Disabled, (await RemoveAsync(File("SW-ALL"), preview: true, enabled: false)).Status);
+        Assert.Equal(TestEmployeeDeleteStatus.ConfirmationMismatch, (await RemoveAsync(File("100001"), confirmation: "tenant")).Status);
+        Assert.Equal(TestEmployeeDeleteStatus.ConfirmationMismatch, (await RemoveAsync(File("100001"), confirmation: string.Empty)).Status);
+        Assert.Equal(TestEmployeeDeleteStatus.Disabled, (await RemoveAsync(File("100001"), confirmation: TestDatabase.TenantA, enabled: false)).Status);
+        Assert.Equal(TestEmployeeDeleteStatus.Disabled, (await RemoveAsync(File("100001"), preview: true, enabled: false)).Status);
 
         Assert.Equal(before, Snapshot());
     }
@@ -99,7 +99,7 @@ public sealed class TestEmployeeRemoverTests : IDisposable
         Assert.Contains("nothing to delete", unknown.Errors.Single());
         Assert.Contains("employee_number", noColumn.Errors.Single());
         using var db = _harness.Database.CreateContext(TestDatabase.TenantA);
-        Assert.Contains(db.Profiles, p => p.EmployeeNumber == "SW-ALL");
+        Assert.Contains(db.Profiles, p => p.EmployeeNumber == "100001");
     }
 
     [Fact]
@@ -108,15 +108,15 @@ public sealed class TestEmployeeRemoverTests : IDisposable
         await PrepareAsync();
         using (var db = _harness.Database.CreateContext(TestDatabase.TenantA))
         {
-            db.Profiles.Single(p => p.EmployeeNumber == "FDW-ALL").ManagerId = db.Profiles.Single(p => p.EmployeeNumber == "SW-ALL").Id;
+            db.Profiles.Single(p => p.EmployeeNumber == "100004").ManagerId = db.Profiles.Single(p => p.EmployeeNumber == "100001").Id;
             db.SaveChanges();
         }
 
-        var blocked = await RemoveAsync(File("SW-ALL"), confirmation: TestDatabase.TenantA);
-        var both = await RemoveAsync(File("SW-ALL", "FDW-ALL"), confirmation: TestDatabase.TenantA);
+        var blocked = await RemoveAsync(File("100001"), confirmation: TestDatabase.TenantA);
+        var both = await RemoveAsync(File("100001", "100004"), confirmation: TestDatabase.TenantA);
 
         Assert.Equal(TestEmployeeDeleteStatus.Blocked, blocked.Status);
-        Assert.Contains("FDW-ALL", blocked.Errors.Single());
+        Assert.Contains("100004", blocked.Errors.Single());
         Assert.Equal(TestEmployeeDeleteStatus.Done, both.Status);
         Assert.Equal(2, both.Result!.Employees);
         using var check = _harness.Database.CreateContext(TestDatabase.TenantA);

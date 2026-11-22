@@ -119,10 +119,10 @@ public sealed class EmployeeServiceTests : IDisposable
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
         var service = new EmployeeService(db);
-        var pageOne = await service.ListAsync(null, includeInactive: true, 1, 2, CancellationToken.None);
-        var pageTwo = await service.ListAsync(null, includeInactive: true, 2, 2, CancellationToken.None);
-        var pageThree = await service.ListAsync(null, includeInactive: true, 3, 2, CancellationToken.None);
-        var beyond = await service.ListAsync(null, includeInactive: true, 99, 2, CancellationToken.None);
+        var pageOne = await service.ListAsync(null, true, 1, 2, EmployeeSortField.Name, false, CancellationToken.None);
+        var pageTwo = await service.ListAsync(null, true, 2, 2, EmployeeSortField.Name, false, CancellationToken.None);
+        var pageThree = await service.ListAsync(null, true, 3, 2, EmployeeSortField.Name, false, CancellationToken.None);
+        var beyond = await service.ListAsync(null, true, 99, 2, EmployeeSortField.Name, false, CancellationToken.None);
         var searched = await service.ListAsync("a", includeInactive: true, 1, 1, CancellationToken.None);
         var nobody = await service.ListAsync("zzz", includeInactive: true, 4, 10, CancellationToken.None);
 

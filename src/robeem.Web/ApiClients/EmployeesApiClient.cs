@@ -19,7 +19,7 @@ public sealed class EmployeesApiClient : IEmployeesApiClient
         _http = http;
     }
 
-    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PagedResult<EmployeeListItem>> ListAsync(string? search, bool includeInactive, int page, int pageSize, EmployeeSortField sort, bool descending, CancellationToken cancellationToken)
     {
         var query = new Dictionary<string, string?>
         {
@@ -30,6 +30,16 @@ public sealed class EmployeesApiClient : IEmployeesApiClient
         if (!string.IsNullOrWhiteSpace(search))
         {
             query["search"] = search;
+        }
+
+        if (sort != EmployeeSortField.Number)
+        {
+            query["sort"] = sort.ToString();
+        }
+
+        if (descending)
+        {
+            query["descending"] = "true";
         }
 
         using var response = await _http.GetAsync(QueryHelpers.AddQueryString(EmployeesPath, query), cancellationToken);

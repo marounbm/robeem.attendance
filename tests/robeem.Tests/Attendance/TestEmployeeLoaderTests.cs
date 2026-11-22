@@ -50,13 +50,13 @@ public sealed class TestEmployeeLoaderTests : IDisposable
         Assert.Equal(["Test clock SCN-1 (SCN-1, Asia/Beirut)"], result.DevicesCreated);
 
         using var db = _database.CreateContext(TestDatabase.TenantA);
-        var night = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "CO7D-NT-ALL");
+        var night = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "100010");
         Assert.Equal("Night Team", db.TimeScheduleTeams.Single(t => t.Id == night.TeamId).Title);
-        var weekendB = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "AWS-WB-ALL2");
+        var weekendB = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "100015");
         Assert.Equal("Weekend B", db.TimeScheduleTeams.Single(t => t.Id == weekendB.TeamId).Title);
-        var standard = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "SW-ALL");
+        var standard = db.TimeScheduleEmployees.Single(a => a.Employee!.EmployeeNumber == "100001");
         Assert.True(db.TimeScheduleTeams.Single(t => t.Id == standard.TeamId).AllInclusive);
-        Assert.Equal(PayBasis.Hourly, db.Profiles.Single(p => p.EmployeeNumber == "ODHS-ALL").PayBasis);
+        Assert.Equal(PayBasis.Hourly, db.Profiles.Single(p => p.EmployeeNumber == "100005").PayBasis);
 
         var device = db.AttendanceDevices.Single();
         Assert.Equal(("SCN-1", "Asia/Beirut"), (device.ExternalDeviceId, device.TimeZoneId));
