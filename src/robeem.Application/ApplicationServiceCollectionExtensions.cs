@@ -35,6 +35,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddOptions<AttendanceDataResetOptions>();
         services.AddScoped<IWebhookReceiver, WebhookReceiver>();
         services.AddScoped<ISeedContributor, HrSeedContributor>();
+        services.AddScoped<ISeedContributor, ScheduleTemplateSeedContributor>();
         services.AddOptions<SampleDataOptions>();
         services.AddScoped<ISeedContributor, ProfileSeedContributor>();
         services.AddScoped<ISeedContributor, AttendanceSeedContributor>();

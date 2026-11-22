@@ -66,11 +66,11 @@ public static class DisplayFormats
     /// whatever else is open on it, until the approver decides.
     /// </remarks>
     public static string DayStatus(string? status, int exceptionCount, bool pendingApproval = false) =>
-        pendingApproval ? "Pending approval" : WaitsForExceptions(status, exceptionCount) ? "Open exceptions" : Words(status);
+        pendingApproval ? "Pending approval" : WaitsForExceptions(status, exceptionCount) ? "Open exceptions" : Words(status == "Calculated" ? "Approved" : status);
 
     /// <summary>The Bootstrap badge colour of a day's status; see <see cref="DayStatus"/>.</summary>
     public static string DayStatusBadge(string? status, int exceptionCount, bool pendingApproval = false) =>
-        pendingApproval ? "warning" : WaitsForExceptions(status, exceptionCount) ? "info" : Badge(status);
+        pendingApproval ? "warning" : WaitsForExceptions(status, exceptionCount) ? "info" : Badge(status == "Calculated" ? "Approved" : status);
 
     /// <summary>Explains a day's status when the name alone would mislead; null when it needs no explanation.</summary>
     public static string? DayStatusHint(string? status, int exceptionCount, bool pendingApproval = false) =>

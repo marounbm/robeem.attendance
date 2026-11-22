@@ -94,6 +94,43 @@ public sealed class AttendanceHourlyTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task AnOnDemandSchedulesOwnPolicy_AppliesToTheHourlyEmployeeOnIt_WhileTheDefaultDoesNot()
+    {
+        int scheduleId;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var schedule = new TimeSchedule { Title = "Hourly staff" };
+            var team = new TimeScheduleTeam { Title = "All", TimeSchedule = schedule, AllInclusive = true };
+            db.Add(team);
+            db.OnDemandTimeSchedules.Add(new OnDemandTimeSchedule { TimeSchedule = schedule });
+            db.SaveChanges();
+            db.TimeScheduleEmployees.Add(new TimeScheduleEmployee { TimeScheduleId = schedule.Id, TeamId = team.Id, EmployeeId = EmployeeId });
+            db.SaveChanges();
+            scheduleId = schedule.Id;
+        }
+
+        // The tenant default allows a session of 16 hours; the on-demand schedule's own policy only 4.
+        AddDefaultPolicy(p => p.HourlyMaxSpanHours = 16);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendancePolicies.Add(new AttendancePolicy { Title = "Hourly staff", TimeScheduleId = scheduleId, HourlyMaxSpanHours = 4 });
+            db.SaveChanges();
+        }
+
+        var tuesday = Monday.AddDays(1);
+        Clock.Local = tuesday.At(12, 0);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(22, 0));
+        AddPunch(NormalizedEventType.CheckOut, tuesday.At(6, 0));
+
+        await ProcessAsync(Monday);
+        await ProcessAsync(tuesday);
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(2, check.AttendanceExceptions.Count());
+        Assert.Empty(check.AttendanceRecords.Where(r => r.IsCurrent && r.Status == AttendanceRecordStatus.Approved));
+    }
+
+    [Fact]
     public async Task ACheckOutBeyondThePolicysSpan_IsNotPaired_AndBothAreReported()
     {
         AddDefaultPolicy(p => p.HourlyMaxSpanHours = 4);

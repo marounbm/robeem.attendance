@@ -62,6 +62,13 @@ namespace robeem.DataModel
         /// </summary>
         public bool AutoFixesInRules { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about the two break fixes (the rules that read a break-in near the start of the break as
+        /// the break-out, and a break-out near its end as the break-in). A set made before they existed has none and is read with them added, both off, so it
+        /// behaves as published. Every set made since says true.
+        /// </summary>
+        public bool BreakFixesInRules { get; set; }
+
         public ICollection<AttendanceRule> Rules { get; set; } = new List<AttendanceRule>();
     }
 }

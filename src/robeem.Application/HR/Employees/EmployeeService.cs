@@ -152,7 +152,7 @@ public sealed class EmployeeService : IEmployeeService
         => await _db.TimeSchedules
             .AsNoTracking()
             .OrderBy(s => s.Title)
-            .Select(s => new ScheduleOption { Id = s.Id, Title = s.Title })
+            .Select(s => new ScheduleOption { Id = s.Id, Title = s.Title, IsOnDemand = _db.OnDemandTimeSchedules.Any(o => o.TimeScheduleId == s.Id) })
             .ToListAsync(cancellationToken);
 
     public async Task<EmployeeSaveResult> CreateAsync(EmployeeInput input, CancellationToken cancellationToken)
@@ -306,6 +306,13 @@ public sealed class EmployeeService : IEmployeeService
             }
 
             return null;
+        }
+
+        // An on-demand schedule is for people paid by the hour. Checked even when the employee stays on it, so that
+        // changing them to a schedule-paid employee can't leave them on a schedule with no shifts.
+        if (profile.PayBasis != PayBasis.Hourly && await _db.OnDemandTimeSchedules.AnyAsync(o => o.TimeScheduleId == timeScheduleId, cancellationToken))
+        {
+            return "This schedule is on demand: only employees paid by the hour can be on it. Choose another schedule, or pay this employee by the hour.";
         }
 
         if (assignment?.TimeScheduleId == timeScheduleId)

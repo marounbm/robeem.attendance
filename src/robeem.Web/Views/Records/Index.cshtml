@@ -9,8 +9,10 @@
         ("Date", RecordSortField.Date, string.Empty),
         ("Employee", RecordSortField.Employee, string.Empty),
         ("Worked", RecordSortField.Worked, "text-end"),
-        ("Overtime", RecordSortField.Overtime, "text-end"),
         ("Break", RecordSortField.Break, "text-end"),
+        ("Time off", RecordSortField.TimeOff, "text-end"),
+        ("Overtime", RecordSortField.Overtime, "text-end"),
+        ("Under time", RecordSortField.Undertime, "text-end"),
         ("Exceptions", RecordSortField.Exceptions, "text-end"),
         ("Status", RecordSortField.Status, string.Empty),
     ];
@@ -167,11 +169,16 @@
                             <td class="text-nowrap">@item.AttendanceDate.ToString("yyyy-MM-dd")</td>
                             <td>@item.EmployeeName <span class="small text-muted">@item.EmployeeNumber</span></td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalWorkingHours)</td>
-                            <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
                             <td class="text-end">@DisplayFormats.Hours(item.TotalBreakHours)</td>
+                            <td class="text-end@(item.TotalTimeOffHours > TimeSpan.Zero ? " time-off-cell" : string.Empty)">@DisplayFormats.Hours(item.TotalTimeOffHours)</td>
+                            <td class="text-end">@DisplayFormats.Hours(item.TotalOvertimeHours)</td>
+                            <td class="text-end">@DisplayFormats.Hours(item.TotalUndertimeHours)</td>
                             <td class="text-end">@item.PunchCount</td>
                             <td class="text-end">@(item.ExceptionCount == 0 ? "—" : item.ExceptionCount.ToString())</td>
-                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span></td>
+                            <td><span class="badge text-bg-@DisplayFormats.DayStatusBadge(item.Status, item.ExceptionCount, item.HasPendingApproval)" title="@DisplayFormats.DayStatusHint(item.Status, item.ExceptionCount, item.HasPendingApproval)">@DisplayFormats.DayStatus(item.Status, item.ExceptionCount, item.HasPendingApproval)</span>@if (item.HasInferredPunches)
+                            {
+                                <span class="inferred-dot" title="Inferred: a punch of this day had no type from the machine, so a rule or the policy chose it." aria-label="Inferred"></span>
+                            }</td>
                             <td class="text-end">
                                 @* Only the employee can correct their day, so only they are offered Resolve; anyone else just opens it. *@
                                 @{ var resolvable = item.ExceptionCount > 0 && item.IsViewersOwnDay; }

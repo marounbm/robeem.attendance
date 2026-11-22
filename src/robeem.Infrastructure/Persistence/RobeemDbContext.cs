@@ -44,6 +44,8 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<TimeSchedule> TimeSchedules => Set<TimeSchedule>();
 
+    public DbSet<OnDemandTimeSchedule> OnDemandTimeSchedules => Set<OnDemandTimeSchedule>();
+
     public DbSet<TimeScheduleShift> TimeScheduleShifts => Set<TimeScheduleShift>();
 
     public DbSet<TimeScheduleTeam> TimeScheduleTeams => Set<TimeScheduleTeam>();

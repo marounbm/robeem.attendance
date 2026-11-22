@@ -176,7 +176,7 @@ public sealed class AttendancePunchFixTests : AttendanceEngineTestBase
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
             var set = db.AttendanceRuleSets.Include(x => x.Rules).ThenInclude(r => r.Conditions).Single(x => x.Status == RuleSetStatus.Published);
-            var fixes = set.Rules.Where(r => RuleSetSnapshot.IsAutoFix(r.Action)).ToList();
+            var fixes = set.Rules.Where(r => RuleSetSnapshot.IsCheckInOutFix(r.Action)).ToList();
             db.AttendanceRuleConditions.RemoveRange(fixes.SelectMany(r => r.Conditions));
             db.AttendanceRules.RemoveRange(fixes);
             set.AutoFixesInRules = false;

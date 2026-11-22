@@ -296,6 +296,105 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         Assert.Empty(db.AttendanceAuditLogs);
     }
 
+    [Fact]
+    public async Task TheApprovedFilter_AlsoFindsADayWithNothingToReview_BecauseTheListShowsItAsApproved()
+    {
+        var (_, otherId) = AddPeople();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDaySummaries.AddRange(
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday, Status = AttendanceRecordStatus.Approved },
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday.AddDays(1), Status = AttendanceRecordStatus.Calculated },
+                new AttendanceDaySummary { EmployeeId = otherId, AttendanceDate = Monday, Status = AttendanceRecordStatus.PendingReview });
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var approved = await ListAsync(Everything with { Status = AttendanceRecordStatus.Approved }, hr);
+        var pending = await ListAsync(Everything with { Status = AttendanceRecordStatus.PendingReview }, hr);
+
+        Assert.Equal([Monday, Monday.AddDays(1)], approved.Select(d => d.AttendanceDate));
+        Assert.Equal([otherId], pending.Select(d => d.EmployeeId));
+    }
+
+    [Fact]
+    public async Task TheList_CarriesTimeOffAndUnderTime_AndCanBeSortedByThem()
+    {
+        var (_, otherId) = AddPeople();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AttendanceDaySummaries.AddRange(
+                new AttendanceDaySummary { EmployeeId = EmployeeId, AttendanceDate = Monday, TotalTimeOffHours = TimeSpan.FromHours(2), TotalUndertimeHours = TimeSpan.FromMinutes(30) },
+                new AttendanceDaySummary { EmployeeId = otherId, AttendanceDate = Monday, TotalTimeOffHours = TimeSpan.FromHours(8), TotalUndertimeHours = TimeSpan.Zero },
+                new AttendanceDaySummary { EmployeeId = otherId, AttendanceDate = Monday.AddDays(1), TotalTimeOffHours = TimeSpan.Zero, TotalUndertimeHours = TimeSpan.FromHours(1) });
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var byTimeOff = await ListAsync(Everything with { Sort = RecordSortField.TimeOff, Descending = true }, hr);
+        var byUndertime = await ListAsync(Everything with { Sort = RecordSortField.Undertime }, hr);
+
+        Assert.Equal([TimeSpan.FromHours(8), TimeSpan.FromHours(2), TimeSpan.Zero], byTimeOff.Select(d => d.TotalTimeOffHours));
+        Assert.Equal([TimeSpan.Zero, TimeSpan.FromMinutes(30), TimeSpan.FromHours(1)], byUndertime.Select(d => d.TotalUndertimeHours));
+    }
+
+    [Fact]
+    public async Task TheDaySummary_StoresTheTimeOffOnLeave_AndTheTimeWorkedShort()
+    {
+        // Leave over the end of the shift: the two hours are time off, and nothing is short.
+        AddPunch(NormalizedEventType.CheckIn, Monday.AddHours(8));
+        AddPunch(NormalizedEventType.BreakOut, Monday.AddHours(12));
+        AddPunch(NormalizedEventType.BreakIn, Monday.AddHours(13));
+        AddPunch(NormalizedEventType.CheckOut, Monday.AddHours(15));
+        AssignSchedule(StandardDay);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.EmployeeLeaves.Add(new EmployeeLeave { EmployeeId = EmployeeId, LeaveType = LeaveType.Other, StartDate = Monday, EndDate = Monday, IsPartDay = true, StartTime = "15:00", EndTime = "17:00" });
+            db.SaveChanges();
+        }
+
+        await ProcessAsync(Monday);
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var summary = db.AttendanceDaySummaries.Single();
+            Assert.Equal((TimeSpan.FromHours(2), TimeSpan.Zero), (summary.TotalTimeOffHours, summary.TotalUndertimeHours));
+            db.EmployeeLeaves.RemoveRange(db.EmployeeLeaves);
+            db.SaveChanges();
+        }
+
+        // The same punches with no leave: two hours less than scheduled.
+        await ProcessAsync(Monday);
+
+        using var after = Database.CreateContext(TestDatabase.TenantA);
+        var short_ = after.AttendanceDaySummaries.Single();
+        Assert.Equal((TimeSpan.Zero, TimeSpan.FromHours(2)), (short_.TotalTimeOffHours, short_.TotalUndertimeHours));
+    }
+
+    [Fact]
+    public async Task TheDay_ListsTheLeaveAndHolidayThatTouchIt_EvenWhenItWasNotCalculated()
+    {
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.EmployeeLeaves.Add(new EmployeeLeave { EmployeeId = EmployeeId, LeaveType = LeaveType.Sick, StartDate = Monday.AddDays(-1), EndDate = Monday, Notes = "Flu" });
+            db.PublicHolidays.Add(new PublicHoliday { Date = Monday.AddDays(1), Title = "Labour Day" });
+            db.SaveChanges();
+        }
+
+        var hr = new ExceptionViewer(900, false, false, true);
+        var leaveDay = await GetDayAsync(EmployeeId, Monday, hr);
+        var holidayDay = await GetDayAsync(EmployeeId, Monday.AddDays(1), hr);
+        var plainDay = await GetDayAsync(EmployeeId, Monday.AddDays(2), hr);
+
+        Assert.False(leaveDay!.Processed);
+        var leave = Assert.Single(leaveDay.TimeOff);
+        Assert.Equal(("Leave", true), (leave.Kind, leave.IsWholeDay));
+        Assert.Equal((Monday.AddDays(-1), Monday, "Flu"), (leave.LeaveStartDate, leave.LeaveEndDate, leave.Notes));
+        var holiday = Assert.Single(holidayDay!.TimeOff);
+        Assert.Equal(("Holiday", "Labour Day"), (holiday.Kind, holiday.Reference));
+        Assert.Empty(plainDay!.TimeOff);
+    }
+
     private (int ManagerId, int OtherId) AddPeople()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
@@ -393,5 +492,5 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
         return await Service(db).ReprocessAsync(employeeId, date, CancellationToken.None);
     }
 
-    private AttendanceRecordService Service(RobeemDbContext db) => new(db, CreateEngine(db), CreateAudit(db));
+    private AttendanceRecordService Service(RobeemDbContext db) => new(db, CreateEngine(db), CreateAudit(db), new robeem.Application.HR.Absence.HrAbsenceCalendar(db));
 }

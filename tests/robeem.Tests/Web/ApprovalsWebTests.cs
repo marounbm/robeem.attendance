@@ -436,7 +436,7 @@ public sealed class ApprovalsWebTests
     [InlineData("PendingReview", 0, "Pending review", "warning", false)]
     [InlineData("Approved", 0, "Approved", "success", false)]
     [InlineData("Rejected", 2, "Rejected", "danger", false)]
-    [InlineData("Calculated", 1, "Calculated", "secondary", false)]
+    [InlineData("Calculated", 1, "Approved", "success", false)]
     public void ADayThatWaitsForItsExceptions_IsNotCalledPendingReview_BecauseApprovalsDoesNotListIt(string status, int exceptions, string label, string badge, bool hasHint)
     {
         Assert.Equal(label, DisplayFormats.DayStatus(status, exceptions));

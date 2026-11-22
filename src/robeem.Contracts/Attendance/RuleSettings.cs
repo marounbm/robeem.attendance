@@ -83,4 +83,16 @@ public sealed record RuleSettings
 
     /// <summary>Gets or sets how many minutes apart two punches at the end of the day may be and still count as one.</summary>
     public int EveningDuplicateGapMinutes { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a break-in near the scheduled start of the break, where no break is open, is read as the break-out.</summary>
+    public bool BreakInIsBreakOut { get; set; }
+
+    /// <summary>Gets or sets how far from the scheduled start of the break a break-in may be and still be read as the break-out, in minutes.</summary>
+    public int BreakInIsBreakOutWindowMinutes { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a break-out near the scheduled end of the break, where a break is already open, is read as the break-in.</summary>
+    public bool BreakOutIsBreakIn { get; set; }
+
+    /// <summary>Gets or sets how far from the scheduled end of the break a break-out may be and still be read as the break-in, in minutes.</summary>
+    public int BreakOutIsBreakInWindowMinutes { get; set; }
 }

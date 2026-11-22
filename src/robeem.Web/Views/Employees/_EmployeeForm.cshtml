@@ -77,10 +77,12 @@
         <div class="col-md-6">
             <label asp-for="Input.TimeScheduleId" class="form-label"></label>
             <select asp-for="Input.TimeScheduleId" class="form-select"
-                    asp-items="@(new SelectList(Model.Schedules, nameof(ScheduleOption.Id), nameof(ScheduleOption.Title)))">
+                    asp-items="@(new SelectList(Model.Schedules.Select(s => new { s.Id, Title = s.IsOnDemand ? s.Title + " (on demand: hourly staff)" : s.Title }), "Id", "Title"))">
                 <option value="">— Not assigned —</option>
             </select>
-            <div class="form-text">The employee joins the schedule's all-inclusive (default) team.</div>
+            <div class="form-text">
+                The employee joins the schedule's all-inclusive (default) team. An on-demand schedule has no shifts and is for employees paid by the hour only.
+            </div>
             <span asp-validation-for="Input.TimeScheduleId" class="text-danger small"></span>
         </div>
         <div class="col-md-6">

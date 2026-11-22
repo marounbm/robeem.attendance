@@ -273,7 +273,7 @@ public sealed class AttendanceBreakRulesTests : AttendanceEngineTestBase
         await ProcessAsync(Monday);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceRecordService(db, CreateEngine(db), CreateAudit(db));
+        var service = new AttendanceRecordService(db, CreateEngine(db), CreateAudit(db), new robeem.Application.HR.Absence.HrAbsenceCalendar(db));
         var day = await service.GetDayAsync(EmployeeId, Monday, new ExceptionViewer(900, false, false, true), CancellationToken.None);
 
         Assert.Equal(["LongBreak", "LateBreak"], Assert.Single(day!.Versions).BreakFindings);

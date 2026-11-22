@@ -8,8 +8,15 @@
     <div>
         <h1 class="h3 mb-1">@schedule.Settings.Title @(schedule.IsSystemSchedule ? Html.Raw("<span class=\"badge text-bg-secondary\">System</span>") : null)</h1>
         <div class="text-muted">
-            @(Model.IsWeekly ? "Weekly pattern" : $"{Model.CyclePeriod}-day pattern")
-            · @schedule.Shifts.Count shift(s) · @schedule.Teams.Count team(s) · @schedule.Employees.Count employee(s)
+            @if (schedule.IsOnDemand)
+            {
+                <span>On demand · @schedule.Employees.Count employee(s)</span>
+            }
+            else
+            {
+                <span>@(Model.IsWeekly ? "Weekly pattern" : $"{Model.CyclePeriod}-day pattern")
+                · @schedule.Shifts.Count shift(s) · @schedule.Teams.Count team(s) · @schedule.Employees.Count employee(s)</span>
+            }
         </div>
     </div>
     <div class="d-flex gap-2">
@@ -26,6 +33,17 @@
 
 <partial name="_StatusMessage" />
 
+@if (schedule.IsOnDemand)
+{
+    <div class="alert alert-secondary" role="note">
+        <strong>On demand.</strong> This schedule is for employees paid by the hour. It has no shifts, teams or roster: nobody on it is
+        expected at a given time, so a day without punches is never an exception, and the hours they punch are the hours they are paid for.
+        What the schedule gives them is a group of their own: set an attendance policy for it on the
+        <a asp-controller="Policies" asp-action="Index">Policies</a> screen (for example how long a work session can last) and, if it needs them,
+        rules of its own. Only employees paid by the hour can be assigned to it.
+    </div>
+}
+
 <div class="alert alert-info" role="note">
     A change here applies to days calculated from now on. Days already calculated keep their result until HR opens them and chooses
     <em>Calculate again</em> (Attendance &rarr; Open a day).
@@ -40,13 +58,18 @@
                 <button type="submit" class="btn btn-primary">Save settings</button>
             </div>
         </form>
-        <p class="small text-muted mt-3 mb-0">
-            Changing the length or the first day moves every day of the roster. A shorter pattern can only be saved once the roster has
-            no entries beyond its last day.
-        </p>
+        @if (!schedule.IsOnDemand)
+        {
+            <p class="small text-muted mt-3 mb-0">
+                Changing the length or the first day moves every day of the roster. A shorter pattern can only be saved once the roster has
+                no entries beyond its last day.
+            </p>
+        }
     </div>
 </div>
 
+@if (!schedule.IsOnDemand)
+{
 <div class="card mb-3">
     <div class="card-header">2. Shifts</div>
     <div class="card-body">
@@ -276,8 +299,10 @@
     </div>
 </div>
 
+}
+
 <div class="card mb-3">
-    <div class="card-header">4. Employees on this schedule</div>
+    <div class="card-header">@(schedule.IsOnDemand ? 2 : 4). Employees on this schedule</div>
     <div class="card-body">
         @if (schedule.Employees.Count == 0)
         {

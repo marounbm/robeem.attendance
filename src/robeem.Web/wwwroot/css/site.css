@@ -15,6 +15,25 @@ main .card {
   vertical-align: middle;
 }
 
+/* A day (or part of one) covered by leave or a holiday stands out from worked time. */
+.table td.time-off-cell {
+  background-color: #cff4fc;
+  color: #055160;
+  font-weight: 600;
+}
+
+/* A round marker next to a status: some punch type of that day was inferred, not given by the machine. */
+.inferred-dot {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background-color: #fd7e14;
+  vertical-align: middle;
+  cursor: help;
+}
+
 .validation-summary-valid {
   display: none;
 }

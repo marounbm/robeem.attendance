@@ -30,6 +30,15 @@ namespace robeem.DataModel
 
         public TimeSpan TotalBreakHours { get; set; }
 
+        /// <summary>Gets or sets the time of the day's scheduled shifts that approved leave or a public holiday covers.</summary>
+        public TimeSpan TotalTimeOffHours { get; set; }
+
+        /// <summary>
+        /// Gets or sets how much less than scheduled was worked on the day's complete shifts, after approved leave and not counting the minutes a
+        /// long break ran over (a long break is a finding of its own).
+        /// </summary>
+        public TimeSpan TotalUndertimeHours { get; set; }
+
         /// <summary>Gets or sets the number of current records that day, unscheduled work included.</summary>
         public int ShiftCount { get; set; }
 

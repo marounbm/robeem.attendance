@@ -13,6 +13,8 @@
     <strong>pattern</strong> that repeats (usually one week) and a <strong>roster</strong> that says which shifts are worked on which
     day of the pattern. Every day of attendance is calculated against the schedule its employee is assigned to
     (<a asp-controller="Employees" asp-action="Index">Employees</a>).
+    An <strong>on-demand</strong> schedule is for employees paid by the hour: it has no shifts or roster, because they work when they are
+    needed. It gives them a group of their own, with its own attendance policy and rules.
 </p>
 
 <partial name="_StatusMessage" />
@@ -46,14 +48,18 @@
                                 {
                                     <span class="badge text-bg-secondary">System</span>
                                 }
+                                @if (schedule.IsOnDemand)
+                                {
+                                    <span class="badge text-bg-info" title="For employees paid by the hour: no shifts, no roster.">On demand</span>
+                                }
                                 @if (!string.IsNullOrWhiteSpace(schedule.Description))
                                 {
                                     <div class="small text-muted">@schedule.Description</div>
                                 }
                             </td>
-                            <td>@(schedule.CyclePeriod == 7 ? "Weekly" : $"{schedule.CyclePeriod} days")</td>
-                            <td class="text-end">@schedule.ShiftCount</td>
-                            <td class="text-end">@schedule.TeamCount</td>
+                            <td>@(schedule.IsOnDemand ? "—" : schedule.CyclePeriod == 7 ? "Weekly" : $"{schedule.CyclePeriod} days")</td>
+                            <td class="text-end">@(schedule.IsOnDemand ? "—" : schedule.ShiftCount.ToString())</td>
+                            <td class="text-end">@(schedule.IsOnDemand ? "—" : schedule.TeamCount.ToString())</td>
                             <td class="text-end">@schedule.EmployeeCount</td>
                             <td class="text-end"><a class="btn btn-sm btn-outline-primary" asp-action="Details" asp-route-id="@schedule.Id">Open</a></td>
                         </tr>

@@ -431,6 +431,12 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<TimeSpan>("TotalOvertimeHours")
                         .HasColumnType("interval");
 
+                    b.Property<TimeSpan>("TotalTimeOffHours")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("TotalUndertimeHours")
+                        .HasColumnType("interval");
+
                     b.Property<TimeSpan>("TotalWorkingHours")
                         .HasColumnType("interval");
 
@@ -1307,6 +1313,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("BreakFixesInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<int>("CreatedBy")
                         .HasColumnType("integer");
 
@@ -1688,6 +1699,48 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasFilter("\"DuplicateStatus\" = 'Unique'");
 
                     b.ToTable("NormalizedAttendanceTransaction", "Attendance");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.OnDemandTimeSchedule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("TimeScheduleId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TimeScheduleId");
+
+                    b.HasIndex("TenantId", "TimeScheduleId")
+                        .IsUnique();
+
+                    b.ToTable("OnDemandTimeSchedule", "HR");
                 });
 
             modelBuilder.Entity("robeem.DataModel.PayPeriod", b =>
@@ -2613,6 +2666,17 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Navigation("Integration");
 
                     b.Navigation("RawTransaction");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.OnDemandTimeSchedule", b =>
+                {
+                    b.HasOne("robeem.DataModel.TimeSchedule", "TimeSchedule")
+                        .WithMany()
+                        .HasForeignKey("TimeScheduleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("TimeSchedule");
                 });
 
             modelBuilder.Entity("robeem.DataModel.Profile", b =>

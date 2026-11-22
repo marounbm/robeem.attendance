@@ -41,6 +41,9 @@ public sealed record ResolvedShift(
         }
     }
 
+    /// <summary>Gets when the scheduled break ends; null for a shift without a break.</summary>
+    public DateTime? BreakEndsAt => BreakStartsAt?.AddMinutes(BreakMinutes);
+
     /// <summary>Gets the length of the scheduled break in minutes; 0 for a shift without a break.</summary>
     public int BreakMinutes => BreakTime ? (int)Math.Round(Set.TimeSpan(BreakStartTime, BreakEndTime) * 60) : 0;
 }

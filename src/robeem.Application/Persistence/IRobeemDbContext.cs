@@ -21,6 +21,8 @@ public interface IRobeemDbContext
 
     DbSet<TimeSchedule> TimeSchedules { get; }
 
+    DbSet<OnDemandTimeSchedule> OnDemandTimeSchedules { get; }
+
     DbSet<TimeScheduleShift> TimeScheduleShifts { get; }
 
     DbSet<TimeScheduleTeam> TimeScheduleTeams { get; }

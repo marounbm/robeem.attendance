@@ -12,6 +12,13 @@ public sealed class TimeScheduleInput
     [StringLength(1000)]
     public string? Description { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the schedule is on demand: for employees paid by the hour, with no shifts and no roster.
+    /// Chosen when the schedule is created and never changed afterwards (a save of an existing schedule ignores it).
+    /// </summary>
+    [Display(Name = "On demand (employees paid by the hour)")]
+    public bool OnDemand { get; set; }
+
     /// <summary>Gets or sets the length of the repeating pattern in days: 7 for a weekly pattern, 14 for two weeks, and so on.</summary>
     [Range(1, 56)]
     [Display(Name = "Pattern length (days)")]

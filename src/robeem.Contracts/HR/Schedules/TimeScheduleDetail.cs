@@ -9,6 +9,9 @@ public sealed class TimeScheduleDetail
 
     public bool IsSystemSchedule { get; init; }
 
+    /// <summary>Gets a value indicating whether the schedule is on demand: for employees paid by the hour, with no shifts or roster.</summary>
+    public bool IsOnDemand { get; init; }
+
     public IReadOnlyList<ScheduleShiftItem> Shifts { get; init; } = Array.Empty<ScheduleShiftItem>();
 
     public IReadOnlyList<ScheduleTeamItem> Teams { get; init; } = Array.Empty<ScheduleTeamItem>();

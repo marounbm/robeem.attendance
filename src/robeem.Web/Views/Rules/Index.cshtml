@@ -190,6 +190,24 @@ else
                         <span asp-validation-for="Settings.EveningDuplicateWindowMinutes" class="text-danger small"></span>
                     </div>
                 </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.BreakInIsBreakOut" class="form-check-input" role="switch" aria-label="A break-in near the start of the break is read as the break-out" /></div>
+                    <div>
+                        A break-in within
+                        <input asp-for="Settings.BreakInIsBreakOutWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled start of the break, when no break is open (a break-in said twice, or in place of the break-out): read it as the break-out
+                        <span asp-validation-for="Settings.BreakInIsBreakOutWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.BreakOutIsBreakIn" class="form-check-input" role="switch" aria-label="A break-out near the end of the break is read as the break-in" /></div>
+                    <div>
+                        A break-out within
+                        <input asp-for="Settings.BreakOutIsBreakInWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled end of the break, when a break is already open (a break-out said twice, or in place of the break-in): read it as the break-in
+                        <span asp-validation-for="Settings.BreakOutIsBreakInWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
             </div>
         </div>
 

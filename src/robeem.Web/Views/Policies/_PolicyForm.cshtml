@@ -21,7 +21,7 @@
                     }
                     @foreach (var schedule in Model.Schedules)
                     {
-                        <option value="@schedule.Id" selected="@(schedule.Id == Model.Input.TimeScheduleId)">Schedule: @schedule.Title</option>
+                        <option value="@schedule.Id" selected="@(schedule.Id == Model.Input.TimeScheduleId)">Schedule: @schedule.Title@(schedule.IsOnDemand ? " (on demand: hourly staff)" : string.Empty)</option>
                     }
                 </select>
                 <div class="form-text">One default for the tenant, and at most one policy per schedule. A schedule without its own policy follows the default.</div>

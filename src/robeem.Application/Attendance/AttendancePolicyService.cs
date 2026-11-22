@@ -73,8 +73,10 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
 
     public async Task<IReadOnlyList<ScheduleOption>> ListScheduleOptionsAsync(CancellationToken cancellationToken)
     {
-        var schedules = await _db.TimeSchedules.AsNoTracking().Select(s => new { s.Id, s.Title }).ToListAsync(cancellationToken);
-        return schedules.OrderBy(s => s.Title, StringComparer.OrdinalIgnoreCase).Select(s => new ScheduleOption { Id = s.Id, Title = s.Title }).ToList();
+        var schedules = await _db.TimeSchedules.AsNoTracking()
+            .Select(s => new { s.Id, s.Title, OnDemand = _db.OnDemandTimeSchedules.Any(o => o.TimeScheduleId == s.Id) })
+            .ToListAsync(cancellationToken);
+        return schedules.OrderBy(s => s.Title, StringComparer.OrdinalIgnoreCase).Select(s => new ScheduleOption { Id = s.Id, Title = s.Title, IsOnDemand = s.OnDemand }).ToList();
     }
 
     public async Task<SaveResult> CreateAsync(PolicyInput input, CancellationToken cancellationToken)

@@ -28,6 +28,31 @@
 
 <partial name="_StatusMessage" />
 
+@if (day.TimeOff.Count > 0)
+{
+    <div class="card border-info mb-3">
+        <div class="card-body py-2">
+            <div class="small text-muted">@(day.TimeOff.Any(o => o.Kind == "Leave") ? "Leave and time off" : "Time off")</div>
+            @foreach (var off in day.TimeOff)
+            {
+                <div>
+                    <span class="badge text-bg-info">@(off.Kind == "Leave" ? "Leave applied" : DisplayFormats.Words(off.Kind))</span>
+                    <strong>@DisplayFormats.Words(off.Reference)</strong>
+                    <span class="text-muted">· @(off.IsWholeDay ? "whole day" : $"{off.Start:HH:mm} – {off.End:HH:mm}")</span>
+                    @if (off.LeaveStartDate is { } leaveStart && off.LeaveEndDate is { } leaveEnd && leaveEnd > leaveStart)
+                    {
+                        <span class="text-muted">· leave from @leaveStart.ToString("yyyy-MM-dd") to @leaveEnd.ToString("yyyy-MM-dd")</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(off.Notes))
+                    {
+                        <div class="small text-muted">@off.Notes</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @if (!day.Processed)
 {
     <div class="alert alert-info">
@@ -67,6 +92,7 @@ else
                             <th scope="col">Break</th>
                             <th scope="col">Out</th>
                             <th scope="col" class="text-end">Worked</th>
+                            <th scope="col" class="text-end">Break time</th>
                             <th scope="col" class="text-end">Late</th>
                             <th scope="col" class="text-end">Early out</th>
                             <th scope="col" class="text-end">Overtime</th>
@@ -85,6 +111,10 @@ else
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckIn) <span class="small">@Source(v.ActualCheckInSource)</span></td>
                                 <td class="text-nowrap">
                                     @DisplayFormats.Time(v.ActualBreakOut) – @DisplayFormats.Time(v.ActualBreakIn) <span class="small">@Source(v.ActualBreakOutSource ?? v.ActualBreakInSource)</span>
+                                    @if (v.BreakDuration > TimeSpan.Zero)
+                                    {
+                                        <div class="small text-muted">@DisplayFormats.Minutes((int)v.BreakDuration.TotalMinutes) long</div>
+                                    }
                                     @foreach (var finding in v.BreakFindings)
                                     {
                                         <div><span class="badge text-bg-warning" title="Recorded whatever the policy raises as an exception">@DisplayFormats.Words(finding)</span></div>
@@ -92,6 +122,7 @@ else
                                 </td>
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckOut) <span class="small">@Source(v.ActualCheckOutSource)</span></td>
                                 <td class="text-end">@DisplayFormats.Hours(v.WorkingHours)</td>
+                                <td class="text-end">@DisplayFormats.Hours(v.BreakDuration)</td>
                                 <td class="text-end">@(v.LateMinutes == 0 ? "—" : DisplayFormats.Minutes(v.LateMinutes))</td>
                                 <td class="text-end">@(v.EarlyDepartureMinutes == 0 ? "—" : DisplayFormats.Minutes(v.EarlyDepartureMinutes))</td>
                                 <td class="text-end">@(v.OvertimeMinutes == 0 ? "—" : DisplayFormats.Minutes(v.OvertimeMinutes))</td>
@@ -100,7 +131,7 @@ else
                             @foreach (var review in v.Reviews)
                             {
                                 <tr class="@(v.IsCurrent ? null : "text-muted")">
-                                    <td colspan="10" class="small border-top-0 pt-0">
+                                    <td colspan="11"class="small border-top-0 pt-0">
                                         <span class="badge text-bg-@DisplayFormats.Badge(review.Outcome)">@DisplayFormats.Words(review.Outcome)</span>
                                         by @review.DecidedByName (@DisplayFormats.Words(review.DecidedByRole).ToLowerInvariant()) on @DisplayFormats.DateTime(review.DecidedAt)
                                         @if (review.OvertimeMinutes > 0)

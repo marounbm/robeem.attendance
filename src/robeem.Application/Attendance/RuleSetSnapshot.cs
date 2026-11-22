@@ -17,6 +17,9 @@ public sealed class RuleSetSnapshot
     /// <summary>How many minutes apart two punches may be and still be one punch said twice, to begin with.</summary>
     public const int DefaultGapMinutes = 10;
 
+    /// <summary>How far from the scheduled start or end of the break a break punch may be and still be fixed by the break fixes, to begin with: 30 minutes.</summary>
+    public const int DefaultBreakWindowMinutes = 30;
+
     public RuleSetSnapshot(int version, string source, IReadOnlyList<RuleSnapshot> rules)
     {
         Version = version;
@@ -38,8 +41,14 @@ public sealed class RuleSetSnapshot
     /// <summary>Gets a value indicating whether any enabled rule fixes punches, so the calculation has to look for them.</summary>
     public bool CanFixPunches => Rules.Any(r => r.IsEnabled && IsAutoFix(r.Action));
 
-    /// <summary>Whether the action is one of the four that fix a day's punches.</summary>
-    public static bool IsAutoFix(RuleAction action) =>
+    /// <summary>Whether the action is one of the six that fix a day's punches.</summary>
+    public static bool IsAutoFix(RuleAction action) => IsCheckInOutFix(action) || IsBreakFix(action);
+
+    /// <summary>Whether the action is one of the two that read a break punch of the wrong type.</summary>
+    public static bool IsBreakFix(RuleAction action) => action is RuleAction.BreakInIsBreakOut or RuleAction.BreakOutIsBreakIn;
+
+    /// <summary>Whether the action is one of the four that read a check-in or check-out, or leave a repeated one out.</summary>
+    public static bool IsCheckInOutFix(RuleAction action) =>
         action is RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut or RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch;
 
     /// <summary>
@@ -75,8 +84,23 @@ public sealed class RuleSetSnapshot
             ShortBreak(70, policy),
         };
         rules.AddRange(AutoFixes(80));
+        rules.AddRange(BreakFixes(84));
 
         return new RuleSetSnapshot(0, "the policy", rules);
+    }
+
+    /// <summary>
+    /// The same rules with the two break fixes added, off, when there are none. It is how a set made before they existed
+    /// (<see cref="AttendanceRuleSet.BreakFixesInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithBreakFixes()
+    {
+        if (Rules.Any(r => IsBreakFix(r.Action)))
+        {
+            return this;
+        }
+
+        return new RuleSetSnapshot(Version, Source, [.. Rules, .. BreakFixes(int.MaxValue - 20)]);
     }
 
     /// <summary>
@@ -85,7 +109,7 @@ public sealed class RuleSetSnapshot
     /// </summary>
     public RuleSetSnapshot WithAutoFixes()
     {
-        if (Rules.Any(r => IsAutoFix(r.Action)))
+        if (Rules.Any(r => IsCheckInOutFix(r.Action)))
         {
             return this;
         }
@@ -181,6 +205,16 @@ public sealed class RuleSetSnapshot
         yield return AutoFix("Read a lone check-in near the end as the check-out", priority + 1, RuleAction.LoneCheckInIsCheckOut, DefaultWindowMinutes);
         yield return AutoFix("Keep the first of two close punches at the start", priority + 2, RuleAction.KeepFirstMorningPunch, DefaultWindowMinutes, DefaultGapMinutes);
         yield return AutoFix("Keep the first of two close punches at the end", priority + 3, RuleAction.KeepFirstEveningPunch, DefaultWindowMinutes, DefaultGapMinutes);
+    }
+
+    /// <summary>
+    /// The two break fixes, off to begin with: a break-in near the scheduled start of the break, where no break is open, is read as the break-out; a break-out
+    /// near the scheduled end of the break, where a break is already open, is read as the break-in.
+    /// </summary>
+    private static IEnumerable<RuleSnapshot> BreakFixes(int priority)
+    {
+        yield return AutoFix("Read a break-in near the break start as the break-out", priority, RuleAction.BreakInIsBreakOut, DefaultBreakWindowMinutes);
+        yield return AutoFix("Read a break-out near the break end as the break-in", priority + 1, RuleAction.BreakOutIsBreakIn, DefaultBreakWindowMinutes);
     }
 
     private static RuleSnapshot AutoFix(string name, int priority, RuleAction action, int windowMinutes, int? gapMinutes = null)

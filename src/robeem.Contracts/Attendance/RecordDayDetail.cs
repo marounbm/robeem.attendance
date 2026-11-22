@@ -24,6 +24,9 @@ public sealed class RecordDayDetail
 
     public string Status { get; init; } = string.Empty;
 
+    /// <summary>Gets the approved leave and public holidays that touch the day, shown whether or not the day was calculated.</summary>
+    public IReadOnlyList<RecordTimeOffItem> TimeOff { get; init; } = Array.Empty<RecordTimeOffItem>();
+
     /// <summary>Gets every version of every record of the day, current ones first within a shift.</summary>
     public IReadOnlyList<RecordVersionItem> Versions { get; init; } = Array.Empty<RecordVersionItem>();
 

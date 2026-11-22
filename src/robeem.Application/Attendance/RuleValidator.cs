@@ -32,7 +32,7 @@ public static class RuleValidator
             : action switch
             {
                 RuleAction.IgnoreShortBreak => ShortBreakFacts,
-                RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut => LonePunchFacts,
+                RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut or RuleAction.BreakInIsBreakOut or RuleAction.BreakOutIsBreakIn => LonePunchFacts,
                 RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch => ClosePunchFacts,
                 _ => InterpretationFacts,
             };

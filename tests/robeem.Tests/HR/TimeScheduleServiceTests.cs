@@ -367,6 +367,53 @@ public sealed class TimeScheduleServiceTests : IDisposable
         Assert.Equal((new DateTime(2026, 10, 5, 9, 0, 0), new DateTime(2026, 10, 5, 17, 0, 0)), (first.StartsAt, first.EndsAt));
     }
 
+    [Fact]
+    public async Task AnOnDemandSchedule_IsMarked_ListedAsSuch_AndHasOnlyItsTeamForEveryone()
+    {
+        var onDemand = await Run(s => s.CreateAsync(new TimeScheduleInput { Title = "Hourly staff", OnDemand = true }, CancellationToken.None));
+        var regular = await Run(s => s.CreateAsync(new TimeScheduleInput { Title = "Office" }, CancellationToken.None));
+
+        Assert.True(onDemand.Succeeded && regular.Succeeded);
+        var list = await Run(s => s.ListAsync(CancellationToken.None));
+        Assert.Equal([("Hourly staff", true), ("Office", false)], list.Select(i => (i.Title, i.IsOnDemand)));
+        var detail = (await Run(s => s.GetAsync(onDemand.Id!.Value, CancellationToken.None)))!;
+        Assert.True(detail.IsOnDemand);
+        Assert.True(detail.Settings.OnDemand);
+        Assert.True(Assert.Single(detail.Teams).AllInclusive);
+        Assert.False((await Run(s => s.GetAsync(regular.Id!.Value, CancellationToken.None)))!.IsOnDemand);
+        Assert.Contains("on demand", Assert.Single(Count(db => db.AttendanceAuditLogs.Where(a => a.TargetId == onDemand.Id).ToList())).Details);
+    }
+
+    [Fact]
+    public async Task AnOnDemandSchedule_RefusesShiftsTeamsAndARoster_AndTheKindCannotBeChanged()
+    {
+        var id = (await Run(s => s.CreateAsync(new TimeScheduleInput { Title = "Hourly staff", OnDemand = true }, CancellationToken.None))).Id!.Value;
+        var teamId = Count(db => db.TimeScheduleTeams.Single().Id);
+
+        var shift = await Run(s => s.AddShiftAsync(id, Shift("Day", "09:00", "17:00", false, "00:00", "00:00"), CancellationToken.None));
+        var team = await Run(s => s.AddTeamAsync(id, new ScheduleTeamInput { Title = "Extra" }, CancellationToken.None));
+        var roster = await Run(s => s.SaveRosterAsync(id, teamId, new ScheduleRosterInput(), CancellationToken.None));
+
+        Assert.All(new[] { shift, team, roster }, r => Assert.Contains("on demand", r.Errors.Values.Single()));
+        Assert.Equal((0, 1), (Count(db => db.TimeScheduleShifts.Count()), Count(db => db.TimeScheduleTeams.Count())));
+
+        // A save of the settings ignores what the form says about the kind.
+        var save = await Run(s => s.UpdateAsync(id, new TimeScheduleInput { Title = "Hourly staff 2", OnDemand = false }, CancellationToken.None));
+        Assert.True(save.Succeeded);
+        Assert.True((await Run(s => s.GetAsync(id, CancellationToken.None)))!.IsOnDemand);
+    }
+
+    [Fact]
+    public async Task DeletingAnOnDemandSchedule_RemovesItsMarker()
+    {
+        var id = (await Run(s => s.CreateAsync(new TimeScheduleInput { Title = "Hourly staff", OnDemand = true }, CancellationToken.None))).Id!.Value;
+
+        var result = await Run(s => s.DeleteAsync(id, CancellationToken.None));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal((0, 0), (Count(db => db.TimeSchedules.Count()), Count(db => db.OnDemandTimeSchedules.Count())));
+    }
+
     private static ScheduleShiftInput Shift(string title, string start, string end, bool breakTime, string breakStart, string breakEnd) =>
         new() { Title = title, StartTime = start, EndTime = end, BreakTime = breakTime, BreakStartTime = breakStart, BreakEndTime = breakEnd };
 

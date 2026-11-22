@@ -14,7 +14,7 @@ public sealed class RecordsIndexViewModel
     /// Gets what the Status filter offers. <see cref="OpenExceptions"/> is not a status the Api knows: it is what the list calls a day that waits for
     /// its exceptions, and the controller asks the Api for the days with an open exception.
     /// </summary>
-    public static IReadOnlyList<string> Statuses { get; } = ["Any", OpenExceptions, "Calculated", "PendingReview", "Approved", "Rejected"];
+    public static IReadOnlyList<string> Statuses { get; } = ["Any", OpenExceptions, "PendingReview", "Approved", "Rejected"];
 
     /// <summary>Gets the page sizes the user can choose from.</summary>
     public static IReadOnlyList<int> PageSizes { get; } = [10, DefaultPageSize, 50, 100, 200];

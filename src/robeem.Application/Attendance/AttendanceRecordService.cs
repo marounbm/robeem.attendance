@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using robeem.Application.HR.Absence;
 using robeem.Application.Persistence;
 using robeem.Contracts.Attendance;
 using robeem.Contracts.Common;
@@ -14,12 +15,14 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
     private readonly IRobeemDbContext _db;
     private readonly IAttendanceProcessingEngine _engine;
     private readonly IAttendanceAuditTrail _audit;
+    private readonly IEmployeeAbsenceCalendar _absences;
 
-    public AttendanceRecordService(IRobeemDbContext db, IAttendanceProcessingEngine engine, IAttendanceAuditTrail audit)
+    public AttendanceRecordService(IRobeemDbContext db, IAttendanceProcessingEngine engine, IAttendanceAuditTrail audit, IEmployeeAbsenceCalendar absences)
     {
         _db = db;
         _engine = engine;
         _audit = audit;
+        _absences = absences;
     }
 
     public async Task<IReadOnlyList<EmployeeOption>> ListEmployeeOptionsAsync(ExceptionViewer viewer, CancellationToken cancellationToken)
@@ -74,7 +77,10 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
 
         if (filter.Status is { } status)
         {
-            days = days.Where(d => d.Status == status);
+            // A day with nothing to review (Calculated) is shown as Approved, so the Approved filter finds it too.
+            days = status == AttendanceRecordStatus.Approved
+                ? days.Where(d => d.Status == AttendanceRecordStatus.Approved || d.Status == AttendanceRecordStatus.Calculated)
+                : days.Where(d => d.Status == status);
         }
 
         if (filter.OnlyWithExceptions)
@@ -101,6 +107,8 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                 TotalWorkingHours = d.TotalWorkingHours,
                 TotalOvertimeHours = d.TotalOvertimeHours,
                 TotalBreakHours = d.TotalBreakHours,
+                TotalTimeOffHours = d.TotalTimeOffHours,
+                TotalUndertimeHours = d.TotalUndertimeHours,
                 ShiftCount = d.ShiftCount,
                 PunchCount = _db.NormalizedAttendanceTransactions.Count(n =>
                     n.EmployeeId == d.EmployeeId
@@ -114,6 +122,14 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     && a.Status == AttendanceApprovalStatus.Pending
                     && a.EmployeeId == d.EmployeeId
                     && a.AttendanceDate == d.AttendanceDate),
+                HasInferredPunches = _db.AttendanceRecords.Any(r =>
+                    r.IsCurrent
+                    && r.EmployeeId == d.EmployeeId
+                    && r.AttendanceDate == d.AttendanceDate
+                    && (r.ActualCheckInSource == AttendancePunchSource.Inferred
+                        || r.ActualCheckOutSource == AttendancePunchSource.Inferred
+                        || r.ActualBreakOutSource == AttendancePunchSource.Inferred
+                        || r.ActualBreakInSource == AttendancePunchSource.Inferred)),
                 Status = d.Status.ToString(),
             })
             .ToListAsync(cancellationToken);
@@ -193,6 +209,35 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             .OrderBy(x => x.Punch.EventTimestampUtc).ThenBy(x => x.Punch.Id)
             .ToList();
 
+        // The calendar says which stretches of the day are excused; the leave rows say what HR entered (the whole period and the note).
+        var leaves = await _db.EmployeeLeaves.AsNoTracking()
+            .Where(l => l.EmployeeId == employeeId && l.EndDate >= day.AddDays(-1) && l.StartDate <= day)
+            .OrderBy(l => l.StartDate).ThenBy(l => l.Id)
+            .ToListAsync(cancellationToken);
+
+        var timeOff = (await _absences.GetAsync([employeeId], day, day, cancellationToken)).For(employeeId)
+            .Where(p => p.Overlaps(day, day.AddDays(1)))
+            .OrderBy(p => p.Start)
+            .ThenBy(p => p.Kind)
+            .Select(p =>
+            {
+                var leave = p.Kind == ExcusedKind.Leave
+                    ? leaves.FirstOrDefault(l => l.LeaveType.ToString() == p.Reference && l.StartDate.Date <= p.Start.Date && p.Start.Date <= l.EndDate.Date)
+                    : null;
+                return new RecordTimeOffItem
+                {
+                    Kind = p.Kind.ToString(),
+                    Reference = p.Reference,
+                    Start = p.Start,
+                    End = p.End,
+                    IsWholeDay = p.IsWholeDay,
+                    LeaveStartDate = leave?.StartDate.Date,
+                    LeaveEndDate = leave?.EndDate.Date,
+                    Notes = leave?.Notes,
+                };
+            })
+            .ToList();
+
         return new RecordDayDetail
         {
             EmployeeId = employee.Id,
@@ -205,6 +250,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             TotalBreakHours = summary?.TotalBreakHours ?? TimeSpan.Zero,
             ExceptionCount = summary?.ExceptionCount ?? 0,
             Status = (summary?.Status ?? AttendanceRecordStatus.Calculated).ToString(),
+            TimeOff = timeOff,
             Versions = records
                 .OrderBy(r => r.Record.ScheduledStart ?? r.Record.ActualCheckIn ?? day)
                 .ThenBy(r => r.Record.TimeScheduleShiftId)
@@ -323,6 +369,8 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             RecordSortField.Worked => By(d => d.TotalWorkingHours),
             RecordSortField.Overtime => By(d => d.TotalOvertimeHours),
             RecordSortField.Break => By(d => d.TotalBreakHours),
+            RecordSortField.TimeOff => By(d => d.TotalTimeOffHours),
+            RecordSortField.Undertime => By(d => d.TotalUndertimeHours),
             RecordSortField.Exceptions => By(d => d.ExceptionCount),
             RecordSortField.Status => By(d => d.Status),
             _ => By(d => d.AttendanceDate),

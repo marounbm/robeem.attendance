@@ -117,7 +117,9 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var (current, result) = await WriteRecordsAsync(employeeId, day, calculated, policy, exceptions.ShiftsWithActive, isHourly, rules.Version, cancellationToken);
 
         // g. The day summary.
-        await WriteSummaryAsync(employeeId, day, current, exceptions.ActiveCount, cancellationToken);
+        var timeOff = calculated.Where(c => c.Shift is not null).Sum(c => ExcusedTime.UnionMinutes(excused, c.Shift!.StartsAt, c.Shift.EndsAt));
+        var undertime = calculated.Sum(c => c.Calculation.ShortfallMinutes);
+        await WriteSummaryAsync(employeeId, day, current, exceptions.ActiveCount, timeOff, undertime, cancellationToken);
 
         // All of the day's changes in one save: one transaction.
         await _db.SaveChangesAsync(cancellationToken);
@@ -539,7 +541,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
             a => a.Type == AttendanceApprovalType.Review && a.Status == AttendanceApprovalStatus.Approved && a.AttendanceRecordId == recordId,
             cancellationToken);
 
-    private async Task WriteSummaryAsync(int employeeId, DateTime day, List<AttendanceRecord> current, int activeExceptionCount, CancellationToken cancellationToken)
+    private async Task WriteSummaryAsync(int employeeId, DateTime day, List<AttendanceRecord> current, int activeExceptionCount, int timeOffMinutes, int undertimeMinutes, CancellationToken cancellationToken)
     {
         var summary = await _db.AttendanceDaySummaries
             .SingleOrDefaultAsync(s => s.EmployeeId == employeeId && s.AttendanceDate == day, cancellationToken);
@@ -558,6 +560,8 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         summary.TotalWorkingHours = current.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.WorkingHours);
         summary.TotalBreakHours = current.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.BreakDuration);
         summary.TotalOvertimeHours = TimeSpan.FromMinutes(current.Sum(r => r.OvertimeMinutes));
+        summary.TotalTimeOffHours = TimeSpan.FromMinutes(timeOffMinutes);
+        summary.TotalUndertimeHours = TimeSpan.FromMinutes(undertimeMinutes);
         summary.ShiftCount = current.Count;
         summary.Status = RollUp(current);
     }

@@ -1,6 +1,28 @@
 @model robeem.Contracts.HR.Schedules.TimeScheduleInput
 @* The fields of a schedule's settings, used by the create page and by the settings card of the details page. *@
+@{
+    // The kind is chosen once, when the schedule is created; the details page only carries it along (a save ignores it).
+    var creating = string.Equals(ViewContext.RouteData.Values["action"]?.ToString(), "Create", StringComparison.OrdinalIgnoreCase);
+}
 <div class="row g-3">
+    @if (creating)
+    {
+        <div class="col-12">
+            <div class="form-check">
+                <input asp-for="OnDemand" class="form-check-input" data-on-demand />
+                <label asp-for="OnDemand" class="form-check-label"></label>
+            </div>
+            <div class="form-text">
+                For employees paid by the hour. The schedule has no shifts or roster, because they work when they are needed and are paid for the
+                hours they punch. It can't be changed afterwards.
+            </div>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" asp-for="OnDemand" />
+    }
+
     <div class="col-md-6">
         <label asp-for="Title" class="form-label"></label>
         <input asp-for="Title" class="form-control" maxlength="255" />
@@ -11,7 +33,7 @@
         <input asp-for="Description" class="form-control" maxlength="1000" />
         <span asp-validation-for="Description" class="text-danger small"></span>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-3" data-pattern-col>
         <label asp-for="CyclePeriod" class="form-label"></label>
         <input asp-for="CyclePeriod" class="form-control" type="number" min="1" max="56" data-pattern-length />
         <div class="form-text">7 for a weekly pattern. Use 14 for a two-week rotation, or any length up to 56 days.</div>
@@ -36,12 +58,22 @@
         var length = document.currentScript.parentElement.querySelector('[data-pattern-length]');
         var weekly = document.currentScript.parentElement.querySelector('[data-weekly]');
         var other = document.currentScript.parentElement.querySelector('[data-not-weekly]');
+        var patternColumn = document.currentScript.parentElement.querySelector('[data-pattern-col]');
+        var onDemandBox = document.currentScript.parentElement.querySelector('[data-on-demand]');
+        var fixedOnDemand = @(Model.OnDemand && !creating ? "true" : "false");
         function show() {
+            // An on-demand schedule has no pattern: the fields stay in the form (with their values) but are not shown.
+            var onDemand = fixedOnDemand || (onDemandBox !== null && onDemandBox.checked);
             var isWeekly = parseInt(length.value, 10) === 7;
-            weekly.style.display = isWeekly ? '' : 'none';
-            other.style.display = isWeekly ? 'none' : '';
+            patternColumn.style.display = onDemand ? 'none' : '';
+            weekly.style.display = onDemand || !isWeekly ? 'none' : '';
+            other.style.display = onDemand || isWeekly ? 'none' : '';
         }
         length.addEventListener('input', show);
+        if (onDemandBox !== null) {
+            onDemandBox.addEventListener('change', show);
+        }
+
         show();
     })();
 </script>

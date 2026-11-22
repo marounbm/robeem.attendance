@@ -5,7 +5,7 @@ namespace robeem.Application.Attendance;
 /// <summary>
 /// Reads the obvious mistakes of a day's punches the way the rules say, so they do not become exceptions: a check-out where the check-in
 /// belongs, a check-in where the check-out belongs, and one punch said twice. It only retypes a punch that exists (marked
-/// <see cref="AttendancePunchSource.Inferred"/>) or leaves one out of the calculation; it never adds a punch and never touches a stored one
+/// <see cref="AttendancePunchSource.Inferred"/>), including a break-in or break-out of the wrong type near the scheduled break, or leaves one out of the calculation; it never adds a punch and never touches a stored one
 /// (CLAUDE.md §1.5, §1.6). A punch an applied correction supplied is a person's decision and is never changed. Pure: no I/O.
 /// </summary>
 internal static class PunchFixer
@@ -88,7 +88,56 @@ internal static class PunchFixer
             retyped++;
         }
 
+        retyped += FixBreakPunches(result, shift, hasBreak, overnight, rules);
         return result;
+    }
+
+    /// <summary>
+    /// Reads a break punch of the wrong type the way the rules say, walking the day in order: a break-in where no break is open and the punch is near the
+    /// scheduled start of the break is the break-out (a break-in said twice, or in place of the break-out); a break-out where a break is already open and the
+    /// punch is near the scheduled end of the break is the break-in (a break-out said twice, or in place of the break-in). Only the type changes.
+    /// </summary>
+    private static int FixBreakPunches(List<AttendancePunch> result, ResolvedShift shift, bool hasBreak, bool overnight, RuleSetSnapshot rules)
+    {
+        if (shift is not { BreakTime: true, BreakStartsAt: { } breakStart, BreakEndsAt: { } breakEnd })
+        {
+            return 0;
+        }
+
+        var retyped = 0;
+        var state = State.Off;
+        for (var i = 0; i < result.Count; i++)
+        {
+            var punch = result[i];
+            if (FromDevice(punch))
+            {
+                if (punch.Type == NormalizedEventType.BreakIn
+                    && state == State.Working
+                    && rules.Applies(RuleAction.BreakInIsBreakOut, Facts(hasBreak, overnight, punch, breakStart)))
+                {
+                    punch = result[i] = punch with { Type = NormalizedEventType.BreakOut, Source = AttendancePunchSource.Inferred };
+                    retyped++;
+                }
+                else if (punch.Type == NormalizedEventType.BreakOut
+                    && state == State.OnBreak
+                    && rules.Applies(RuleAction.BreakOutIsBreakIn, Facts(hasBreak, overnight, punch, breakEnd)))
+                {
+                    punch = result[i] = punch with { Type = NormalizedEventType.BreakIn, Source = AttendancePunchSource.Inferred };
+                    retyped++;
+                }
+            }
+
+            state = (punch.Type, state) switch
+            {
+                (NormalizedEventType.CheckIn, State.Off) => State.Working,
+                (NormalizedEventType.BreakOut, State.Working) => State.OnBreak,
+                (NormalizedEventType.BreakIn, State.OnBreak) => State.Working,
+                (NormalizedEventType.CheckOut, State.Working) => State.Off,
+                _ => state,
+            };
+        }
+
+        return retyped;
     }
 
     /// <summary>A punch a person's correction supplied is never read differently by a rule.</summary>

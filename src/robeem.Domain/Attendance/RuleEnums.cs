@@ -53,6 +53,18 @@ namespace robeem.DataModel
         /// the check-out (retyped and marked inferred when it was a check-in) and the second is left out of the calculation.
         /// </summary>
         KeepFirstEveningPunch,
+
+        /// <summary>
+        /// A break-in where the break-out belongs (no break is open, and the punch is near the scheduled start of the break): the break-in is read as the
+        /// break-out (retyped and marked inferred). It covers a break-in said twice and a break-in instead of a break-out. The punch exists; none is invented.
+        /// </summary>
+        BreakInIsBreakOut,
+
+        /// <summary>
+        /// A break-out where the break-in belongs (a break is already open, and the punch is near the scheduled end of the break): the break-out is read as the
+        /// break-in (retyped and marked inferred). It covers a break-out said twice and a break-out instead of a break-in.
+        /// </summary>
+        BreakOutIsBreakIn,
     }
 
     /// <summary>What an exception rule is about. Stored as its name.</summary>

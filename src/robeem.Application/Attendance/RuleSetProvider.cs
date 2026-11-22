@@ -41,7 +41,10 @@ public sealed class RuleSetProvider : IRuleSetProvider
         snapshot = set.ShortHoursInRules ? snapshot : snapshot.WithShortHours(policy);
 
         // A set made before the automatic punch fixes existed is read with them added, off.
-        return set.AutoFixesInRules ? snapshot : snapshot.WithAutoFixes();
+        snapshot = set.AutoFixesInRules ? snapshot : snapshot.WithAutoFixes();
+
+        // Nor does a set made before the two break fixes existed: they are added, off.
+        return set.BreakFixesInRules ? snapshot : snapshot.WithBreakFixes();
     }
 
     public async Task<RuleSetSnapshot> ResolveAsync(AttendancePolicy policy, CancellationToken cancellationToken)

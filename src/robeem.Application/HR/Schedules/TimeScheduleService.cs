@@ -12,6 +12,8 @@ public sealed class TimeScheduleService : ITimeScheduleService
 
     private const int MinutesPerDay = 1440;
 
+    private const string OnDemandRefusal = "This schedule is on demand: it has no shifts, teams or roster. Employees paid by the hour work when they are needed, and their hours are whatever they punch.";
+
     private readonly IRobeemDbContext _db;
     private readonly IChangeAuditTrail _audit;
 
@@ -32,6 +34,7 @@ public sealed class TimeScheduleService : ITimeScheduleService
                 s.Description,
                 s.CyclePeriod,
                 s.SystemSchedule,
+                OnDemand = _db.OnDemandTimeSchedules.Any(o => o.TimeScheduleId == s.Id),
                 Shifts = _db.TimeScheduleShifts.Count(x => x.TimeScheduleId == s.Id),
                 Teams = _db.TimeScheduleTeams.Count(x => x.TimeScheduleId == s.Id),
                 Employees = _db.TimeScheduleEmployees.Count(x => x.TimeScheduleId == s.Id),
@@ -47,6 +50,7 @@ public sealed class TimeScheduleService : ITimeScheduleService
                 Title = r.Title,
                 Description = r.Description,
                 CyclePeriod = r.CyclePeriod,
+                IsOnDemand = r.OnDemand,
                 ShiftCount = r.Shifts,
                 TeamCount = r.Teams,
                 EmployeeCount = r.Employees,
@@ -72,12 +76,15 @@ public sealed class TimeScheduleService : ITimeScheduleService
             .Select(a => new { a.EmployeeId, a.TeamId, a.Employee!.EmployeeNumber, a.Employee.FirstName, a.Employee.LastName })
             .ToListAsync(cancellationToken);
 
+        var onDemand = await IsOnDemandAsync(id, cancellationToken);
         return new TimeScheduleDetail
         {
             Id = schedule.Id,
             IsSystemSchedule = schedule.SystemSchedule,
+            IsOnDemand = onDemand,
             Settings = new TimeScheduleInput
             {
+                OnDemand = onDemand,
                 Title = schedule.Title,
                 Description = schedule.Description,
                 CyclePeriod = schedule.CyclePeriod,
@@ -142,9 +149,15 @@ public sealed class TimeScheduleService : ITimeScheduleService
 
         // Employees are assigned to a schedule's everyone-team, so a schedule is born with one.
         _db.TimeScheduleTeams.Add(new TimeScheduleTeam { TimeSchedule = schedule, Title = DefaultTeamTitle, AllInclusive = true });
+        if (input.OnDemand)
+        {
+            _db.OnDemandTimeSchedules.Add(new OnDemandTimeSchedule { TimeSchedule = schedule });
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
-        Audit("Schedule", schedule.Id, $"Created '{schedule.Title}': {Describe(schedule)}.");
+        var what = input.OnDemand ? "on demand, for employees paid by the hour" : Describe(schedule);
+        Audit("Schedule", schedule.Id, $"Created '{schedule.Title}': {what}.");
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(schedule.Id);
     }
@@ -206,6 +219,7 @@ public sealed class TimeScheduleService : ITimeScheduleService
             return SaveResult.Invalid("id", $"{assigned} employee(s) are assigned to this schedule. Move them to another schedule first.");
         }
 
+        _db.OnDemandTimeSchedules.RemoveRange(await _db.OnDemandTimeSchedules.Where(o => o.TimeScheduleId == id).ToListAsync(cancellationToken));
         _db.TimeScheduleLines.RemoveRange(await _db.TimeScheduleLines.Where(l => l.TimeScheduleId == id).ToListAsync(cancellationToken));
         _db.TimeScheduleTeams.RemoveRange(await _db.TimeScheduleTeams.Where(t => t.TimeScheduleId == id).ToListAsync(cancellationToken));
         _db.TimeScheduleShifts.RemoveRange(await _db.TimeScheduleShifts.Where(s => s.TimeScheduleId == id).ToListAsync(cancellationToken));
@@ -220,6 +234,11 @@ public sealed class TimeScheduleService : ITimeScheduleService
         if (!await _db.TimeSchedules.AnyAsync(s => s.Id == scheduleId, cancellationToken))
         {
             return SaveResult.Missing();
+        }
+
+        if (await IsOnDemandAsync(scheduleId, cancellationToken))
+        {
+            return SaveResult.Invalid(nameof(ScheduleShiftInput.Title), OnDemandRefusal);
         }
 
         var errors = await ValidateShiftAsync(scheduleId, null, input, cancellationToken);
@@ -283,6 +302,11 @@ public sealed class TimeScheduleService : ITimeScheduleService
         if (!await _db.TimeSchedules.AnyAsync(s => s.Id == scheduleId, cancellationToken))
         {
             return SaveResult.Missing();
+        }
+
+        if (await IsOnDemandAsync(scheduleId, cancellationToken))
+        {
+            return SaveResult.Invalid(nameof(ScheduleTeamInput.Title), OnDemandRefusal);
         }
 
         var errors = await ValidateTeamAsync(scheduleId, null, input, cancellationToken);
@@ -362,6 +386,11 @@ public sealed class TimeScheduleService : ITimeScheduleService
         if (schedule is null || !await _db.TimeScheduleTeams.AnyAsync(t => t.Id == teamId && t.TimeScheduleId == scheduleId, cancellationToken))
         {
             return SaveResult.Missing();
+        }
+
+        if (await IsOnDemandAsync(scheduleId, cancellationToken))
+        {
+            return SaveResult.Invalid(nameof(ScheduleRosterInput.Cells), OnDemandRefusal);
         }
 
         var shifts = await _db.TimeScheduleShifts.AsNoTracking().Where(s => s.TimeScheduleId == scheduleId).ToListAsync(cancellationToken);
@@ -590,6 +619,9 @@ public sealed class TimeScheduleService : ITimeScheduleService
             .OrderBy(t => t.Id)
             .Select(t => (int?)t.Id)
             .FirstOrDefaultAsync(cancellationToken);
+
+    private Task<bool> IsOnDemandAsync(int scheduleId, CancellationToken cancellationToken) =>
+        _db.OnDemandTimeSchedules.AnyAsync(o => o.TimeScheduleId == scheduleId, cancellationToken);
 
     private async Task<bool> TitleTakenAsync(string title, int? exceptId, CancellationToken cancellationToken)
     {

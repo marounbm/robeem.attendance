@@ -282,7 +282,7 @@ public sealed class RulesController : Controller
     {
         "InferBreak" => "GapMinutes",
         "IgnoreShortBreak" => "BreakMinutes",
-        "LoneCheckOutIsCheckIn" or "LoneCheckInIsCheckOut" or "KeepFirstMorningPunch" or "KeepFirstEveningPunch" => "PunchOffsetMinutes",
+        "LoneCheckOutIsCheckIn" or "LoneCheckInIsCheckOut" or "KeepFirstMorningPunch" or "KeepFirstEveningPunch" or "BreakInIsBreakOut" or "BreakOutIsBreakIn" => "PunchOffsetMinutes",
         _ => "MinutesOver",
     };
 

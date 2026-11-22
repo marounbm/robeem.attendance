@@ -8,6 +8,8 @@ public enum RecordSortField
     Worked,
     Overtime,
     Break,
+    TimeOff,
+    Undertime,
     Exceptions,
     Status,
 }

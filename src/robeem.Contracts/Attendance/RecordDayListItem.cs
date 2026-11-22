@@ -20,6 +20,12 @@ public sealed class RecordDayListItem
 
     public TimeSpan TotalBreakHours { get; init; }
 
+    /// <summary>Gets the time of the day's scheduled shifts that approved leave or a public holiday covers.</summary>
+    public TimeSpan TotalTimeOffHours { get; init; }
+
+    /// <summary>Gets how much less than scheduled was worked, after approved leave.</summary>
+    public TimeSpan TotalUndertimeHours { get; init; }
+
     /// <summary>Gets the number of current records that day, unscheduled work included.</summary>
     public int ShiftCount { get; init; }
 
@@ -32,6 +38,9 @@ public sealed class RecordDayListItem
     /// <summary>Gets a value indicating whether a correction the employee sent for this day is waiting for an approver's decision.</summary>
     public bool HasPendingApproval { get; init; }
 
-    /// <summary>Gets the day's status: Calculated, PendingReview, Approved or Rejected.</summary>
+    /// <summary>Gets a value indicating whether a punch type the day was calculated with was inferred (by the policy or a rule) rather than given by the machine or a person.</summary>
+    public bool HasInferredPunches { get; init; }
+
+    /// <summary>Gets the day's status: Calculated (shown as Approved), PendingReview, Approved or Rejected.</summary>
     public string Status { get; init; } = string.Empty;
 }

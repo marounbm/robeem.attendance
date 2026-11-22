@@ -12,6 +12,9 @@ public sealed class TimeScheduleListItem
     /// <summary>Gets the number of days after which the pattern repeats: 7 for a weekly pattern.</summary>
     public int CyclePeriod { get; init; }
 
+    /// <summary>Gets a value indicating whether the schedule is on demand: for employees paid by the hour, with no shifts or roster.</summary>
+    public bool IsOnDemand { get; init; }
+
     public int ShiftCount { get; init; }
 
     public int TeamCount { get; init; }
