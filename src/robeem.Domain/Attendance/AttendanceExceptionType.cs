@@ -32,5 +32,17 @@ namespace robeem.DataModel
         /// rules decide how much less is a problem.
         /// </summary>
         ShortHours,
+
+        /// <summary>The check-in came later than the rules allow. There is no punch to supply: a manager or HR accepts it with a reason, or the day is corrected.</summary>
+        LateCheckIn,
+
+        /// <summary>The check-out came earlier than the rules allow. Settled like <see cref="LateCheckIn"/>.</summary>
+        EarlyCheckOut,
+
+        /// <summary>A complete shift worked longer than scheduled. There is no punch to supply: a manager or HR accepts it with a reason.</summary>
+        Overtime,
+
+        /// <summary>An employee not paid by the hour punched when no shift was scheduled. Settled like <see cref="Overtime"/>.</summary>
+        UnscheduledWork,
     }
 }

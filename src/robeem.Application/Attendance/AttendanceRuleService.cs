@@ -124,7 +124,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         }
 
         var current = (await GetCurrentAsync(timeScheduleId, cancellationToken))!;
-        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true };
+        var draft = new AttendanceRuleSet { TimeScheduleId = timeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true, LateEarlyInRules = true, OvertimeInRules = true, KeepLastInRules = true, PunchPairsInRules = true, CheckPairsInRules = true, RepeatsInRules = true };
         _db.AttendanceRuleSets.Add(draft);
         AddRules(draft, current.Rules);
         await _db.SaveChangesAsync(cancellationToken);
@@ -166,6 +166,12 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
         draft.ShortHoursInRules = true;
         draft.AutoFixesInRules = true;
         draft.BreakFixesInRules = true;
+        draft.LateEarlyInRules = true;
+        draft.OvertimeInRules = true;
+        draft.KeepLastInRules = true;
+        draft.PunchPairsInRules = true;
+        draft.CheckPairsInRules = true;
+        draft.RepeatsInRules = true;
         AddRules(draft, request.Rules);
         await _db.SaveChangesAsync(cancellationToken);
         return SaveResult.Success(draft.Id);
@@ -254,7 +260,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
             return SaveResult.Invalid(invalid);
         }
 
-        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true };
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true, LateEarlyInRules = true, OvertimeInRules = true, KeepLastInRules = true, PunchPairsInRules = true, CheckPairsInRules = true, RepeatsInRules = true };
         _db.AttendanceRuleSets.Add(set);
         AddRules(set, rules);
         await PublishSetAsync(set, rules, title!, change, change, cancellationToken);
@@ -326,7 +332,7 @@ public sealed class AttendanceRuleService : IAttendanceRuleService
                 return SaveResult.Invalid(nameof(RuleChangeRequest.Operation), $"The operation must be one of: {string.Join(", ", RuleChangeOperations.Replace, RuleChangeOperations.Enable, RuleChangeOperations.Disable, RuleChangeOperations.Delete, RuleChangeOperations.MoveUp, RuleChangeOperations.MoveDown)}.");
         }
 
-        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true };
+        var set = new AttendanceRuleSet { TimeScheduleId = request.TimeScheduleId, Status = RuleSetStatus.Draft, Version = 0, Title = "Draft rules", ThresholdsInRules = true, ShortHoursInRules = true, AutoFixesInRules = true, BreakFixesInRules = true, LateEarlyInRules = true, OvertimeInRules = true, KeepLastInRules = true, PunchPairsInRules = true, CheckPairsInRules = true, RepeatsInRules = true };
         _db.AttendanceRuleSets.Add(set);
         AddRules(set, rules);
         await PublishSetAsync(set, rules, title!, string.IsNullOrWhiteSpace(request.Notes) ? change : request.Notes, change, cancellationToken);

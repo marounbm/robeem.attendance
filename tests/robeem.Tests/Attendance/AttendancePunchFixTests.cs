@@ -124,26 +124,163 @@ public sealed class AttendancePunchFixTests : AttendanceEngineTestBase
         Assert.DoesNotContain(after.AttendanceExceptions, e => e.Status == AttendanceExceptionStatus.Open);
     }
 
-    [Theory]
-    [InlineData("I@08:00,O@17:00,O@17:05", 17, 0)]
-    [InlineData("I@08:00,I@17:00,O@17:05", 17, 0)]
-    public async Task TwoClosePunchesAtTheEnd_CountAsOne_TheFirstIsTheCheckOut(string punches, int hour, int minute)
+    [Fact]
+    public async Task TwoCheckOutsAtTheEnd_CountAsOne_TheFirstIsTheCheckOut()
     {
         await EnableAsync(s => s.EveningDuplicateIsOne = true);
-        AddPunches(punches);
+        AddPunches("I@08:00,O@17:00,O@17:05");
 
         await ProcessAsync(Monday);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = Assert.Single(db.AttendanceRecords);
-        Assert.Equal((Monday.At(hour, minute), AttendanceRecordStatus.Approved), (record.ActualCheckOut, record.Status));
+        Assert.Equal((Monday.At(17, 0), AttendanceRecordStatus.Approved), (record.ActualCheckOut, record.Status));
         Assert.Empty(db.AttendanceExceptions);
     }
 
     [Fact]
-    public async Task ACheckInThenACheckOutAtTheEnd_WithNoCheckInBefore_IsNotMerged()
+    public async Task ACheckInThenACheckOutAtTheEnd_IsItsOwnRule_AndTheRuleForTwoCheckOutsDoesNotReadIt()
     {
+        AddPunches("I@08:00,I@17:00,O@17:05");
+
+        // The rule for two check-outs leaves a check-in then a check-out alone, even when it is on.
         await EnableAsync(s => s.EveningDuplicateIsOne = true);
+        await ProcessAsync(Monday);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+        }
+
+        // Its own rule reads the check-in as the check-out, marked inferred, and leaves the check-out after it out.
+        await EnableAsync(s => s.EveningInThenOutIsOne = true, expectedVersion: 1);
+        await ProcessAsync(Monday);
+
+        using var after = Database.CreateContext(TestDatabase.TenantA);
+        var record = after.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((Monday.At(17, 0), AttendancePunchSource.Inferred, AttendanceRecordStatus.Approved), (record.ActualCheckOut, record.ActualCheckOutSource, record.Status));
+        Assert.DoesNotContain(after.AttendanceExceptions, e => e.Status == AttendanceExceptionStatus.Open);
+    }
+
+    [Fact]
+    public async Task ARepeatedCheckIn_AnywhereInTheDay_CanKeepTheFirst_AndARunOfThreeBecomesOne()
+    {
+        AddPunches("I@08:00,I@08:02,I@08:04,O@17:00");
+
+        // Off to begin with.
+        await ProcessAsync(Monday);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+        }
+
+        await EnableAsync(s => (s.RepeatedCheckInFirst, s.RepeatedGapMinutes) = (true, 5), expectedVersion: 0);
+        await ProcessAsync(Monday);
+
+        using var after = Database.CreateContext(TestDatabase.TenantA);
+        var record = after.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((Monday.At(8, 0), AttendanceRecordStatus.Approved), (record.ActualCheckIn, record.Status));
+        Assert.DoesNotContain(after.AttendanceExceptions, e => e.Status == AttendanceExceptionStatus.Open);
+    }
+
+    [Fact]
+    public async Task ARepeatedCheckOut_CanKeepTheLast_WhichIsWhenThePersonLeft()
+    {
+        await EnableAsync(s => s.RepeatedCheckOutLast = true);
+        AddPunches("I@08:00,O@12:00,O@12:03,I@13:00,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        // The repeat in the middle of the day is read, though it is nowhere near the start or the end of the shift.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.DoesNotContain(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+        Assert.Equal(Monday.At(17, 0), Assert.Single(db.AttendanceRecords).ActualCheckOut);
+    }
+
+    [Fact]
+    public async Task TwoPunchesFurtherApartThanTheNumber_AreNotRepeats()
+    {
+        await EnableAsync(s => (s.RepeatedCheckOutFirst, s.RepeatedGapMinutes) = (true, 5));
+        AddPunches("I@08:00,O@12:00,O@12:06,I@13:00,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+    }
+
+    [Fact]
+    public async Task StaffPaidByTheHour_HaveTheirRepeatedPunchesReadToo_WithNoShift()
+    {
+        using (var setup = Database.CreateContext(TestDatabase.TenantA))
+        {
+            setup.Profiles.Single(p => p.Id == EmployeeId).PayBasis = PayBasis.Hourly;
+            setup.SaveChanges();
+        }
+
+        await EnableAsync(s => s.RepeatedCheckInFirst = true);
+        AddPunches("I@09:00,I@09:03,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(9, 0), AttendanceRecordStatus.Approved), (record.ActualCheckIn, record.Status));
+        Assert.Empty(db.AttendanceExceptions);
+    }
+
+    [Fact]
+    public void ARepeatedPunchRule_CanKeepTheFirstOrTheLastOfAKind_NotBoth()
+    {
+        var checkIns = new RuleSettings { RepeatedCheckInFirst = true, RepeatedCheckInLast = true };
+        var checkOuts = new RuleSettings { RepeatedCheckOutFirst = true, RepeatedCheckOutLast = true };
+
+        Assert.Contains($"Settings.{nameof(RuleSettings.RepeatedCheckInLast)}", RuleSettingsMapper.Validate(checkIns).Keys);
+        Assert.Contains($"Settings.{nameof(RuleSettings.RepeatedCheckOutLast)}", RuleSettingsMapper.Validate(checkOuts).Keys);
+        Assert.Empty(RuleSettingsMapper.Validate(new RuleSettings { RepeatedCheckInFirst = true, RepeatedCheckOutLast = true }));
+    }
+
+    [Fact]
+    public async Task ASetPublishedBeforeRepeatedPunches_IsReadWithThemOff()
+    {
+        await EnableAsync(s => s.GapWindowMinutes = 45);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var set = db.AttendanceRuleSets.Include(x => x.Rules).ThenInclude(r => r.Conditions).Single(x => x.Status == RuleSetStatus.Published);
+            var added = set.Rules.Where(r => RuleSetSnapshot.IsRepeatFix(r.Action)).ToList();
+            Assert.Equal(5, added.Count);
+            db.AttendanceRuleConditions.RemoveRange(added.SelectMany(r => r.Conditions));
+            db.AttendanceRules.RemoveRange(added);
+            set.RepeatsInRules = false;
+            db.SaveChanges();
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var shown = (await Service(read).GetSettingsAsync(null, CancellationToken.None))!;
+
+        Assert.True(shown.IsStandard);
+        Assert.Equal((false, false, false, false, false, 10), (shown.Settings.RepeatedCheckInFirst, shown.Settings.RepeatedCheckInLast, shown.Settings.RepeatedCheckOutFirst, shown.Settings.RepeatedCheckOutLast, shown.Settings.RepeatedBreakPunchFirst, shown.Settings.RepeatedGapMinutes));
+    }
+
+    [Fact]
+    public async Task ACheckInThenACheckOutAtTheEnd_CanLeaveTheCheckInOutAndKeepTheCheckOut_WithNothingInferred()
+    {
+        await EnableAsync(s => s.EveningInThenOutLast = true);
+        AddPunches("I@08:00,I@17:00,O@17:03");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(17, 3), AttendancePunchSource.Normalized, AttendanceRecordStatus.Approved), (record.ActualCheckOut, record.ActualCheckOutSource, record.Status));
+        Assert.Empty(db.AttendanceExceptions);
+        Assert.Equal(3, db.NormalizedAttendanceTransactions.Count());
+    }
+
+    [Fact]
+    public async Task ACheckInThenACheckOutAtTheEnd_IsNotKeptAsACheckOutOnly_WhenThePersonWasNotAtWork()
+    {
+        // No check-in before it: this is a whole, if short, visit and not a repeated check-in.
+        await EnableAsync(s => s.EveningInThenOutLast = true);
         AddPunches("I@17:00,O@17:05");
 
         await ProcessAsync(Monday);
@@ -151,6 +288,200 @@ public sealed class AttendancePunchFixTests : AttendanceEngineTestBase
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var record = Assert.Single(db.AttendanceRecords);
         Assert.Equal((Monday.At(17, 0), Monday.At(17, 5)), (record.ActualCheckIn, record.ActualCheckOut));
+    }
+
+    [Fact]
+    public async Task ACheckOutThenACheckInAtTheStart_CanLeaveTheCheckOutOutAndKeepTheCheckIn()
+    {
+        AddPunches("O@07:57,I@08:00,O@17:00");
+
+        // Off to begin with: a check-out before any check-in is a sequence the day raises.
+        await ProcessAsync(Monday);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+        }
+
+        await EnableAsync(s => s.MorningOutThenInCounts = true, expectedVersion: 0);
+        await ProcessAsync(Monday);
+
+        using var after = Database.CreateContext(TestDatabase.TenantA);
+        var record = after.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((Monday.At(8, 0), AttendancePunchSource.Normalized, AttendanceRecordStatus.Approved), (record.ActualCheckIn, record.ActualCheckInSource, record.Status));
+        Assert.DoesNotContain(after.AttendanceExceptions, e => e.Status == AttendanceExceptionStatus.Open);
+    }
+
+    [Fact]
+    public void ReadingACheckInThenACheckOutBothWays_CannotBeOn()
+    {
+        var both = new RuleSettings { EveningInThenOutIsOne = true, EveningInThenOutLast = true };
+
+        Assert.Contains($"Settings.{nameof(RuleSettings.EveningInThenOutLast)}", RuleSettingsMapper.Validate(both).Keys);
+    }
+
+    [Fact]
+    public async Task ASetPublishedBeforeTheCheckPairs_IsReadWithThemOff()
+    {
+        await EnableAsync(s => s.GapWindowMinutes = 45);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var set = db.AttendanceRuleSets.Include(x => x.Rules).ThenInclude(r => r.Conditions).Single(x => x.Status == RuleSetStatus.Published);
+            var added = set.Rules.Where(r => r.Action is RuleAction.KeepEveningCheckOutPunch or RuleAction.KeepMorningCheckInPunch).ToList();
+            db.AttendanceRuleConditions.RemoveRange(added.SelectMany(r => r.Conditions));
+            db.AttendanceRules.RemoveRange(added);
+            set.CheckPairsInRules = false;
+            db.SaveChanges();
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var shown = (await Service(read).GetSettingsAsync(null, CancellationToken.None))!;
+
+        Assert.True(shown.IsStandard);
+        Assert.Equal((false, 120, 10, false), (shown.Settings.EveningInThenOutLast, shown.Settings.EveningInThenOutLastWindowMinutes, shown.Settings.EveningInThenOutLastGapMinutes, shown.Settings.MorningOutThenInCounts));
+    }
+
+    [Fact]
+    public async Task TwoCloseCheckInsAtTheStart_CanCountAsTheLastOne_TheSecondIsTheCheckIn()
+    {
+        await EnableAsync(s => s.MorningLastPunchCounts = true);
+        AddPunches("I@07:55,I@08:00,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(8, 0), AttendanceRecordStatus.Approved), (record.ActualCheckIn, record.Status));
+        Assert.Empty(db.AttendanceExceptions);
+        Assert.Equal(3, db.NormalizedAttendanceTransactions.Count());
+    }
+
+    [Fact]
+    public async Task TwoCloseCheckInsAtTheStart_AreLeftAloneWhenKeepingTheLastIsOff()
+    {
+        AddPunches("I@07:55,I@08:00,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+    }
+
+    [Fact]
+    public async Task ACheckInThenACheckOutAtTheEnd_WithNoCheckInBefore_IsNotMerged()
+    {
+        await EnableAsync(s => s.EveningInThenOutIsOne = true);
+        AddPunches("I@17:00,O@17:05");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(17, 0), Monday.At(17, 5)), (record.ActualCheckIn, record.ActualCheckOut));
+    }
+
+    [Fact]
+    public async Task TwoCloseCheckOutsAtTheEnd_CanCountAsTheLastOne_TheSecondIsTheCheckOut()
+    {
+        await EnableAsync(s => s.EveningLastPunchCounts = true);
+        AddPunches("I@08:00,O@16:58,O@17:01");
+
+        await ProcessAsync(Monday);
+
+        // The second check-out counts, the first is left out, and both stored punches are as they were.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(17, 1), AttendanceRecordStatus.Approved), (record.ActualCheckOut, record.Status));
+        Assert.Empty(db.AttendanceExceptions);
+        Assert.Equal([NormalizedEventType.CheckIn, NormalizedEventType.CheckOut, NormalizedEventType.CheckOut], db.NormalizedAttendanceTransactions.OrderBy(n => n.EventTimestampUtc).Select(n => n.NormalizedEventType));
+    }
+
+    [Theory]
+    [InlineData("I@08:00,O@16:58,O@17:01", false)] // The rule fixes this pair, but it is off to begin with.
+    [InlineData("I@08:00,O@16:30,O@16:45", true)] // 15 minutes apart: more than the 10 the rule allows.
+    [InlineData("I@08:00,O@12:00,O@12:03", true)] // Hours from the end of the shift.
+    public async Task TwoCheckOutsAtTheEnd_AreLeftAlone_WhenTheRuleIsOff_FarApartOrFarFromTheEnd(string punches, bool ruleOn)
+    {
+        if (ruleOn)
+        {
+            await EnableAsync(s => s.EveningLastPunchCounts = true);
+        }
+
+        AddPunches(punches);
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+    }
+
+    [Fact]
+    public async Task KeepingTheLast_IsMeasuredFromTheKeptPunch_NotFromTheOneThatIsLeftOut()
+    {
+        // The shift ends at 17:00. The first check-out is 62 minutes from it, outside a 60-minute window; the one that is kept is 58 minutes from it, inside.
+        await EnableAsync(s => (s.EveningLastPunchCounts, s.EveningLastPunchWindowMinutes) = (true, 60));
+        AddPunches("I@08:00,O@15:58,O@16:02");
+
+        await ProcessAsync(Monday);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Equal(Monday.At(16, 2), Assert.Single(db.AttendanceRecords).ActualCheckOut);
+        Assert.DoesNotContain(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.InvalidSequence);
+    }
+
+    [Fact]
+    public void KeepingTheFirstAndKeepingTheLastCloseCheckOut_CannotBothBeOn()
+    {
+        var both = new RuleSettings { EveningDuplicateIsOne = true, EveningLastPunchCounts = true };
+        var one = new RuleSettings { EveningLastPunchCounts = true };
+        var morning = new RuleSettings { MorningDuplicateIsOne = true, MorningLastPunchCounts = true };
+
+        Assert.Contains($"Settings.{nameof(RuleSettings.EveningLastPunchCounts)}", RuleSettingsMapper.Validate(both).Keys);
+        Assert.Contains($"Settings.{nameof(RuleSettings.MorningLastPunchCounts)}", RuleSettingsMapper.Validate(morning).Keys);
+        Assert.Empty(RuleSettingsMapper.Validate(one));
+    }
+
+    [Fact]
+    public async Task ASetPublishedBeforeTheSplit_ReadsTheCheckInThenCheckOutRuleWithTheSameSwitchAndNumbers()
+    {
+        // A tenant switched the old end rule on with its own window; the rules it now splits into must behave as that one did.
+        await EnableAsync(s => (s.EveningDuplicateIsOne, s.EveningDuplicateWindowMinutes) = (true, 45));
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var set = db.AttendanceRuleSets.Include(x => x.Rules).ThenInclude(r => r.Conditions).Single(x => x.Status == RuleSetStatus.Published);
+            var added = set.Rules.Where(r => r.Action is RuleAction.KeepFirstEveningCheckInPunch or RuleAction.KeepLastMorningPunch).ToList();
+            db.AttendanceRuleConditions.RemoveRange(added.SelectMany(r => r.Conditions));
+            db.AttendanceRules.RemoveRange(added);
+            set.PunchPairsInRules = false;
+            db.SaveChanges();
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var shown = (await Service(read).GetSettingsAsync(null, CancellationToken.None))!;
+
+        Assert.True(shown.IsStandard);
+        Assert.Equal((true, 45, 10), (shown.Settings.EveningInThenOutIsOne, shown.Settings.EveningInThenOutWindowMinutes, shown.Settings.EveningInThenOutGapMinutes));
+        Assert.Equal((false, 120, 10), (shown.Settings.MorningLastPunchCounts, shown.Settings.MorningLastPunchWindowMinutes, shown.Settings.MorningLastPunchGapMinutes));
+    }
+
+    [Fact]
+    public async Task ASetPublishedBeforeKeepingTheLastExisted_IsReadWithItOff_AndTheSettingsShowItOff()
+    {
+        await EnableAsync(s => s.GapWindowMinutes = 45);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var set = db.AttendanceRuleSets.Include(x => x.Rules).ThenInclude(r => r.Conditions).Single(x => x.Status == RuleSetStatus.Published);
+            var rule = set.Rules.Single(r => r.Action == RuleAction.KeepLastEveningPunch);
+            db.AttendanceRuleConditions.RemoveRange(rule.Conditions);
+            db.AttendanceRules.Remove(rule);
+            set.KeepLastInRules = false;
+            db.SaveChanges();
+        }
+
+        using var read = Database.CreateContext(TestDatabase.TenantA);
+        var shown = (await Service(read).GetSettingsAsync(null, CancellationToken.None))!;
+
+        Assert.True(shown.IsStandard);
+        Assert.Equal((false, 120, 10), (shown.Settings.EveningLastPunchCounts, shown.Settings.EveningLastPunchWindowMinutes, shown.Settings.EveningLastPunchGapMinutes));
     }
 
     [Fact]
@@ -198,6 +529,11 @@ public sealed class AttendancePunchFixTests : AttendanceEngineTestBase
     [InlineData("PunchOffsetMinutes", "LoneCheckInIsCheckOut", true)]
     [InlineData("PunchOffsetMinutes", "RaiseException", false)]
     [InlineData("MinutesOver", "KeepFirstEveningPunch", false)]
+    [InlineData("PunchGapMinutes", "KeepLastEveningPunch", true)]
+    [InlineData("PunchGapMinutes", "KeepFirstEveningCheckInPunch", true)]
+    [InlineData("PunchGapMinutes", "KeepLastMorningPunch", true)]
+    [InlineData("MinutesOver", "KeepLastMorningPunch", false)]
+    [InlineData("MinutesOver", "KeepLastEveningPunch", false)]
     public void ThePunchFacts_AreOnlyForTheRulesThatFixPunches(string fact, string action, bool allowed)
     {
         var rule = new RuleDto

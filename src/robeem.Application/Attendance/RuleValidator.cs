@@ -20,6 +20,8 @@ public static class RuleValidator
 
     private static readonly RuleFact[] LonePunchFacts = [RuleFact.PunchOffsetMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
 
+    private static readonly RuleFact[] RepeatFacts = [RuleFact.PunchGapMinutes];
+
     private static readonly RuleFact[] ClosePunchFacts = [RuleFact.PunchOffsetMinutes, RuleFact.PunchGapMinutes, RuleFact.ShiftHasBreak, RuleFact.ShiftIsOvernight];
 
     private static readonly RuleFact[] ExceptionFacts =
@@ -33,7 +35,8 @@ public static class RuleValidator
             {
                 RuleAction.IgnoreShortBreak => ShortBreakFacts,
                 RuleAction.LoneCheckOutIsCheckIn or RuleAction.LoneCheckInIsCheckOut or RuleAction.BreakInIsBreakOut or RuleAction.BreakOutIsBreakIn => LonePunchFacts,
-                RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch => ClosePunchFacts,
+                RuleAction.KeepFirstRepeatedCheckIn or RuleAction.KeepLastRepeatedCheckIn or RuleAction.KeepFirstRepeatedCheckOut or RuleAction.KeepLastRepeatedCheckOut or RuleAction.KeepFirstRepeatedBreakPunch => RepeatFacts,
+                RuleAction.KeepFirstMorningPunch or RuleAction.KeepFirstEveningPunch or RuleAction.KeepLastEveningPunch or RuleAction.KeepFirstEveningCheckInPunch or RuleAction.KeepLastMorningPunch or RuleAction.KeepEveningCheckOutPunch or RuleAction.KeepMorningCheckInPunch => ClosePunchFacts,
                 _ => InterpretationFacts,
             };
 

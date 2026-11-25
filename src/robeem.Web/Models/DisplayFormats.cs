@@ -54,6 +54,10 @@ public static class DisplayFormats
         ("NoShow", _) => "No punch at all (no-show)",
         ("InvalidSequence", _) => "Wrong order",
         ("ShortHours", _) => "Worked less than scheduled",
+        ("LateCheckIn", _) => "Late check-in",
+        ("EarlyCheckOut", _) => "Early check-out",
+        ("Overtime", _) => "Overtime",
+        ("UnscheduledWork", _) => "Work with no scheduled shift",
         _ => Words(exceptionType),
     };
 

@@ -16,14 +16,24 @@ public sealed class RulesEditViewModel
         ("LoneCheckOutIsCheckIn", "Read a lone check-out as the check-in"),
         ("LoneCheckInIsCheckOut", "Read a lone check-in as the check-out"),
         ("KeepFirstMorningPunch", "Keep the first of two close punches at the start"),
-        ("KeepFirstEveningPunch", "Keep the first of two close punches at the end"),
+        ("KeepLastMorningPunch", "Keep the last of two close check-ins at the start"),
+        ("KeepFirstEveningPunch", "Keep the first of two close check-outs at the end"),
+        ("KeepFirstEveningCheckInPunch", "Read a check-in then a check-out at the end as one check-out"),
+        ("KeepEveningCheckOutPunch", "Keep the check-out of a check-in then a check-out at the end"),
+        ("KeepLastEveningPunch", "Keep the last of two close check-outs at the end"),
+        ("KeepMorningCheckInPunch", "Keep the check-in of a check-out then a check-in at the start"),
+        ("KeepFirstRepeatedCheckIn", "Keep the first of two close check-ins, anywhere in the day"),
+        ("KeepLastRepeatedCheckIn", "Keep the last of two close check-ins, anywhere in the day"),
+        ("KeepFirstRepeatedCheckOut", "Keep the first of two close check-outs, anywhere in the day"),
+        ("KeepLastRepeatedCheckOut", "Keep the last of two close check-outs, anywhere in the day"),
+        ("KeepFirstRepeatedBreakPunch", "Keep the first of two close break punches of the same kind"),
         ("BreakInIsBreakOut", "Read a break-in near the break start as the break-out"),
         ("BreakOutIsBreakIn", "Read a break-out near the break end as the break-in"),
     ];
 
     /// <summary>Gets the actions that work on a day's punches while they are read, so they are not about a finding.</summary>
     public static IReadOnlyList<string> InterpretationActions { get; } =
-        ["InferBreak", "IgnoreShortBreak", "LoneCheckOutIsCheckIn", "LoneCheckInIsCheckOut", "KeepFirstMorningPunch", "KeepFirstEveningPunch", "BreakInIsBreakOut", "BreakOutIsBreakIn"];
+        ["InferBreak", "IgnoreShortBreak", "LoneCheckOutIsCheckIn", "LoneCheckInIsCheckOut", "KeepFirstMorningPunch", "KeepFirstEveningPunch", "KeepLastEveningPunch", "KeepFirstEveningCheckInPunch", "KeepLastMorningPunch", "KeepEveningCheckOutPunch", "KeepMorningCheckInPunch", "KeepFirstRepeatedCheckIn", "KeepLastRepeatedCheckIn", "KeepFirstRepeatedCheckOut", "KeepLastRepeatedCheckOut", "KeepFirstRepeatedBreakPunch", "BreakInIsBreakOut", "BreakOutIsBreakIn"];
 
     /// <summary>Gets what a raise or suppress rule can be about.</summary>
     public static IReadOnlyList<(string Value, string Label)> Findings { get; } =
@@ -35,6 +45,10 @@ public sealed class RulesEditViewModel
         ("NoShow", "a no-show"),
         ("MissingCheckOut", "a missing check-out (it can only be raised, never left out)"),
         ("ShortHours", "less than the scheduled time worked (minutes short: Minutes over)"),
+        ("LateCheckIn", "a late check-in (minutes late beyond the grace: Minutes over)"),
+        ("EarlyCheckOut", "an early check-out (minutes early beyond the grace: Minutes over)"),
+        ("Overtime", "overtime (minutes of overtime: Minutes over)"),
+        ("UnscheduledWork", "work with no scheduled shift (a day off, a holiday, no schedule)"),
     ];
 
     /// <summary>Gets the facts a condition can look at, with the words the form shows and the stage each belongs to.</summary>

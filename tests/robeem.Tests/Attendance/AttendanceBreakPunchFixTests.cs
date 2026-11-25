@@ -53,6 +53,40 @@ public sealed class AttendanceBreakPunchFixTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task ABreakOutSaidTwice_IsAlreadyOneBreak_WithNoRuleNeeded()
+    {
+        AddPunches("I@08:00,BO@12:00,BO@12:02,BI@13:00,O@17:00");
+
+        await ProcessAsync(Monday);
+
+        // The break starts at the first break-out; the later one changes nothing and is no exception.
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var record = Assert.Single(db.AttendanceRecords);
+        Assert.Equal((Monday.At(12, 0), Monday.At(13, 0), AttendanceRecordStatus.Approved), (record.ActualBreakOut, record.ActualBreakIn, record.Status));
+        Assert.Empty(db.AttendanceExceptions);
+    }
+
+    [Fact]
+    public async Task ABreakInSaidTwice_RaisesAMissingBreakOut_UntilTheRuleForRepeatedBreakPunchesIsOn()
+    {
+        AddPunches("I@08:00,BO@12:00,BI@13:00,BI@13:03,O@17:00");
+
+        await ProcessAsync(Monday);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            Assert.Contains(db.AttendanceExceptions, e => e.ExceptionType == AttendanceExceptionType.MissingPunch && e.MissingEventType == NormalizedEventType.BreakOut);
+        }
+
+        await EnableAsync(s => s.RepeatedBreakPunchFirst = true, expectedVersion: 0);
+        await ProcessAsync(Monday);
+
+        using var after = Database.CreateContext(TestDatabase.TenantA);
+        var record = after.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((Monday.At(12, 0), Monday.At(13, 0), AttendanceRecordStatus.Approved), (record.ActualBreakOut, record.ActualBreakIn, record.Status));
+        Assert.DoesNotContain(after.AttendanceExceptions, e => e.Status == AttendanceExceptionStatus.Open);
+    }
+
+    [Fact]
     public async Task TwiceBreakIn_IsAFullBreak_WhenTheFirstIsReadAsTheBreakOut()
     {
         await EnableAsync(s => s.BreakInIsBreakOut = true);

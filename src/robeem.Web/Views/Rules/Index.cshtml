@@ -50,7 +50,7 @@ else
         </p>
 
         <div class="card mb-3">
-            <div class="card-header">Raise an exception for a person to settle when…</div>
+            <div class="card-header">Breaks: raise an exception for a person to settle when…</div>
             <div class="list-group list-group-flush">
                 <div class="list-group-item d-flex gap-3 align-items-center">
                     <div class="form-check form-switch m-0"><input asp-for="Settings.LongBreakRaises" class="form-check-input" role="switch" aria-label="A long break raises an exception" /></div>
@@ -83,6 +83,12 @@ else
                     <div class="form-check form-switch m-0"><input asp-for="Settings.NoBreakRaises" class="form-check-input" role="switch" aria-label="No break raises an exception" /></div>
                     <div>a shift with a scheduled break is worked with no break punches</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Arrival, departure and hours: raise an exception for a person to settle when…</div>
+            <div class="list-group list-group-flush">
                 <div class="list-group-item d-flex gap-3 align-items-center">
                     <div class="form-check form-switch m-0"><input asp-for="Settings.ShortHoursRaises" class="form-check-input" role="switch" aria-label="A day worked short raises an exception" /></div>
                     <div>
@@ -90,6 +96,49 @@ else
                         <input asp-for="Settings.ShortHoursMinutesOver" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
                         minutes short of the scheduled time, once the shift is over
                         <span asp-validation-for="Settings.ShortHoursMinutesOver" class="text-danger small"></span>
+                        <div class="form-text">Raise the number to forgive small shortfalls: 60 lets 7 hours worked of an 8-hour shift pass.</div>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.LateCheckInRaises" class="form-check-input" role="switch" aria-label="A late check-in raises an exception" /></div>
+                    <div>
+                        a check-in is more than
+                        <input asp-for="Settings.LateCheckInMinutesOver" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes after the shift starts (after the late grace of the policy)
+                        <span asp-validation-for="Settings.LateCheckInMinutesOver" class="text-danger small"></span>
+                        <div class="form-text">Separate from the rule above: a late day can raise both.</div>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.EarlyCheckOutRaises" class="form-check-input" role="switch" aria-label="An early check-out raises an exception" /></div>
+                    <div>
+                        a check-out is more than
+                        <input asp-for="Settings.EarlyCheckOutMinutesOver" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes before the shift ends (after the early-departure grace of the policy)
+                        <span asp-validation-for="Settings.EarlyCheckOutMinutesOver" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.OvertimeRaises" class="form-check-input" role="switch" aria-label="Overtime raises an exception" /></div>
+                    <div>
+                        a complete day is worked more than
+                        <input asp-for="Settings.OvertimeMinutesOver" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes longer than scheduled (after the overtime threshold of the policy)
+                        <span asp-validation-for="Settings.OvertimeMinutesOver" class="text-danger small"></span>
+                        <div class="form-text">In addition to the policy's "approval first" for overtime, which still sends the day to the Approvals queue.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Absence and unscheduled work: raise an exception for a person to settle when…</div>
+            <div class="list-group list-group-flush">
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.UnscheduledWorkRaises" class="form-check-input" role="switch" aria-label="Work with no scheduled shift raises an exception" /></div>
+                    <div>
+                        someone not paid by the hour punches when no shift is scheduled for them (a day off, a holiday, or no schedule)
+                        <div class="form-text">In addition to the review the day already waits for in the Approvals queue.</div>
                     </div>
                 </div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
@@ -146,16 +195,83 @@ else
             <div class="list-group list-group-flush">
                 <div class="list-group-item small text-muted">
                     Off to begin with. A fix only changes how a punch is read for the day: the punch the machine sent is kept as it was, a fixed punch is marked as inferred, and no punch is ever made up.
-                    A punch a person added or corrected is never changed. These need a scheduled shift, so hourly staff are not affected.
+                    A punch a person added or corrected is never changed. These need a scheduled shift, so hourly staff are not affected. Two punches are read first and a lone punch after that,
+                    and only one fix reads a pair. Numbers of minutes are measured from the punch that is kept.
+                </div>
+
+                <div class="list-group-item bg-body-tertiary fw-semibold">Start of the day</div>
+                <div class="list-group-item">
+                    <div>
+                        Two check-ins at the start, no more than
+                        <input asp-for="Settings.MorningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes apart, the one that is kept within
+                        <input asp-for="Settings.MorningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled start:
+                        <span asp-validation-for="Settings.MorningDuplicateGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.MorningDuplicateWindowMinutes" class="text-danger small"></span>
+                    </div>
+                    <div class="mt-1">
+                        <div class="form-check form-check-inline"><input asp-for="MorningPairKeeps" type="radio" value="Nothing" id="morning-nothing" class="form-check-input" /><label class="form-check-label" for="morning-nothing">Do nothing</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="MorningPairKeeps" type="radio" value="First" id="morning-first" class="form-check-input" /><label class="form-check-label" for="morning-first">Keep the first, leave the second out</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="MorningPairKeeps" type="radio" value="Last" id="morning-last" class="form-check-input" /><label class="form-check-label" for="morning-last">Keep the last, leave the first out</label></div>
+                    </div>
+                    <div class="small text-muted mt-1">Keeping the first also covers a check-in followed by a check-out within the same minutes: the check-out is left out.</div>
                 </div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
-                    <div class="form-check form-switch m-0"><input asp-for="Settings.LoneCheckOutIsCheckIn" class="form-check-input" role="switch" aria-label="A lone check-out near the start is read as the check-in" /></div>
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.MorningOutThenInCounts" class="form-check-input" role="switch" aria-label="A check-out then a check-in at the start: keep the check-in" /></div>
+                    <div>
+                        A check-out then a check-in at the start, no more than
+                        <input asp-for="Settings.MorningOutThenInGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes apart, the check-in within
+                        <input asp-for="Settings.MorningOutThenInWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled start: leave the check-out out and keep the check-in
+                        <span asp-validation-for="Settings.MorningOutThenInGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.MorningOutThenInWindowMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item d-flex gap-3 align-items-center">
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.LoneCheckOutIsCheckIn"class="form-check-input" role="switch" aria-label="A lone check-out near the start is read as the check-in" /></div>
                     <div>
                         A day with a check-out within
                         <input asp-for="Settings.LoneCheckOutWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
                         minutes of the scheduled start and no check-in: read it as the check-in
                         <span asp-validation-for="Settings.LoneCheckOutWindowMinutes" class="text-danger small"></span>
                     </div>
+                </div>
+
+                <div class="list-group-item bg-body-tertiary fw-semibold">End of the day</div>
+                <div class="list-group-item">
+                    <div>
+                        Two check-outs at the end, no more than
+                        <input asp-for="Settings.EveningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes apart, the one that is kept within
+                        <input asp-for="Settings.EveningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled end:
+                        <span asp-validation-for="Settings.EveningDuplicateGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.EveningDuplicateWindowMinutes" class="text-danger small"></span>
+                    </div>
+                    <div class="mt-1">
+                        <div class="form-check form-check-inline"><input asp-for="EveningPairKeeps" type="radio" value="Nothing" id="evening-nothing" class="form-check-input" /><label class="form-check-label" for="evening-nothing">Do nothing</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="EveningPairKeeps" type="radio" value="First" id="evening-first" class="form-check-input" /><label class="form-check-label" for="evening-first">Keep the first, leave the second out</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="EveningPairKeeps" type="radio" value="Last" id="evening-last" class="form-check-input" /><label class="form-check-label" for="evening-last">Keep the last, leave the first out</label></div>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div>
+                        A check-in (after a check-in, with no check-out between) then a check-out at the end, no more than
+                        <input asp-for="Settings.EveningInThenOutGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes apart, the one that is kept within
+                        <input asp-for="Settings.EveningInThenOutWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes of the scheduled end:
+                        <span asp-validation-for="Settings.EveningInThenOutGapMinutes" class="text-danger small"></span>
+                        <span asp-validation-for="Settings.EveningInThenOutWindowMinutes" class="text-danger small"></span>
+                    </div>
+                    <div class="mt-1">
+                        <div class="form-check form-check-inline"><input asp-for="EveningInThenOutKeeps" type="radio" value="Nothing" id="inthenout-nothing" class="form-check-input" /><label class="form-check-label" for="inthenout-nothing">Do nothing</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="EveningInThenOutKeeps" type="radio" value="First" id="inthenout-first" class="form-check-input" /><label class="form-check-label" for="inthenout-first">Read the check-in as the check-out, leave the check-out out</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="EveningInThenOutKeeps" type="radio" value="Last" id="inthenout-last" class="form-check-input" /><label class="form-check-label" for="inthenout-last">Leave the check-in out, keep the check-out</label></div>
+                    </div>
+                    <div class="small text-muted mt-1">Keeping the check-out uses the punch the machine sent as a check-out, so nothing is marked as inferred.</div>
                 </div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
                     <div class="form-check form-switch m-0"><input asp-for="Settings.LoneCheckInIsCheckOut" class="form-check-input" role="switch" aria-label="A lone check-in near the end is read as the check-out" /></div>
@@ -166,30 +282,40 @@ else
                         <span asp-validation-for="Settings.LoneCheckInWindowMinutes" class="text-danger small"></span>
                     </div>
                 </div>
-                <div class="list-group-item d-flex gap-3 align-items-center">
-                    <div class="form-check form-switch m-0"><input asp-for="Settings.MorningDuplicateIsOne" class="form-check-input" role="switch" aria-label="Two close punches at the start count as one" /></div>
+
+                <div class="list-group-item bg-body-tertiary fw-semibold">Repeated punches, anywhere in the day</div>
+                <div class="list-group-item">
                     <div>
-                        Two punches at the start (a check-in and another check-in or a check-out) within
-                        <input asp-for="Settings.MorningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
-                        minutes of each other, the first within
-                        <input asp-for="Settings.MorningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
-                        minutes of the scheduled start: the first is the check-in and the second is left out
-                        <span asp-validation-for="Settings.MorningDuplicateGapMinutes" class="text-danger small"></span>
-                        <span asp-validation-for="Settings.MorningDuplicateWindowMinutes" class="text-danger small"></span>
+                        Two punches of the same kind one after the other, no more than
+                        <input asp-for="Settings.RepeatedGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
+                        minutes apart. These need no scheduled shift, so staff paid by the hour are read too. The start and end rules above read a pair first; a run of three or more is read until one is left.
+                        <span asp-validation-for="Settings.RepeatedGapMinutes" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div>Two check-ins:</div>
+                    <div class="mt-1">
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckInKeeps" type="radio" value="Nothing" id="repeat-in-nothing" class="form-check-input" /><label class="form-check-label" for="repeat-in-nothing">Do nothing</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckInKeeps" type="radio" value="First" id="repeat-in-first" class="form-check-input" /><label class="form-check-label" for="repeat-in-first">Keep the first, leave the later one out</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckInKeeps" type="radio" value="Last" id="repeat-in-last" class="form-check-input" /><label class="form-check-label" for="repeat-in-last">Keep the last, leave the earlier one out</label></div>
+                        <span asp-validation-for="Settings.RepeatedCheckInLast" class="text-danger small"></span>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div>Two check-outs:</div>
+                    <div class="mt-1">
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckOutKeeps" type="radio" value="Nothing" id="repeat-out-nothing" class="form-check-input" /><label class="form-check-label" for="repeat-out-nothing">Do nothing</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckOutKeeps" type="radio" value="First" id="repeat-out-first" class="form-check-input" /><label class="form-check-label" for="repeat-out-first">Keep the first, leave the later one out</label></div>
+                        <div class="form-check form-check-inline"><input asp-for="RepeatedCheckOutKeeps" type="radio" value="Last" id="repeat-out-last" class="form-check-input" /><label class="form-check-label" for="repeat-out-last">Keep the last, leave the earlier one out</label></div>
+                        <span asp-validation-for="Settings.RepeatedCheckOutLast" class="text-danger small"></span>
                     </div>
                 </div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
-                    <div class="form-check form-switch m-0"><input asp-for="Settings.EveningDuplicateIsOne" class="form-check-input" role="switch" aria-label="Two close punches at the end count as one" /></div>
-                    <div>
-                        Two punches at the end (a check-out or check-in, then a check-out) within
-                        <input asp-for="Settings.EveningDuplicateGapMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
-                        minutes of each other, the first within
-                        <input asp-for="Settings.EveningDuplicateWindowMinutes" type="number" min="0" max="1440" class="form-control form-control-sm d-inline-block" style="width: 5.5rem;" />
-                        minutes of the scheduled end: the first is the check-out and the second is left out
-                        <span asp-validation-for="Settings.EveningDuplicateGapMinutes" class="text-danger small"></span>
-                        <span asp-validation-for="Settings.EveningDuplicateWindowMinutes" class="text-danger small"></span>
-                    </div>
+                    <div class="form-check form-switch m-0"><input asp-for="Settings.RepeatedBreakPunchFirst" class="form-check-input" role="switch" aria-label="Two break-outs, or two break-ins, close together: keep the first" /></div>
+                    <div>Two break-outs, or two break-ins, one after the other: keep the first and leave the later one out</div>
                 </div>
+
+                <div class="list-group-item bg-body-tertiary fw-semibold">Breaks</div>
                 <div class="list-group-item d-flex gap-3 align-items-center">
                     <div class="form-check form-switch m-0"><input asp-for="Settings.BreakInIsBreakOut" class="form-check-input" role="switch" aria-label="A break-in near the start of the break is read as the break-out" /></div>
                     <div>

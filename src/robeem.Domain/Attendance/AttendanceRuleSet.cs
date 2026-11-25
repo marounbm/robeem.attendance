@@ -69,6 +69,49 @@ namespace robeem.DataModel
         /// </summary>
         public bool BreakFixesInRules { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about a late check-in and an early check-out (the rules for <c>LateCheckIn</c> and
+        /// <c>EarlyCheckOut</c>). A set made before they were findings has none and is read with them added, both off, so it behaves as published.
+        /// Every set made since says true.
+        /// </summary>
+        public bool LateEarlyInRules { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about overtime and about work with no scheduled shift (the rules for <c>Overtime</c> and
+        /// <c>UnscheduledWork</c>). A set made before they were findings has none and is read with them added, both off, so it behaves as published.
+        /// Every set made since says true.
+        /// </summary>
+        public bool OvertimeInRules { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about keeping the last of two close check-outs at the end of the day (the rule for
+        /// <c>KeepLastEveningPunch</c>). A set made before it existed has none and is read with it added, off, so it behaves as published. Every set made
+        /// since says true.
+        /// </summary>
+        public bool KeepLastInRules { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about the rule for a check-in then a check-out at the end of the day (split from the rule for
+        /// two check-outs) and the rule that keeps the last of two close check-ins at the start. A set made before they existed has none and is read with them
+        /// added: the first with the same switch and numbers as the rule for two check-outs, which used to cover it, so the set behaves as published; the second off.
+        /// Every set made since says true.
+        /// </summary>
+        public bool PunchPairsInRules { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about the two rules that keep the check-out of a check-in then a check-out at the end of the
+        /// day, and the check-in of a check-out then a check-in at the start. A set made before they existed has none and is read with them added, both off, so
+        /// it behaves as published. Every set made since says true.
+        /// </summary>
+        public bool CheckPairsInRules { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the set has a say about repeated punches (the five rules that keep the first or the last of two close
+        /// punches of the same kind anywhere in the day). A set made before they existed has none and is read with them added, all off, so it behaves as
+        /// published. Every set made since says true.
+        /// </summary>
+        public bool RepeatsInRules { get; set; }
+
         public ICollection<AttendanceRule> Rules { get; set; } = new List<AttendanceRule>();
     }
 }

@@ -18,8 +18,9 @@ internal static class PunchFixer
     }
 
     /// <summary>
-    /// Applies the rules, in this order: the first of two close punches at the start, the first of two close punches at the end, a lone check-out
-    /// at the start, a lone check-in at the end. A shift is needed to know what is near: with none (work outside a shift, hourly staff) nothing is fixed.
+    /// Applies the rules, in this order: one fix of the first two punches (keep the first, else keep the last of two check-ins), one fix of the last two (two
+    /// check-outs keep the first; else a check-in then a check-out; else two check-outs keep the last), repeated punches of one kind anywhere in the day (also with no
+    /// shift), a lone check-out at the start, a lone check-in at the end. A shift is needed to know what is near: with none (work outside a shift, hourly staff) nothing is fixed.
     /// </summary>
     /// <param name="typed">The punches in time order, without repeats.</param>
     /// <param name="shift">The scheduled shift.</param>
@@ -29,12 +30,20 @@ internal static class PunchFixer
     public static List<AttendancePunch> Fix(List<AttendancePunch> typed, ResolvedShift? shift, RuleSetSnapshot rules, out int retyped, out int ignored)
     {
         (retyped, ignored) = (0, 0);
-        if (shift is null || typed.Count == 0 || !rules.CanFixPunches)
+        if (typed.Count == 0 || !rules.CanFixPunches)
         {
             return typed;
         }
 
         var result = new List<AttendancePunch>(typed);
+
+        // Without a shift (work outside one, staff paid by the hour) nothing is near anything, but a punch said twice is still a repeat.
+        if (shift is null)
+        {
+            ignored = FixRepeats(result, rules);
+            return result;
+        }
+
         var (hasBreak, overnight) = (shift.BreakTime, shift.EndsAt.Date > shift.StartsAt.Date);
 
         // Two punches at the start: a check-in, then another check-in or a check-out within minutes. The first is the check-in.
@@ -48,23 +57,83 @@ internal static class PunchFixer
             ignored++;
         }
 
-        // Two punches at the end: a check-out, or a check-in that follows a check-in with no check-out, then a check-out within minutes. The first is the check-out.
+        // Two check-ins at the start, close together: the person punched in, then again. The second counts and the first is left out. The punch that is
+        // kept is the one that has to be near the start, as the first is for the rule above, which reads a pair first when both are on.
+        else if (result.Count >= 2
+            && result[0].Type == NormalizedEventType.CheckIn
+            && result[1].Type == NormalizedEventType.CheckIn
+            && FromDevice(result[0], result[1])
+            && rules.Applies(RuleAction.KeepLastMorningPunch, KeptFacts(hasBreak, overnight, result[1], shift.StartsAt, result[0])))
+        {
+            result.RemoveAt(0);
+            ignored++;
+        }
+
+        // A check-out, then a check-in within minutes, at the start: the check-out comes before any check-in, so it is a slip. It is left out and the check-in,
+        // a punch the machine labelled as such, counts as it is.
+        else if (result.Count >= 2
+            && result[0].Type == NormalizedEventType.CheckOut
+            && result[1].Type == NormalizedEventType.CheckIn
+            && FromDevice(result[0], result[1])
+            && rules.Applies(RuleAction.KeepMorningCheckInPunch, KeptFacts(hasBreak, overnight, result[1], shift.StartsAt, result[0])))
+        {
+            result.RemoveAt(0);
+            ignored++;
+        }
+
+        // At the end, one fix reads the last two punches, the first rule that applies in this order:
+        // two check-outs within minutes: the first is the check-out and the second is left out.
         if (result.Count >= 2
             && result[^1].Type == NormalizedEventType.CheckOut
-            && result[^2].Type is NormalizedEventType.CheckOut or NormalizedEventType.CheckIn
+            && result[^2].Type == NormalizedEventType.CheckOut
             && FromDevice(result[^2], result[^1])
-            && (result[^2].Type == NormalizedEventType.CheckOut || EndsWorking(result.Take(result.Count - 2)))
             && rules.Applies(RuleAction.KeepFirstEveningPunch, Facts(hasBreak, overnight, result[^2], shift.EndsAt, result[^1])))
         {
-            if (result[^2].Type == NormalizedEventType.CheckIn)
-            {
-                result[^2] = result[^2] with { Type = NormalizedEventType.CheckOut, Source = AttendancePunchSource.Inferred };
-                retyped++;
-            }
-
             result.RemoveAt(result.Count - 1);
             ignored++;
         }
+
+        // A check-in that follows a check-in with no check-out, then a check-out within minutes: the check-in is the check-out and the second is left out.
+        else if (result.Count >= 2
+            && result[^1].Type == NormalizedEventType.CheckOut
+            && result[^2].Type == NormalizedEventType.CheckIn
+            && FromDevice(result[^2], result[^1])
+            && EndsWorking(result.Take(result.Count - 2))
+            && rules.Applies(RuleAction.KeepFirstEveningCheckInPunch, Facts(hasBreak, overnight, result[^2], shift.EndsAt, result[^1])))
+        {
+            result[^2] = result[^2] with { Type = NormalizedEventType.CheckOut, Source = AttendancePunchSource.Inferred };
+            retyped++;
+            result.RemoveAt(result.Count - 1);
+            ignored++;
+        }
+
+        // A check-in that follows a check-in, then a check-out within minutes, the other way: the check-in is left out and the check-out, a punch the machine
+        // labelled as such, counts as it is. Nothing is retyped. The check-out is the punch that has to be near the end.
+        else if (result.Count >= 2
+            && result[^1].Type == NormalizedEventType.CheckOut
+            && result[^2].Type == NormalizedEventType.CheckIn
+            && FromDevice(result[^2], result[^1])
+            && EndsWorking(result.Take(result.Count - 2))
+            && rules.Applies(RuleAction.KeepEveningCheckOutPunch, KeptFacts(hasBreak, overnight, result[^1], shift.EndsAt, result[^2])))
+        {
+            result.RemoveAt(result.Count - 2);
+            ignored++;
+        }
+
+        // Two check-outs within minutes, the other way: the second is the check-out and the first is left out. The punch that is kept, the second, is the one
+        // that has to be near the end.
+        else if (result.Count >= 2
+            && result[^1].Type == NormalizedEventType.CheckOut
+            && result[^2].Type == NormalizedEventType.CheckOut
+            && FromDevice(result[^2], result[^1])
+            && rules.Applies(RuleAction.KeepLastEveningPunch, KeptFacts(hasBreak, overnight, result[^1], shift.EndsAt, result[^2])))
+        {
+            result.RemoveAt(result.Count - 2);
+            ignored++;
+        }
+
+        // Then two punches of the same kind one after the other, anywhere in the day, until none is left.
+        ignored += FixRepeats(result, rules);
 
         // No check-in at all, and the first punch is a check-out where the shift starts: it is the check-in.
         if (result.Count > 0
@@ -90,6 +159,44 @@ internal static class PunchFixer
 
         retyped += FixBreakPunches(result, shift, hasBreak, overnight, rules);
         return result;
+    }
+
+    /// <summary>
+    /// Leaves out one of two punches of the same kind that follow each other within the number of minutes the rules allow, the first or the later one as the rules
+    /// say, until none is left (so three taps become one). A break-out or break-in repeated keeps the first. A punch a person's correction supplied is never read.
+    /// </summary>
+    private static int FixRepeats(List<AttendancePunch> result, RuleSetSnapshot rules)
+    {
+        var ignored = 0;
+        var i = 0;
+        while (i < result.Count - 1)
+        {
+            var (first, second) = (result[i], result[i + 1]);
+            if (first.Type == second.Type && FromDevice(first, second) && RepeatKeeps(first.Type, rules, (int)Math.Ceiling((second.Utc - first.Utc).TotalMinutes)) is { } keepsFirst)
+            {
+                // Staying at the same place reads the punch that is left against the next one.
+                result.RemoveAt(keepsFirst ? i + 1 : i);
+                ignored++;
+                continue;
+            }
+
+            i++;
+        }
+
+        return ignored;
+    }
+
+    /// <summary>Whether two close punches of this kind keep the first (true) or the last (false); null when no rule reads them. Keeping the first wins when both are on.</summary>
+    private static bool? RepeatKeeps(NormalizedEventType type, RuleSetSnapshot rules, int gapMinutes)
+    {
+        var facts = new RuleFacts { PunchGapMinutes = gapMinutes };
+        return type switch
+        {
+            NormalizedEventType.CheckIn => rules.Applies(RuleAction.KeepFirstRepeatedCheckIn, facts) ? true : rules.Applies(RuleAction.KeepLastRepeatedCheckIn, facts) ? false : null,
+            NormalizedEventType.CheckOut => rules.Applies(RuleAction.KeepFirstRepeatedCheckOut, facts) ? true : rules.Applies(RuleAction.KeepLastRepeatedCheckOut, facts) ? false : null,
+            NormalizedEventType.BreakOut or NormalizedEventType.BreakIn => rules.Applies(RuleAction.KeepFirstRepeatedBreakPunch, facts) ? true : null,
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -150,6 +257,10 @@ internal static class PunchFixer
         PunchOffsetMinutes = (int)Math.Ceiling(Math.Abs((punch.Local - boundary).TotalMinutes)),
         PunchGapMinutes = second is null ? 0 : (int)Math.Ceiling((second.Utc - punch.Utc).TotalMinutes),
     };
+
+    /// <summary>The facts of a pair read by keeping its <em>later</em> punch: how near the kept punch is to the boundary, and how long after the earlier one it came.</summary>
+    private static RuleFacts KeptFacts(bool hasBreak, bool overnight, AttendancePunch kept, DateTime boundary, AttendancePunch earlier) =>
+        Facts(hasBreak, overnight, kept, boundary) with { PunchGapMinutes = (int)Math.Ceiling((kept.Utc - earlier.Utc).TotalMinutes) };
 
     /// <summary>Whether the punches, taken in order, leave the person at work (checked in, not on a break).</summary>
     private static bool EndsWorking(IEnumerable<AttendancePunch> punches)

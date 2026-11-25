@@ -34,10 +34,12 @@ internal static class AttendanceExceptionRules
         && employeeId != viewer.EmployeeId
         && (viewer.IsHr || (viewer.IsManager && managerId == viewer.EmployeeId));
 
-    /// <summary>Whether this kind of exception can be accepted as it is: a break exception, a no-show, or a day worked short. There is no punch to supply for any of them.</summary>
+    /// <summary>Whether this kind of exception can be accepted as it is: a break exception, a no-show, a day worked short, a late check-in or an early check-out. There is no punch to supply for any of them.</summary>
     public static bool IsAcceptable(AttendanceExceptionType type) =>
         type is AttendanceExceptionType.LongBreak or AttendanceExceptionType.LateBreak or AttendanceExceptionType.EarlyBreak
-            or AttendanceExceptionType.NoShow or AttendanceExceptionType.ShortHours;
+            or AttendanceExceptionType.NoShow or AttendanceExceptionType.ShortHours
+            or AttendanceExceptionType.LateCheckIn or AttendanceExceptionType.EarlyCheckOut
+            or AttendanceExceptionType.Overtime or AttendanceExceptionType.UnscheduledWork;
 
     /// <summary>
     /// Whether the viewer can accept the group of exceptions as it is: it is open, every exception in it that is not closed is open and

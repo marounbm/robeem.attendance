@@ -107,7 +107,7 @@ public sealed class AttendanceProcessingEngine : IAttendanceProcessingEngine
         var detected = new List<(int? ShiftId, DetectedException Detected)>();
         for (var i = 0; i < calculated.Count; i++)
         {
-            var found = AttendanceExceptionDetector.Detect(calculated[i].Shift, day, calculated[i].Calculation, policy, now, rules);
+            var found = AttendanceExceptionDetector.Detect(calculated[i].Shift, day, calculated[i].Calculation, policy, now, rules, isHourly);
             detected.AddRange(found.Select(d => (ShiftId: calculated[i].Shift?.TimeScheduleShiftId, Detected: WithSuggestions(d, found, inputs[i].Shift, inputs[i].Punches, day, policy, now, excused, rules))));
         }
 

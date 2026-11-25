@@ -31,4 +31,19 @@ public sealed class RulesSettingsViewModel
     public bool HasDraft { get; init; }
 
     public RuleSettings Settings { get; set; } = new();
+
+    /// <summary>Gets or sets what the day does with two close check-ins at the start.</summary>
+    public PairKeeps MorningPairKeeps { get; set; }
+
+    /// <summary>Gets or sets what the day does with two close check-outs at the end.</summary>
+    public PairKeeps EveningPairKeeps { get; set; }
+
+    /// <summary>Gets or sets what the day does with a check-in then a check-out close together at the end.</summary>
+    public PairKeeps EveningInThenOutKeeps { get; set; }
+
+    /// <summary>Gets or sets what the day does with two close check-ins one after the other, anywhere in the day.</summary>
+    public PairKeeps RepeatedCheckInKeeps { get; set; }
+
+    /// <summary>Gets or sets what the day does with two close check-outs one after the other, anywhere in the day.</summary>
+    public PairKeeps RepeatedCheckOutKeeps { get; set; }
 }

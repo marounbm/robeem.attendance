@@ -41,8 +41,14 @@ public sealed class RuleSetSnapshot
     /// <summary>Gets a value indicating whether any enabled rule fixes punches, so the calculation has to look for them.</summary>
     public bool CanFixPunches => Rules.Any(r => r.IsEnabled && IsAutoFix(r.Action));
 
-    /// <summary>Whether the action is one of the six that fix a day's punches.</summary>
-    public static bool IsAutoFix(RuleAction action) => IsCheckInOutFix(action) || IsBreakFix(action);
+    /// <summary>Whether the action is one of the five that read two close punches of the same kind anywhere in the day.</summary>
+    public static bool IsRepeatFix(RuleAction action) =>
+        action is RuleAction.KeepFirstRepeatedCheckIn or RuleAction.KeepLastRepeatedCheckIn or RuleAction.KeepFirstRepeatedCheckOut or RuleAction.KeepLastRepeatedCheckOut or RuleAction.KeepFirstRepeatedBreakPunch;
+
+    /// <summary>Whether the action is one of the sixteen that fix a day's punches.</summary>
+    public static bool IsAutoFix(RuleAction action) =>
+        IsCheckInOutFix(action) || IsBreakFix(action) || IsRepeatFix(action)
+        || action is RuleAction.KeepLastEveningPunch or RuleAction.KeepFirstEveningCheckInPunch or RuleAction.KeepLastMorningPunch or RuleAction.KeepEveningCheckOutPunch or RuleAction.KeepMorningCheckInPunch;
 
     /// <summary>Whether the action is one of the two that read a break punch of the wrong type.</summary>
     public static bool IsBreakFix(RuleAction action) => action is RuleAction.BreakInIsBreakOut or RuleAction.BreakOutIsBreakIn;
@@ -79,14 +85,85 @@ public sealed class RuleSetSnapshot
             Raise("Raise an exception for an early break", 40, RuleFinding.EarlyBreak, policy.RaiseExceptionOnEarlyBreak, policy),
             Raise("Raise an exception when no break was taken", 50, RuleFinding.NoBreak, policy.RaiseExceptionOnNoBreak, policy),
             Raise("Raise an exception when less than the scheduled time was worked", 55, RuleFinding.ShortHours, true, policy),
+            Raise("Raise an exception for a late check-in", 56, RuleFinding.LateCheckIn, false, policy),
+            Raise("Raise an exception for an early check-out", 57, RuleFinding.EarlyCheckOut, false, policy),
+            Raise("Raise an exception for overtime", 58, RuleFinding.Overtime, false, policy),
+            Raise("Raise an exception for work with no scheduled shift", 59, RuleFinding.UnscheduledWork, false, policy),
             Raise("Raise an exception for a no-show", 60, RuleFinding.NoShow, true, policy),
             Raise("Raise an exception for a missing check-out", 65, RuleFinding.MissingCheckOut, true, policy),
             ShortBreak(70, policy),
         };
         rules.AddRange(AutoFixes(80));
         rules.AddRange(BreakFixes(84));
+        rules.Add(KeepLast(86));
+        rules.AddRange(PunchPairs(87));
+        rules.AddRange(CheckPairs(89));
+        rules.AddRange(Repeats(91));
 
         return new RuleSetSnapshot(0, "the policy", rules);
+    }
+
+    /// <summary>
+    /// The same rules with the five rules for repeated punches added, all off, when there are none. It is how a set made before they existed
+    /// (<see cref="AttendanceRuleSet.RepeatsInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithRepeats()
+    {
+        var added = Repeats(int.MaxValue - 40)
+            .Where(add => !Rules.Any(r => r.Action == add.Action))
+            .ToList();
+        return added.Count == 0 ? this : new RuleSetSnapshot(Version, Source, [.. Rules, .. added]);
+    }
+
+    /// <summary>
+    /// The same rules with the rule that keeps the check-out of a check-in then a check-out at the end, and the rule that keeps the check-in of a check-out then a
+    /// check-in at the start, added, both off, when there are none. It is how a set made before they existed (<see cref="AttendanceRuleSet.CheckPairsInRules"/>
+    /// false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithCheckPairs()
+    {
+        var added = CheckPairs(int.MaxValue - 26)
+            .Where(add => !Rules.Any(r => r.Action == add.Action))
+            .ToList();
+        return added.Count == 0 ? this : new RuleSetSnapshot(Version, Source, [.. Rules, .. added]);
+    }
+
+    /// <summary>
+    /// The same rules with the rule for a check-in then a check-out at the end and the rule that keeps the last of two close check-ins at the start added
+    /// when there are none. It is how a set made before they existed (<see cref="AttendanceRuleSet.PunchPairsInRules"/> false) is read: the first copies the
+    /// switch and numbers of the rule for two check-outs at the end, which used to cover this case too, so the set behaves as it did when it was published;
+    /// the second is off.
+    /// </summary>
+    public RuleSetSnapshot WithPunchPairs()
+    {
+        var added = new List<RuleSnapshot>();
+        if (!Rules.Any(r => r.Action == RuleAction.KeepFirstEveningCheckInPunch))
+        {
+            var before = Rules.FirstOrDefault(r => r.Action == RuleAction.KeepFirstEveningPunch);
+            var split = AutoFix("Read a check-in then a check-out at the end as one check-out", int.MaxValue - 24, RuleAction.KeepFirstEveningCheckInPunch, DefaultWindowMinutes, DefaultGapMinutes);
+            added.Add(before is null ? split : split with { IsEnabled = before.IsEnabled, Conditions = before.Conditions });
+        }
+
+        if (!Rules.Any(r => r.Action == RuleAction.KeepLastMorningPunch))
+        {
+            added.Add(AutoFix("Keep the last of two close check-ins at the start", int.MaxValue - 23, RuleAction.KeepLastMorningPunch, DefaultWindowMinutes, DefaultGapMinutes));
+        }
+
+        return added.Count == 0 ? this : new RuleSetSnapshot(Version, Source, [.. Rules, .. added]);
+    }
+
+    /// <summary>
+    /// The same rules with the rule that keeps the last of two close check-outs added, off, when there is none. It is how a set made before it existed
+    /// (<see cref="AttendanceRuleSet.KeepLastInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithKeepLast()
+    {
+        if (Rules.Any(r => r.Action == RuleAction.KeepLastEveningPunch))
+        {
+            return this;
+        }
+
+        return new RuleSetSnapshot(Version, Source, [.. Rules, KeepLast(int.MaxValue - 22)]);
     }
 
     /// <summary>
@@ -101,6 +178,46 @@ public sealed class RuleSetSnapshot
         }
 
         return new RuleSetSnapshot(Version, Source, [.. Rules, .. BreakFixes(int.MaxValue - 20)]);
+    }
+
+    /// <summary>
+    /// The same rules with the rules for a late check-in and an early check-out added, both off, when there are none. It is how a set made before they
+    /// were findings (<see cref="AttendanceRuleSet.LateEarlyInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithLateEarly(AttendancePolicy policy)
+    {
+        var added = new List<RuleSnapshot>();
+        if (!Rules.Any(r => r.Finding == RuleFinding.LateCheckIn))
+        {
+            added.Add(Raise("Raise an exception for a late check-in", int.MaxValue - 4, RuleFinding.LateCheckIn, false, policy));
+        }
+
+        if (!Rules.Any(r => r.Finding == RuleFinding.EarlyCheckOut))
+        {
+            added.Add(Raise("Raise an exception for an early check-out", int.MaxValue - 3, RuleFinding.EarlyCheckOut, false, policy));
+        }
+
+        return added.Count == 0 ? this : new RuleSetSnapshot(Version, Source, [.. Rules, .. added]);
+    }
+
+    /// <summary>
+    /// The same rules with the rules for overtime and for work with no scheduled shift added, both off, when there are none. It is how a set made before
+    /// they were findings (<see cref="AttendanceRuleSet.OvertimeInRules"/> false) is read, so it behaves as it did when it was published.
+    /// </summary>
+    public RuleSetSnapshot WithOvertime(AttendancePolicy policy)
+    {
+        var added = new List<RuleSnapshot>();
+        if (!Rules.Any(r => r.Finding == RuleFinding.Overtime))
+        {
+            added.Add(Raise("Raise an exception for overtime", int.MaxValue - 6, RuleFinding.Overtime, false, policy));
+        }
+
+        if (!Rules.Any(r => r.Finding == RuleFinding.UnscheduledWork))
+        {
+            added.Add(Raise("Raise an exception for work with no scheduled shift", int.MaxValue - 5, RuleFinding.UnscheduledWork, false, policy));
+        }
+
+        return added.Count == 0 ? this : new RuleSetSnapshot(Version, Source, [.. Rules, .. added]);
     }
 
     /// <summary>
@@ -217,6 +334,40 @@ public sealed class RuleSetSnapshot
         yield return AutoFix("Read a break-out near the break end as the break-in", priority + 1, RuleAction.BreakOutIsBreakIn, DefaultBreakWindowMinutes);
     }
 
+    /// <summary>The rule that keeps the last of two close check-outs at the end of the day, off to begin with: of the two, the second is the check-out and the first is left out.</summary>
+    private static RuleSnapshot KeepLast(int priority) =>
+        AutoFix("Keep the last of two close check-outs at the end", priority, RuleAction.KeepLastEveningPunch, DefaultWindowMinutes, DefaultGapMinutes);
+
+    /// <summary>The check-in then check-out rule at the end, and the keep-the-last rule at the start, both off to begin with.</summary>
+    private static IEnumerable<RuleSnapshot> PunchPairs(int priority)
+    {
+        yield return AutoFix("Read a check-in then a check-out at the end as one check-out", priority, RuleAction.KeepFirstEveningCheckInPunch, DefaultWindowMinutes, DefaultGapMinutes);
+        yield return AutoFix("Keep the last of two close check-ins at the start", priority + 1, RuleAction.KeepLastMorningPunch, DefaultWindowMinutes, DefaultGapMinutes);
+    }
+
+    /// <summary>The rule that keeps the check-out of a check-in then a check-out at the end, and the one that keeps the check-in of a check-out then a check-in at the start, both off to begin with.</summary>
+    private static IEnumerable<RuleSnapshot> CheckPairs(int priority)
+    {
+        yield return AutoFix("Keep the check-out of a check-in then a check-out at the end", priority, RuleAction.KeepEveningCheckOutPunch, DefaultWindowMinutes, DefaultGapMinutes);
+        yield return AutoFix("Keep the check-in of a check-out then a check-in at the start", priority + 1, RuleAction.KeepMorningCheckInPunch, DefaultWindowMinutes, DefaultGapMinutes);
+    }
+
+    /// <summary>
+    /// The five rules for repeated punches, off to begin with. They look at how far apart two punches are and nothing else, so they need no shift: they are
+    /// how staff paid by the hour get a double tap read, and how a tap in the middle of a day is.
+    /// </summary>
+    private static IEnumerable<RuleSnapshot> Repeats(int priority)
+    {
+        yield return Repeat("Keep the first of two close check-ins", priority, RuleAction.KeepFirstRepeatedCheckIn);
+        yield return Repeat("Keep the last of two close check-ins", priority + 1, RuleAction.KeepLastRepeatedCheckIn);
+        yield return Repeat("Keep the first of two close check-outs", priority + 2, RuleAction.KeepFirstRepeatedCheckOut);
+        yield return Repeat("Keep the last of two close check-outs", priority + 3, RuleAction.KeepLastRepeatedCheckOut);
+        yield return Repeat("Keep the first of two close break punches of the same kind", priority + 4, RuleAction.KeepFirstRepeatedBreakPunch);
+    }
+
+    private static RuleSnapshot Repeat(string name, int priority, RuleAction action) =>
+        new(name, priority, false, RuleStage.Interpretation, action, null, null, [new ConditionSnapshot(RuleFact.PunchGapMinutes, RuleOperator.LessOrEqual, DefaultGapMinutes)]);
+
     private static RuleSnapshot AutoFix(string name, int priority, RuleAction action, int windowMinutes, int? gapMinutes = null)
     {
         var conditions = new List<ConditionSnapshot> { new(RuleFact.PunchOffsetMinutes, RuleOperator.LessOrEqual, windowMinutes) };
@@ -251,6 +402,12 @@ public sealed class RuleSetSnapshot
 
         // How much less than scheduled is a problem starts as what the policy already forgives at the start and at the end of the shift.
         RuleFinding.ShortHours => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, policy.LateGraceMinutes + policy.EarlyDepartureGraceMinutes),
+
+        // How late or early beyond the policy's grace (already taken off the measure) is a problem: any, to begin with.
+        RuleFinding.LateCheckIn or RuleFinding.EarlyCheckOut => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, 0),
+
+        // Overtime is already held to the policy's threshold when it is measured; the rule allows more on top, none to begin with.
+        RuleFinding.Overtime => new ConditionSnapshot(RuleFact.MinutesOver, RuleOperator.GreaterThan, 0),
         _ => null,
     };
 }

@@ -44,7 +44,25 @@ public sealed class RuleSetProvider : IRuleSetProvider
         snapshot = set.AutoFixesInRules ? snapshot : snapshot.WithAutoFixes();
 
         // Nor does a set made before the two break fixes existed: they are added, off.
-        return set.BreakFixesInRules ? snapshot : snapshot.WithBreakFixes();
+        snapshot = set.BreakFixesInRules ? snapshot : snapshot.WithBreakFixes();
+
+        // Nor one made before a late check-in and an early check-out were findings: both are added, off.
+        snapshot = set.LateEarlyInRules ? snapshot : snapshot.WithLateEarly(policy);
+
+        // Nor one made before overtime and work with no scheduled shift were findings: both are added, off.
+        snapshot = set.OvertimeInRules ? snapshot : snapshot.WithOvertime(policy);
+
+        // Nor one made before the last of two close check-outs could be kept: the rule is added, off.
+        snapshot = set.KeepLastInRules ? snapshot : snapshot.WithKeepLast();
+
+        // Nor one made before a check-in then a check-out at the end was a rule of its own, or before the last of two close check-ins at the start could be kept.
+        snapshot = set.PunchPairsInRules ? snapshot : snapshot.WithPunchPairs();
+
+        // Nor one made before the check-out (at the end) or the check-in (at the start) of such a pair could be the one kept: both are added, off.
+        snapshot = set.CheckPairsInRules ? snapshot : snapshot.WithCheckPairs();
+
+        // Nor one made before two close punches of the same kind could be read anywhere in the day: the five rules for it are added, off.
+        return set.RepeatsInRules ? snapshot : snapshot.WithRepeats();
     }
 
     public async Task<RuleSetSnapshot> ResolveAsync(AttendancePolicy policy, CancellationToken cancellationToken)

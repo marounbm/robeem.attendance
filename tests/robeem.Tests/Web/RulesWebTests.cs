@@ -219,6 +219,102 @@ public sealed class RulesWebTests
         Assert.Equal("Use between 0 and 1440 minutes.", controller.ModelState["Settings.LongBreakMinutesOver"]!.Errors.Single().ErrorMessage);
     }
 
+    [Fact]
+    public async Task ThePunchPairs_AreShownAsOneChoiceWithTheNumbersOfTheRuleThatIsOn()
+    {
+        _api.Settings = new RuleSettingsDto
+        {
+            Version = 2,
+            IsStandard = true,
+            Settings = new RuleSettings
+            {
+                MorningLastPunchCounts = true,
+                MorningLastPunchWindowMinutes = 45,
+                MorningLastPunchGapMinutes = 6,
+                MorningDuplicateWindowMinutes = 120,
+                MorningDuplicateGapMinutes = 10,
+                EveningDuplicateIsOne = true,
+                EveningDuplicateWindowMinutes = 30,
+            },
+        };
+
+        var model = Assert.IsType<RulesSettingsViewModel>(Assert.IsType<ViewResult>(await NewController().Index(null, CancellationToken.None)).Model);
+
+        Assert.Equal((PairKeeps.Last, PairKeeps.First), (model.MorningPairKeeps, model.EveningPairKeeps));
+        Assert.Equal((45, 6, 30), (model.Settings.MorningDuplicateWindowMinutes, model.Settings.MorningDuplicateGapMinutes, model.Settings.EveningDuplicateWindowMinutes));
+    }
+
+    [Fact]
+    public async Task SavingAPunchPairChoice_TurnsOnOneRuleOfThePair_AndGivesBothTheNumbersShown()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings() };
+        var settings = new RuleSettings { EveningDuplicateWindowMinutes = 60, EveningDuplicateGapMinutes = 5, MorningDuplicateIsOne = true, MorningDuplicateWindowMinutes = 20 };
+
+        await NewController().SaveSettings(null, 2, new RulesSettingsViewModel { Settings = settings, MorningPairKeeps = PairKeeps.Nothing, EveningPairKeeps = PairKeeps.Last }, CancellationToken.None);
+
+        var saved = _api.SavedSettings!.Settings;
+        Assert.Equal((false, false, true, false), (saved.MorningDuplicateIsOne, saved.MorningLastPunchCounts, saved.EveningLastPunchCounts, saved.EveningDuplicateIsOne));
+        Assert.Equal((60, 5, 20), (saved.EveningLastPunchWindowMinutes, saved.EveningLastPunchGapMinutes, saved.MorningLastPunchWindowMinutes));
+    }
+
+    [Fact]
+    public async Task ANumberRefusedForBothRulesOfAPair_IsShownOnceAtTheFieldOnThePage()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings() };
+        _api.SettingsErrors = new Dictionary<string, string>
+        {
+            ["Settings.EveningDuplicateWindowMinutes"] = "Use between 0 and 1440 minutes.",
+            ["Settings.EveningLastPunchWindowMinutes"] = "Use between 0 and 1440 minutes.",
+        };
+        var controller = NewController();
+
+        await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = new RuleSettings { EveningDuplicateWindowMinutes = 5000 }, EveningPairKeeps = PairKeeps.Last }, CancellationToken.None);
+
+        Assert.Single(controller.ModelState["Settings.EveningDuplicateWindowMinutes"]!.Errors);
+        Assert.False(controller.ModelState.ContainsKey("Settings.EveningLastPunchWindowMinutes"));
+    }
+
+    [Fact]
+    public async Task ACheckInThenACheckOutAtTheEnd_IsOneChoice_OfReadingTheCheckInOrKeepingTheCheckOut()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings { EveningInThenOutLast = true, EveningInThenOutLastWindowMinutes = 40, EveningInThenOutLastGapMinutes = 3 } };
+        var controller = NewController();
+
+        var shown = Assert.IsType<RulesSettingsViewModel>(Assert.IsType<ViewResult>(await controller.Index(null, CancellationToken.None)).Model);
+        Assert.Equal((PairKeeps.Last, 40, 3), (shown.EveningInThenOutKeeps, shown.Settings.EveningInThenOutWindowMinutes, shown.Settings.EveningInThenOutGapMinutes));
+
+        // Switching it to the other reading turns the first rule on and the second off, with the numbers shown.
+        await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = shown.Settings with { }, EveningInThenOutKeeps = PairKeeps.First }, CancellationToken.None);
+
+        var saved = _api.SavedSettings!.Settings;
+        Assert.Equal((true, false, 40, 3), (saved.EveningInThenOutIsOne, saved.EveningInThenOutLast, saved.EveningInThenOutWindowMinutes, saved.EveningInThenOutLastGapMinutes));
+    }
+
+    [Fact]
+    public async Task RepeatedCheckInsAndCheckOuts_AreEachOneChoice_AndTheSavedChoiceTurnsOnOneRule()
+    {
+        _api.Settings = new RuleSettingsDto { Version = 2, IsStandard = true, Settings = new RuleSettings { RepeatedCheckInFirst = true, RepeatedCheckOutLast = true, RepeatedGapMinutes = 7 } };
+        var controller = NewController();
+
+        var shown = Assert.IsType<RulesSettingsViewModel>(Assert.IsType<ViewResult>(await controller.Index(null, CancellationToken.None)).Model);
+        Assert.Equal((PairKeeps.First, PairKeeps.Last, 7), (shown.RepeatedCheckInKeeps, shown.RepeatedCheckOutKeeps, shown.Settings.RepeatedGapMinutes));
+
+        await controller.SaveSettings(null, 2, new RulesSettingsViewModel { Settings = shown.Settings with { }, RepeatedCheckInKeeps = PairKeeps.Last, RepeatedCheckOutKeeps = PairKeeps.First }, CancellationToken.None);
+
+        var saved = _api.SavedSettings!.Settings;
+        Assert.Equal((false, true, true, false), (saved.RepeatedCheckInFirst, saved.RepeatedCheckInLast, saved.RepeatedCheckOutFirst, saved.RepeatedCheckOutLast));
+    }
+
+    [Fact]
+    public void WhenBothRulesOfAPairAreOn_TheChoiceIsTheFirst_AsDaysAreRead()
+    {
+        var both = new RuleSettings { MorningDuplicateIsOne = true, MorningLastPunchCounts = true, EveningLastPunchCounts = true };
+
+        Assert.Equal(new PunchPairReading(PairKeeps.First, PairKeeps.Last, PairKeeps.Nothing), PunchPairChoices.Read(both));
+        Assert.Equal("Settings.MorningDuplicateGapMinutes", PunchPairChoices.ShownField("Settings.MorningLastPunchGapMinutes"));
+        Assert.Equal("Settings.LongBreakMinutesOver", PunchPairChoices.ShownField("Settings.LongBreakMinutesOver"));
+    }
+
     private static RulesEditViewModel Model(params RuleDto[] rules) => new() { Rules = [.. rules] };
 
     private static RuleDto Rule(string name) => new() { Name = name, Stage = "Exception", Action = "RaiseException", Finding = "NoShow", IsEnabled = true };

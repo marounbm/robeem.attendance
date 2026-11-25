@@ -28,7 +28,8 @@ internal static class AttendanceExceptionDetector
     /// <param name="policy">The applicable policy: the grace window.</param>
     /// <param name="now">The current local wall-clock time.</param>
     /// <param name="rules">The rules that say which findings become exceptions; null reads the policy's own settings as rules.</param>
-    public static IReadOnlyList<DetectedException> Detect(ResolvedShift? shift, DateTime day, ShiftCalculation calculation, AttendancePolicy policy, DateTime now, RuleSetSnapshot? rules = null)
+    /// <param name="isHourly">Whether the employee is paid by the hour: work with no shift is normal for them.</param>
+    public static IReadOnlyList<DetectedException> Detect(ResolvedShift? shift, DateTime day, ShiftCalculation calculation, AttendancePolicy policy, DateTime now, RuleSetSnapshot? rules = null, bool isHourly = false)
     {
         rules ??= RuleSetSnapshot.FromPolicy(policy);
         var punches = calculation.Punches;
@@ -159,6 +160,44 @@ internal static class AttendanceExceptionDetector
                 + (calculation.LateMinutes > 0 ? $" Late by {Minutes(calculation.LateMinutes)} beyond the grace." : string.Empty)
                 + (calculation.EarlyDepartureMinutes > 0 ? $" Left {Minutes(calculation.EarlyDepartureMinutes)} early beyond the grace." : string.Empty);
             found.Add(new DetectedException(AttendanceExceptionType.ShortHours, null, null, description));
+        }
+
+        // A check-in later, or a check-out earlier, than the shift allows (beyond the policy's grace, which the calculation has taken off). Whether
+        // either is an exception is the rules': off to begin with. It is tied to its punch, so accepting one does not accept another. There is no punch
+        // to supply: a manager or HR accepts it, or the day is corrected.
+        if (shift is not null && calculation.CheckIn is { } checkIn && calculation.LateMinutes > 0
+            && rules.Raises(RuleFinding.LateCheckIn, ShiftFacts.For(shift, calculation.LateMinutes, calculation.ExcusedMinutes)))
+        {
+            found.Add(new DetectedException(
+                AttendanceExceptionType.LateCheckIn,
+                null,
+                checkIn.NormalizedTransactionId,
+                $"Checked in {Minutes(calculation.LateMinutes)} late beyond the grace (scheduled {shift.StartsAt.ToString("HH:mm", CultureInfo.InvariantCulture)})."));
+        }
+
+        if (shift is not null && calculation.CheckOut is { } checkOut && calculation.EarlyDepartureMinutes > 0
+            && rules.Raises(RuleFinding.EarlyCheckOut, ShiftFacts.For(shift, calculation.EarlyDepartureMinutes, calculation.ExcusedMinutes)))
+        {
+            found.Add(new DetectedException(
+                AttendanceExceptionType.EarlyCheckOut,
+                null,
+                checkOut.NormalizedTransactionId,
+                $"Checked out {Minutes(calculation.EarlyDepartureMinutes)} early beyond the grace (scheduled {shift.EndsAt.ToString("HH:mm", CultureInfo.InvariantCulture)})."));
+        }
+
+        // Overtime: a complete shift worked longer than scheduled by at least the policy's threshold (the calculation holds it to that), and by more than the
+        // rule allows. It is on top of the policy's pre-approval of overtime, which sends the record to review whatever the rules say.
+        if (shift is not null && calculation.OvertimeMinutes > 0
+            && rules.Raises(RuleFinding.Overtime, ShiftFacts.For(shift, calculation.OvertimeMinutes, calculation.ExcusedMinutes)))
+        {
+            found.Add(new DetectedException(AttendanceExceptionType.Overtime, null, null, $"Worked {Minutes(calculation.OvertimeMinutes)} more than the scheduled time."));
+        }
+
+        // Punches on a day, or at a time, with no scheduled shift, for someone not paid by the hour. Hourly staff never have a shift, so work is normal for them.
+        if (shift is null && !isHourly
+            && rules.Raises(RuleFinding.UnscheduledWork, ShiftFacts.For(null, 0, calculation.ExcusedMinutes)))
+        {
+            found.Add(new DetectedException(AttendanceExceptionType.UnscheduledWork, null, null, $"Punches on {day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)} with no shift scheduled."));
         }
 
         // One report per problem: a repeated cause (two stray break-ins) is still one missing break-out.

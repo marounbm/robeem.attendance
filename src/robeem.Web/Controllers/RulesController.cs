@@ -28,7 +28,18 @@ public sealed class RulesController : Controller
     public async Task<IActionResult> Index(int? scheduleId, CancellationToken cancellationToken)
     {
         var settings = await _rules.GetSettingsAsync(scheduleId, cancellationToken);
-        return settings is null ? NotFound() : View(await SettingsModelAsync(settings, settings.Settings, cancellationToken));
+        if (settings is null)
+        {
+            return NotFound();
+        }
+
+        // The two rules of a pair are shown as one choice with one pair of numbers.
+        var choices = PunchPairChoices.Read(settings.Settings);
+        PunchPairChoices.ShowSharedNumbers(settings.Settings);
+        var model = await SettingsModelAsync(settings, settings.Settings, cancellationToken);
+        (model.MorningPairKeeps, model.EveningPairKeeps, model.EveningInThenOutKeeps) = (choices.Morning, choices.Evening, choices.InThenOut);
+        (model.RepeatedCheckInKeeps, model.RepeatedCheckOutKeeps) = (choices.RepeatedCheckIn, choices.RepeatedCheckOut);
+        return View(model);
     }
 
     [HttpPost]
@@ -40,6 +51,8 @@ public sealed class RulesController : Controller
             return NotFound();
         }
 
+        // The choice of each pair goes into its two rules, with the numbers shown.
+        PunchPairChoices.Apply(model.Settings, new PunchPairReading(model.MorningPairKeeps, model.EveningPairKeeps, model.EveningInThenOutKeeps, model.RepeatedCheckInKeeps, model.RepeatedCheckOutKeeps));
         if (current.IsStandard && current.Version == version && current.Settings == model.Settings)
         {
             TempData[StatusMessageKey] = "Nothing was changed.";
@@ -58,7 +71,8 @@ public sealed class RulesController : Controller
             return RedirectToAction(nameof(Index), new { scheduleId });
         }
 
-        foreach (var (field, message) in result.Errors)
+        // A number that is wrong for both rules of a pair is shown once, at the field the person typed it in.
+        foreach (var (field, message) in result.Errors.Select(e => (Field: PunchPairChoices.ShownField(e.Key), Message: e.Value)).Distinct())
         {
             ModelState.AddModelError(field, message);
         }
@@ -281,8 +295,9 @@ public sealed class RulesController : Controller
     private static string DefaultFact(string action) => action switch
     {
         "InferBreak" => "GapMinutes",
+        "KeepFirstRepeatedCheckIn" or "KeepLastRepeatedCheckIn" or "KeepFirstRepeatedCheckOut" or "KeepLastRepeatedCheckOut" or "KeepFirstRepeatedBreakPunch" => "PunchGapMinutes",
         "IgnoreShortBreak" => "BreakMinutes",
-        "LoneCheckOutIsCheckIn" or "LoneCheckInIsCheckOut" or "KeepFirstMorningPunch" or "KeepFirstEveningPunch" or "BreakInIsBreakOut" or "BreakOutIsBreakIn" => "PunchOffsetMinutes",
+        "LoneCheckOutIsCheckIn" or "LoneCheckInIsCheckOut" or "KeepFirstMorningPunch" or "KeepFirstEveningPunch" or "KeepLastEveningPunch" or "KeepFirstEveningCheckInPunch" or "KeepLastMorningPunch" or "KeepEveningCheckOutPunch" or "KeepMorningCheckInPunch" or "BreakInIsBreakOut" or "BreakOutIsBreakIn" => "PunchOffsetMinutes",
         _ => "MinutesOver",
     };
 

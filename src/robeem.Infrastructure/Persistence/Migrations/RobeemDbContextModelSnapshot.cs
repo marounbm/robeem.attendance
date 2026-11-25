@@ -1185,8 +1185,8 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Action")
                         .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("character varying(24)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<int>("AttendanceRuleSetId")
                         .HasColumnType("integer");
@@ -1318,6 +1318,11 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("CheckPairsInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<int>("CreatedBy")
                         .HasColumnType("integer");
 
@@ -1326,6 +1331,16 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("GUID")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("KeepLastInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("LateEarlyInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("ModifiedBy")
                         .HasColumnType("integer");
@@ -1337,11 +1352,26 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<bool>("OvertimeInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<int?>("PublishedById")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("PunchPairsInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("RepeatsInRules")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("ShortHoursInRules")
                         .ValueGeneratedOnAdd()
