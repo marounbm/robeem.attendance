@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using robeem.Contracts.Attendance;
 using robeem.Web.Actors;
@@ -117,7 +118,7 @@ public sealed class ExceptionsController : Controller
     /// <summary>A manager or HR accepts a break exception as it is. The reason is required; the Api checks the user may.</summary>
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> Accept(int exceptionId, string? reason, CancellationToken cancellationToken, int? dayEmployeeId = null, DateTime? dayDate = null)
+    public async Task<IActionResult> Accept(int exceptionId, string? reason, CancellationToken cancellationToken, int? dayEmployeeId = null, DateTime? dayDate = null, RecordListContext? list = null)
     {
         var result = await _exceptions.AcceptAsync(
             exceptionId,
@@ -128,12 +129,17 @@ public sealed class ExceptionsController : Controller
             ? "The exception was accepted. The day was calculated again."
             : result.MessageText;
 
-        // Accepted from a day's own page: back to that day.
+        // Accepted from a day's own page: back to that day, still opened from the list it came from.
         return dayEmployeeId is { } employeeId && dayDate is { } date
-            ? RedirectToDay(employeeId, date)
+            ? RedirectToDay(employeeId, date, list)
             : RedirectToAction(nameof(Index));
     }
 
-    private RedirectToActionResult RedirectToDay(int employeeId, DateTime date) =>
-        RedirectToAction("Day", "Records", new { employeeId, date = date.ToString("yyyy-MM-dd") });
+    private RedirectToActionResult RedirectToDay(int employeeId, DateTime date, RecordListContext? list = null)
+    {
+        var values = list is { Position: > 0 } ? list.ToDayValues(list.Position).ToDictionary(v => v.Key, v => (object?)v.Value) : new Dictionary<string, object?>();
+        values["employeeId"] = employeeId;
+        values["date"] = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return RedirectToAction("Day", "Records", values);
+    }
 }

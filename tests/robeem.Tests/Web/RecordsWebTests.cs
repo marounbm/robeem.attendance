@@ -249,6 +249,78 @@ public sealed class RecordsWebTests
     }
 
     [Fact]
+    public async Task TheDay_OffersTheNextDayOfTheListItWasOpenedFrom_EvenOnTheNextPage()
+    {
+        var records = new FakeRecords { WholeList = ListOfDays(5) };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var second = (RecordDayViewModel)((ViewResult)await controller.Day(102, new DateTime(2026, 4, 3), CancellationToken.None, OpenedFrom(2))).Model!;
+        var lastOfPage = (RecordDayViewModel)((ViewResult)await controller.Day(104, new DateTime(2026, 4, 5), CancellationToken.None, OpenedFrom(4))).Model!;
+        var last = (RecordDayViewModel)((ViewResult)await controller.Day(105, new DateTime(2026, 4, 6), CancellationToken.None, OpenedFrom(5))).Model!;
+
+        Assert.Equal((103, 3), (second.Next!.EmployeeId, second.NextPosition));
+        Assert.Equal((105, 5), (lastOfPage.Next!.EmployeeId, lastOfPage.NextPosition));
+        Assert.Null(last.Next);
+
+        // The link carries the list on, with the next day's own place and the same filters.
+        var link = second.NextLink();
+        Assert.Equal(("103", "2026-04-04", "3", "OpenExceptions", "2"), (link["employeeId"], link["date"], link["position"], link["status"], link["pageSize"]));
+    }
+
+    [Fact]
+    public async Task TheDay_WhenItHasLeftTheList_OffersTheDayThatMovedUpIntoItsPlace()
+    {
+        // Under a filter of open exceptions, a day whose exceptions were accepted is no longer listed: the day after it is now in its place.
+        var records = new FakeRecords { WholeList = ListOfDays(5) };
+        records.WholeList.RemoveAt(1);
+
+        var model = (RecordDayViewModel)((ViewResult)await Controller(records, ["HRAdministrator"]).Day(102, new DateTime(2026, 4, 3), CancellationToken.None, OpenedFrom(2))).Model!;
+
+        Assert.Equal((103, 2), (model.Next!.EmployeeId, model.NextPosition));
+    }
+
+    [Fact]
+    public async Task TheDay_OpenedAnyOtherWay_HasNoNextDayAndDoesNotReadTheList()
+    {
+        var records = new FakeRecords { WholeList = ListOfDays(5) };
+        var controller = Controller(records, ["HRAdministrator"]);
+
+        var plain = (RecordDayViewModel)((ViewResult)await controller.Day(102, new DateTime(2026, 4, 3), CancellationToken.None)).Model!;
+        var unplaced = (RecordDayViewModel)((ViewResult)await controller.Day(102, new DateTime(2026, 4, 3), CancellationToken.None, new RecordListContext { PageSize = 2 })).Model!;
+
+        Assert.Null(plain.List);
+        Assert.Null(plain.Next);
+        Assert.Null(unplaced.List);
+        Assert.Equal(0, records.ListCalls);
+    }
+
+    [Fact]
+    public void TheListsLink_ToADay_CarriesTheFiltersAndThePlaceInTheList()
+    {
+        var model = new RecordsIndexViewModel
+        {
+            Status = RecordsIndexViewModel.OpenExceptions,
+            EmployeeId = 7,
+            From = new DateTime(2026, 4, 1),
+            Sort = RecordSortField.Worked,
+            Descending = true,
+            Page = 3,
+            PageSize = 10,
+            OnlyWithExceptions = true,
+        };
+
+        var link = model.DayLink(new RecordDayListItem { EmployeeId = 50, AttendanceDate = new DateTime(2026, 4, 20) }, 1);
+        var back = new RecordListContext { Status = "OpenExceptions", FilterEmployeeId = 7, PageSize = 10, Position = 22, Sort = "worked", Dir = "desc" }.ToIndexValues();
+
+        // The day's own employee and the filter's employee are different values with different names.
+        Assert.Equal(("50", "7", "2026-04-20", "22"), (link["employeeId"], link["filterEmployeeId"], link["date"], link["position"]));
+        Assert.Equal(("OpenExceptions", "2026-04-01", "true", "worked", "desc", "10"), (link["status"], link["from"], link["onlyWithExceptions"], link["sort"], link["dir"], link["pageSize"]));
+
+        // The way back is the page of the list the day was on.
+        Assert.Equal(("3", "7", "OpenExceptions"), (back["page"], back["employeeId"], back["status"]));
+    }
+
+    [Fact]
     public async Task AnHrAdministratorCanLookForMissingDaysInTheFilteredPeriod_AndComesBackToTheSameList()
     {
         var records = new FakeRecords
@@ -457,6 +529,12 @@ public sealed class RecordsWebTests
         Assert.Equal((false, new DateTime(2026, 10, 1), new DateTime(2026, 10, 31)), (swapped.RangeShortened, swapped.From, swapped.To));
     }
 
+    private static List<RecordDayListItem> ListOfDays(int count) =>
+        Enumerable.Range(1, count).Select(i => new RecordDayListItem { EmployeeId = 100 + i, AttendanceDate = new DateTime(2026, 4, 1).AddDays(i), EmployeeName = $"Employee {i}" }).ToList();
+
+    private static RecordListContext OpenedFrom(int position, int pageSize = 2) =>
+        new() { Status = RecordsIndexViewModel.OpenExceptions, PageSize = pageSize, Position = position };
+
     private static RecordsController Controller(FakeRecords records, string[] roles, FakeExceptions? exceptions = null, FakeSettings? settings = null) =>
         new(records, exceptions ?? new FakeExceptions(), new FakeActor(roles), settings ?? new FakeSettings()) { TempData = new TempDataDictionary(new DefaultHttpContext(), new NullTempDataProvider()) };
 
@@ -548,12 +626,23 @@ public sealed class RecordsWebTests
 
         public int ServerPage { get; set; } = 1;
 
+        /// <summary>Gets or sets every day of the list, served page by page; when null, <see cref="Days"/> answers every page.</summary>
+        public List<RecordDayListItem>? WholeList { get; set; }
+
         public Task<PagedResult<RecordDayListItem>> ListAsync(DateTime? from, DateTime? to, int? employeeId, string? status, bool onlyWithExceptions, int page, int pageSize, RecordSortField sort, bool descending, bool? underTime, bool? inferred, CancellationToken cancellationToken)
         {
             (SortAsked, DescendingAsked, UnderTimeAsked, StatusAsked, InferredAsked) = (sort, descending, underTime, status, inferred);
             (From, Status, OnlyWithExceptions, EmployeeId) = (from, status, onlyWithExceptions, employeeId);
             (PageAsked, PageSizeAsked) = (page, pageSize);
             ListCalls++;
+            if (WholeList is { } whole)
+            {
+                // Pages the way the Api does: a page past the end is answered with the last one.
+                var last = Math.Max(1, (int)Math.Ceiling(whole.Count / (double)pageSize));
+                var shown = Math.Min(page, last);
+                return Task.FromResult(new PagedResult<RecordDayListItem> { Items = whole.Skip((shown - 1) * pageSize).Take(pageSize).ToList(), Total = whole.Count, Page = shown, PageSize = pageSize });
+            }
+
             return Task.FromResult(new PagedResult<RecordDayListItem> { Items = Days, Total = Total, Page = ServerPage, PageSize = pageSize });
         }
 

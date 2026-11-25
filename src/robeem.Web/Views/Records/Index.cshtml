@@ -163,7 +163,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var item in Model.Items)
+                    @foreach (var (item, row) in Model.Items.Select((item, row) => (item, row)))
                     {
                         <tr>
                             <td class="text-nowrap">@item.AttendanceDate.ToString("yyyy-MM-dd")</td>
@@ -182,8 +182,8 @@
                             <td class="text-end">
                                 @* Only the employee can correct their day, so only they are offered Resolve; anyone else just opens it. *@
                                 @{ var resolvable = item.ExceptionCount > 0 && item.IsViewersOwnDay; }
-                                <a class="btn btn-sm @(resolvable ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-route-employeeId="@item.EmployeeId"
-                                   asp-route-date="@item.AttendanceDate.ToString("yyyy-MM-dd")">@(resolvable ? "Resolve" : "Open")</a>
+                                @* The day is opened with this list (filters, sort, place in it), so that its page can offer the next day. *@
+                                <a class="btn btn-sm @(resolvable ? "btn-primary" : "btn-outline-primary")" asp-action="Day" asp-all-route-data="Model.DayLink(item, row)">@(resolvable ? "Resolve" : "Open")</a>
                             </td>
                         </tr>
                     }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using robeem.Contracts.Attendance;
+using robeem.Contracts.Common;
 using robeem.Web.Actors;
 using robeem.Web.ApiClients;
 using robeem.Web.Models;
@@ -40,18 +41,7 @@ public sealed class RecordsController : Controller
         var field = Enum.TryParse<RecordSortField>(sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : RecordSortField.Date;
         var descending = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
 
-        // "Open exceptions" is how the list names a day that waits for its exceptions; to the Api it is the days with an exception that is not closed.
-        var openExceptions = chosen == RecordsIndexViewModel.OpenExceptions;
-
-        // "Under timed" is an approved day that worked less than scheduled: to the Api, status Approved with the under-time filter on. "Approved" leaves those
-        // out, since the list shows them under their own name.
-        var underTimed = chosen == RecordsIndexViewModel.UnderTimed;
-        var apiStatus = chosen is "Any" or RecordsIndexViewModel.OpenExceptions or RecordsIndexViewModel.Inferred ? null : underTimed ? "Approved" : chosen;
-        bool? underTime = underTimed ? true : chosen == "Approved" ? false : null;
-
-        // "Inferred" is not a status either: it is the days marked with a dot, whatever their status, and the Api is asked for those.
-        bool? inferred = chosen == RecordsIndexViewModel.Inferred ? true : null;
-        var result = await _records.ListAsync(from, to, employeeId, apiStatus, onlyWithExceptions || openExceptions, Math.Max(page, 1), size, field, descending, underTime, inferred, cancellationToken);
+        var result = await ListPageAsync(chosen, from, to, employeeId, onlyWithExceptions, Math.Max(page, 1), size, field, descending, cancellationToken);
         var canCheckMissing = _actor.IsInRole(NavigationMenu.Hr);
         var (checkFrom, checkTo) = canCheckMissing ? await DefaultPeriodAsync(cancellationToken) : (null, null);
         return View(new RecordsIndexViewModel
@@ -200,17 +190,33 @@ public sealed class RecordsController : Controller
         });
     }
 
+    /// <summary>
+    /// One day, with how it was calculated. When it was opened from the Attendance list, <paramref name="list"/> is that list (filters, sort, page size) and
+    /// the day's place in it, and the page offers the day that follows.
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> Day(int employeeId, DateTime date, CancellationToken cancellationToken)
+    public async Task<IActionResult> Day(int employeeId, DateTime date, CancellationToken cancellationToken, RecordListContext? list = null)
     {
         var day = await _records.GetDayAsync(employeeId, date, cancellationToken);
-        return day is null
-            ? NotFound()
-            : View(new RecordDayViewModel { Day = day, CanReprocess = _actor.IsInRole(NavigationMenu.Hr) });
+        if (day is null)
+        {
+            return NotFound();
+        }
+
+        var fromList = list is { Position: > 0 } ? list : null;
+        var (next, nextPosition) = fromList is null ? (null, 0) : await FindNextAsync(fromList, employeeId, date, cancellationToken);
+        return View(new RecordDayViewModel
+        {
+            Day = day,
+            CanReprocess = _actor.IsInRole(NavigationMenu.Hr),
+            List = fromList,
+            Next = next,
+            NextPosition = nextPosition,
+        });
     }
 
     [HttpPost]
-    public async Task<IActionResult> Reprocess(int employeeId, DateTime date, CancellationToken cancellationToken)
+    public async Task<IActionResult> Reprocess(int employeeId, DateTime date, CancellationToken cancellationToken, RecordListContext? list = null)
     {
         var result = await _records.ReprocessAsync(employeeId, date, cancellationToken);
         if (result is null)
@@ -221,7 +227,12 @@ public sealed class RecordsController : Controller
         TempData["StatusMessage"] = result.RecordsWritten + result.RecordsRetired + result.ExceptionsRaised + result.ExceptionsResolved == 0
             ? "The day was calculated again and nothing changed."
             : $"The day was calculated again: {result.RecordsWritten} record(s) written, {result.RecordsRetired} retired, {result.ExceptionsRaised} exception(s) raised, {result.ExceptionsResolved} resolved.";
-        return RedirectToAction(nameof(Day), new { employeeId, date = date.ToString("yyyy-MM-dd") });
+
+        // Back to the day, still opened from the list it came from.
+        var values = list is { Position: > 0 } ? list.ToDayValues(list.Position).ToDictionary(v => v.Key, v => (object?)v.Value) : new Dictionary<string, object?>();
+        values["employeeId"] = employeeId;
+        values["date"] = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return RedirectToAction(nameof(Day), values);
     }
 
     private static string ReprocessSinceMessage(ReprocessSinceResponse result)
@@ -285,5 +296,62 @@ public sealed class RecordsController : Controller
         var yesterday = DateTime.Today.AddDays(-1);
         var to = settings.LastAttendanceDate is { } last ? (last.Date > yesterday ? yesterday : last.Date) : (DateTime?)null;
         return (settings.StartDate?.Date, to);
+    }
+
+    /// <summary>
+    /// Asks the Api for one page of the Attendance list. The Status filter has choices the Api has no status for, which are translated here, so that
+    /// the list and the day's page read the same days.
+    /// </summary>
+    private Task<PagedResult<RecordDayListItem>> ListPageAsync(string chosen, DateTime? from, DateTime? to, int? employeeId, bool onlyWithExceptions, int page, int size, RecordSortField field, bool descending, CancellationToken cancellationToken)
+    {
+        // "Open exceptions" is how the list names a day that waits for its exceptions; to the Api it is the days with an exception that is not closed.
+        var openExceptions = chosen == RecordsIndexViewModel.OpenExceptions;
+
+        // "Under timed" is an approved day that worked less than scheduled: to the Api, status Approved with the under-time filter on. "Approved" leaves those
+        // out, since the list shows them under their own name.
+        var underTimed = chosen == RecordsIndexViewModel.UnderTimed;
+        var apiStatus = chosen is "Any" or RecordsIndexViewModel.OpenExceptions or RecordsIndexViewModel.Inferred ? null : underTimed ? "Approved" : chosen;
+        bool? underTime = underTimed ? true : chosen == "Approved" ? false : null;
+
+        // "Inferred" is not a status either: it is the days marked with a dot, whatever their status, and the Api is asked for those.
+        bool? inferred = chosen == RecordsIndexViewModel.Inferred ? true : null;
+        return _records.ListAsync(from, to, employeeId, apiStatus, onlyWithExceptions || openExceptions, page, size, field, descending, underTime, inferred, cancellationToken);
+    }
+
+    /// <summary>
+    /// Finds the day after the given one in the list it was opened from. The list is read again, so it is as it is now: when the day has left it (its
+    /// exceptions were settled under a filter of open exceptions), the day that moved up into its place is the next one. Nothing is returned at the end of the list.
+    /// </summary>
+    private async Task<(RecordDayListItem? Item, int Position)> FindNextAsync(RecordListContext list, int employeeId, DateTime date, CancellationToken cancellationToken)
+    {
+        var chosen = RecordsIndexViewModel.Statuses.Contains(list.Status ?? string.Empty) ? list.Status! : "Any";
+        var size = RecordsIndexViewModel.PageSizes.Contains(list.PageSize) ? list.PageSize : RecordsIndexViewModel.DefaultPageSize;
+        var field = Enum.TryParse<RecordSortField>(list.Sort, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : RecordSortField.Date;
+        var descending = string.Equals(list.Dir, "desc", StringComparison.OrdinalIgnoreCase);
+
+        // The page that holds a place, read at most once for each page (the place and the one after it are usually on the same page).
+        var pages = new Dictionary<int, PagedResult<RecordDayListItem>>();
+        async Task<RecordDayListItem?> ItemAtAsync(int position)
+        {
+            var page = ((position - 1) / size) + 1;
+            if (!pages.TryGetValue(page, out var result))
+            {
+                result = await ListPageAsync(chosen, list.From, list.To, list.FilterEmployeeId, list.OnlyWithExceptions, page, size, field, descending, cancellationToken);
+                pages[page] = result;
+            }
+
+            // A page past the end is answered with the last one: then the place is past the end, too.
+            var row = (position - 1) % size;
+            return result.Page == page && row < result.Items.Count ? result.Items[row] : null;
+        }
+
+        var here = await ItemAtAsync(list.Position);
+        if (here is null)
+        {
+            return (null, 0);
+        }
+
+        var stillThere = here.EmployeeId == employeeId && here.AttendanceDate.Date == date.Date;
+        return stillThere ? (await ItemAtAsync(list.Position + 1), list.Position + 1) : (here, list.Position);
     }
 }

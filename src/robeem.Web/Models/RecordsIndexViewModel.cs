@@ -91,6 +91,29 @@ public sealed class RecordsIndexViewModel
         return values;
     }
 
+    /// <summary>
+    /// Gets the route values of a day's link: the day, and the list as it is shown (filters, sort, page size) with the day's place in it, so that the
+    /// day's page can offer the next day of this list. <paramref name="row"/> is the 0-based row on the page.
+    /// </summary>
+    public Dictionary<string, string?> DayLink(RecordDayListItem item, int row)
+    {
+        var context = new RecordListContext
+        {
+            Status = Status,
+            From = From,
+            To = To,
+            OnlyWithExceptions = OnlyWithExceptions,
+            FilterEmployeeId = EmployeeId,
+            Sort = Sort != RecordSortField.Date || Descending ? SortName(Sort) : null,
+            Dir = Descending ? "desc" : "asc",
+            PageSize = PageSize,
+        };
+        var values = context.ToDayValues(((Page - 1) * PageSize) + row + 1);
+        values["employeeId"] = item.EmployeeId.ToString(CultureInfo.InvariantCulture);
+        values["date"] = item.AttendanceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return values;
+    }
+
     /// <summary>Gets the sort mark for a column heading, for <c>aria-sort</c>: <c>ascending</c>, <c>descending</c> or <c>none</c>.</summary>
     public string AriaSort(RecordSortField field) => Sort != field ? "none" : Descending ? "descending" : "ascending";
 

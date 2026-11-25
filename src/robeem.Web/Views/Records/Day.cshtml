@@ -14,14 +14,27 @@
         <div class="text-muted">@DisplayFormats.Date(day.AttendanceDate)</div>
     </div>
     <div>
-        <a asp-action="Index" class="btn btn-outline-secondary">Back to attendance</a>
+        @* Opened from the list: back to it as it was (same page, filters and sort). *@
+        <a asp-action="Index" asp-all-route-data="Model.List?.ToIndexValues() ?? new Dictionary<string, string?>()" class="btn btn-outline-secondary">Back to attendance</a>
         @if (Model.CanReprocess)
         {
             <form method="post" asp-action="Reprocess" class="d-inline">
                 <input type="hidden" name="employeeId" value="@day.EmployeeId" />
                 <input type="hidden" name="date" value="@day.AttendanceDate.ToString("yyyy-MM-dd")" />
+                @if (Model.List is not null)
+                {
+                    <partial name="_ListContextFields" model="Model.List" />
+                }
                 <button type="submit" class="btn btn-outline-primary">Calculate again</button>
             </form>
+        }
+        @if (Model.Next is { } next)
+        {
+            <a asp-action="Day" asp-all-route-data="Model.NextLink()" class="btn btn-primary" title="@next.EmployeeName, @DisplayFormats.Date(next.AttendanceDate)">Next day &rarr;</a>
+        }
+        else if (Model.List is not null)
+        {
+            <span class="small text-muted ms-2">This was the last day of the list.</span>
         }
     </div>
 </div>
@@ -179,6 +192,10 @@ else
                             <input type="hidden" name="exceptionId" value="@e.Id" />
                             <input type="hidden" name="dayEmployeeId" value="@day.EmployeeId" />
                             <input type="hidden" name="dayDate" value="@dayDate" />
+                            @if (Model.List is not null)
+                            {
+                                <partial name="_ListContextFields" model="Model.List" />
+                            }
                             <div class="col-md-7">
                                 <label class="form-label small mb-0" for="accept-why-@e.Id">Accept this as it is: why?</label>
                                 <input id="accept-why-@e.Id" type="text" name="reason" maxlength="1000" class="form-control form-control-sm" required />

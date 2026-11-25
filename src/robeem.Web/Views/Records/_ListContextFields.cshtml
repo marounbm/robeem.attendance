@@ -1,0 +1,6 @@
+@model RecordListContext
+@* The list a day was opened from, carried through a form on the day's page so that it is still there when the page is shown again. *@
+@foreach (var (name, value) in Model.ToDayValues(Model.Position))
+{
+    <input type="hidden" name="@name" value="@value" />
+}
