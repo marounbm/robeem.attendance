@@ -93,12 +93,18 @@ else
                     <tbody>
                         @foreach (var v in day.Versions)
                         {
+                            // Work that ends on a later date than it began is overnight: it is this day's, and its check-out is after midnight.
+                            var overnight = v.ActualCheckIn is { } worked && v.ActualCheckOut is { } leftAt && leftAt.Date > worked.Date;
                             <tr class="@(v.IsCurrent ? null : "text-muted")">
                                 <td>
                                     @(v.ShiftTitle ?? "Unscheduled work")
+                                    @if (overnight)
+                                    {
+                                        <span class="badge text-bg-info" title="The check-out is after midnight: this is one session that began on @DisplayFormats.Date(day.AttendanceDate)">Overnight</span>
+                                    }
                                     <div class="small">Version @v.Version@(v.IsCurrent ? " (current)" : " (replaced)")</div>
                                 </td>
-                                <td class="text-nowrap">@DisplayFormats.Time(v.ScheduledStart) – @DisplayFormats.Time(v.ScheduledEnd)</td>
+                                <td class="text-nowrap">@DisplayFormats.Time(v.ScheduledStart) – @DisplayFormats.TimeAfter(v.ScheduledEnd, v.ScheduledStart)</td>
                                 <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckIn) <span class="small">@Source(v.ActualCheckInSource)</span></td>
                                 <td class="text-nowrap">
                                     @DisplayFormats.Time(v.ActualBreakOut) – @DisplayFormats.Time(v.ActualBreakIn) <span class="small">@Source(v.ActualBreakOutSource ?? v.ActualBreakInSource)</span>
@@ -111,7 +117,7 @@ else
                                         <div><span class="badge text-bg-warning" title="Recorded whatever the policy raises as an exception">@DisplayFormats.Words(finding)</span></div>
                                     }
                                 </td>
-                                <td class="text-nowrap">@DisplayFormats.Time(v.ActualCheckOut) <span class="small">@Source(v.ActualCheckOutSource)</span></td>
+                                <td class="text-nowrap">@DisplayFormats.TimeAfter(v.ActualCheckOut, v.ActualCheckIn ?? day.AttendanceDate) <span class="small">@Source(v.ActualCheckOutSource)</span></td>
                                 <td class="text-end">@DisplayFormats.Hours(v.WorkingHours)</td>
                                 <td class="text-end">@DisplayFormats.Hours(v.BreakDuration)</td>
                                 <td class="text-end">@(v.LateMinutes == 0 ? "—" : DisplayFormats.Minutes(v.LateMinutes))</td>
@@ -288,7 +294,17 @@ else
                     @foreach (var p in day.Punches)
                     {
                         <tr class="@(p.DuplicateStatus == "Unique" ? null : "text-muted")">
-                            <td class="text-nowrap">@DisplayFormats.DateTime(p.LocalTime) <span class="small text-muted">@p.TimeZoneId</span></td>
+                            <td class="text-nowrap">
+                                @DisplayFormats.DateTime(p.LocalTime) <span class="small text-muted">@p.TimeZoneId</span>
+                                @if (p.CountedForDate is { } countedFor)
+                                {
+                                    <div class="small"><span class="badge text-bg-info" title="This punch ends the session that began on @DisplayFormats.Date(countedFor), so it counts for that day">Counts for @DisplayFormats.Date(countedFor)</span></div>
+                                }
+                                else if (p.LocalTime.Date > day.AttendanceDate.Date)
+                                {
+                                    <div class="small"><span class="badge text-bg-info" title="After midnight, but part of a session of this day">Next day: part of this day's session</span></div>
+                                }
+                            </td>
                             <td>@DisplayFormats.Words(p.EventType)</td>
                             <td>@(p.OriginalEventType ?? "—")</td>
                             <td>@(p.DeviceName ?? "—")</td>

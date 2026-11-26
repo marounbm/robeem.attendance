@@ -258,6 +258,59 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task AnOvernightSession_IsListedOnTheDayItBeganAndOnTheDayItEnded_AndTheCheckOutSaysWhichDayItCountsFor()
+    {
+        // An hourly employee clocks in at 22:28 and out at 06:31 the next morning, then works a short day: the night belongs to Monday.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.Profiles.Single(p => p.Id == EmployeeId).PayBasis = PayBasis.Hourly;
+            db.SaveChanges();
+        }
+
+        var tuesday = Monday.AddDays(1);
+        Clock.Local = Monday.AddDays(4);
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(22, 28));
+        AddPunch(NormalizedEventType.CheckOut, tuesday.At(6, 31));
+        AddPunch(NormalizedEventType.CheckIn, tuesday.At(9, 25));
+        AddPunch(NormalizedEventType.CheckOut, tuesday.At(13, 0));
+        await ProcessAsync(Monday);
+        await ProcessAsync(tuesday);
+        var hr = new ExceptionViewer(900, false, false, true);
+
+        var first = (await GetDayAsync(EmployeeId, Monday, hr))!;
+        var second = (await GetDayAsync(EmployeeId, tuesday, hr))!;
+
+        // The night is Monday's session, calculated as one: in on Monday, out on Tuesday morning.
+        var night = Assert.Single(first.Versions);
+        Assert.Equal((Monday.At(22, 28), tuesday.At(6, 31), new TimeSpan(8, 3, 0)), (night.ActualCheckIn, night.ActualCheckOut, night.WorkingHours));
+
+        // Monday lists its check-in and the check-out its session carries into Tuesday; none of them counts for another day.
+        Assert.Equal([Monday.At(22, 28), tuesday.At(6, 31)], first.Punches.Select(p => p.LocalTime));
+        Assert.All(first.Punches, p => Assert.Null(p.CountedForDate));
+
+        // Tuesday lists the check-out of Monday's night, saying so, then its own two punches.
+        Assert.Equal([tuesday.At(6, 31), tuesday.At(9, 25), tuesday.At(13, 0)], second.Punches.Select(p => p.LocalTime));
+        Assert.Equal([Monday, null, null], second.Punches.Select(p => p.CountedForDate));
+    }
+
+    [Fact]
+    public async Task ADayWithNoOvernightWork_ListsOnlyItsOwnPunches()
+    {
+        AddPunch(NormalizedEventType.CheckIn, Monday.At(9, 0));
+        AddPunch(NormalizedEventType.CheckOut, Monday.At(17, 0));
+        AddPunch(NormalizedEventType.CheckIn, Monday.AddDays(1).At(9, 0));
+        AddPunch(NormalizedEventType.CheckOut, Monday.AddDays(1).At(17, 0));
+        AssignSchedule(StandardDay);
+        await ProcessAsync(Monday);
+        await ProcessAsync(Monday.AddDays(1));
+
+        var detail = (await GetDayAsync(EmployeeId, Monday, new ExceptionViewer(900, false, false, true)))!;
+
+        Assert.Equal([Monday.At(9, 0), Monday.At(17, 0)], detail.Punches.Select(p => p.LocalTime));
+        Assert.All(detail.Punches, p => Assert.Null(p.CountedForDate));
+    }
+
+    [Fact]
     public async Task ADayNeverProcessed_IsShownEmpty_AndOneOutOfScopeOrUnknownIsNull()
     {
         var (_, otherId) = AddPeople();

@@ -223,13 +223,39 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             })
             .ToListAsync(cancellationToken);
 
+        // A session that runs past midnight (a night shift, or hourly staff who clock in at 22:28 and out at 06:31) belongs to the day it began
+        // on, while its check-out is dated the day it happened. So the day lists the punches of its own date and also those its sessions
+        // carry into the next one, and says which of them belong to the day before.
+        var sessions = await _db.AttendanceRecords.AsNoTracking()
+            .Where(r => r.EmployeeId == employeeId
+                && r.IsCurrent
+                && r.AttendanceDate >= day.AddDays(-1)
+                && r.AttendanceDate <= day
+                && r.ActualCheckIn != null
+                && r.ActualCheckOut != null
+                && r.ActualCheckOut >= day)
+            .Select(r => new { r.AttendanceDate, In = r.ActualCheckIn!.Value, Out = r.ActualCheckOut!.Value })
+            .ToListAsync(cancellationToken);
+        var carriedUntil = sessions.Where(s => s.AttendanceDate == day).Select(s => (DateTime?)s.Out).Max();
+
         // Ordered in memory by the instant: not every database can order by a DateTimeOffset.
-        var punches = (await _db.NormalizedAttendanceTransactions.AsNoTracking()
-            .Where(n => n.EmployeeId == employeeId && n.AttendanceDate == day)
+        var onTheDay = _db.NormalizedAttendanceTransactions.AsNoTracking().Where(n => n.EmployeeId == employeeId);
+        onTheDay = carriedUntil is { } until
+            ? onTheDay.Where(n => n.AttendanceDate == day || (n.EventTimestampLocal >= day && n.EventTimestampLocal <= until))
+            : onTheDay.Where(n => n.AttendanceDate == day);
+        var punches = (await onTheDay
             .Select(n => new { Punch = n, DeviceName = n.Device == null ? null : n.Device.Title })
             .ToListAsync(cancellationToken))
             .OrderBy(x => x.Punch.EventTimestampUtc).ThenBy(x => x.Punch.Id)
             .ToList();
+
+        // A punch of the day's own date stays whatever holds it; one of another date is listed only when a session of this day holds it.
+        bool HeldByThisDay(DateTime at) => sessions.Any(s => s.AttendanceDate == day && s.In <= at && at <= s.Out);
+
+        // It counts for the day before when a session of that day holds it and none of this day's does.
+        DateTime? CountedFor(DateTime at) =>
+            HeldByThisDay(at) ? null : sessions.FirstOrDefault(s => s.AttendanceDate < day && s.In <= at && at <= s.Out)?.AttendanceDate;
+        punches = punches.Where(x => x.Punch.AttendanceDate == day || HeldByThisDay(x.Punch.EventTimestampLocal)).ToList();
 
         // The calendar says which stretches of the day are excused; the leave rows say what HR entered (the whole period and the note).
         var leaves = await _db.EmployeeLeaves.AsNoTracking()
@@ -345,6 +371,7 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
                     DeviceName = x.DeviceName,
                     Confidence = x.Punch.ConfidenceStatus.ToString(),
                     DuplicateStatus = x.Punch.DuplicateStatus.ToString(),
+                    CountedForDate = CountedFor(x.Punch.EventTimestampLocal),
                 })
                 .ToList(),
         };

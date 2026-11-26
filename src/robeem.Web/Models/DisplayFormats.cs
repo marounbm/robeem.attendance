@@ -27,6 +27,21 @@ public static class DisplayFormats
 
     public static string Time(DateTime? time) => time?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "—";
 
+    /// <summary>
+    /// Writes a time of day and, when it falls on a later date than <paramref name="from"/>, how many days later: <c>06:31 +1 day</c>.
+    /// A check-out after midnight is the same session as the check-in the evening before, and a bare 06:31 hides that.
+    /// </summary>
+    public static string TimeAfter(DateTime? time, DateTime? from)
+    {
+        if (time is not { } at)
+        {
+            return "—";
+        }
+
+        var days = from is { } start ? (at.Date - start.Date).Days : 0;
+        return days <= 0 ? Time(at) : $"{Time(at)} +{days} day{(days == 1 ? string.Empty : "s")}";
+    }
+
     public static string DateTime(DateTime? time) => time?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "—";
 
     /// <summary>Writes an instant in UTC, e.g. <c>2026-10-05 14:03 UTC</c>.</summary>

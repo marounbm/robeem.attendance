@@ -466,6 +466,19 @@ public sealed class ApprovalsWebTests
     }
 
     [Theory]
+    [InlineData("2026-04-02 22:28", "2026-04-02 22:28", "22:28")]
+    [InlineData("2026-04-03 06:31", "2026-04-02 22:28", "06:31 +1 day")]
+    [InlineData("2026-04-04 06:31", "2026-04-02 22:28", "06:31 +2 days")]
+    [InlineData("2026-04-02 08:00", "2026-04-02 22:28", "08:00")]
+    public void ATimeOnALaterDate_SaysHowManyDaysLater(string time, string from, string expected)
+    {
+        var start = DateTime.Parse(from, global::System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(expected, DisplayFormats.TimeAfter(DateTime.Parse(time, global::System.Globalization.CultureInfo.InvariantCulture), start));
+        Assert.Equal("—", DisplayFormats.TimeAfter(null, start));
+        Assert.Equal("22:28", DisplayFormats.TimeAfter(new DateTime(2026, 4, 2, 22, 28, 0), null));
+    }
+
+    [Theory]
     [InlineData("PendingCorrection", "Pending correction")]
     [InlineData("UnscheduledWork", "Unscheduled work")]
     [InlineData("Open", "Open")]
