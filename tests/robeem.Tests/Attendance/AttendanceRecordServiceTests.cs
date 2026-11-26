@@ -200,6 +200,24 @@ public sealed class AttendanceRecordServiceTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task TheEmployeeOptions_AreSortedByTheNameAsShown_IgnoringCase()
+    {
+        AddPeople();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.AddRange(
+                new Profile { EmployeeNumber = "E-9", FirstName = "adam", LastName = "Zuse", Title = "adam Zuse" },
+                new Profile { EmployeeNumber = "E-8", FirstName = "Ada", LastName = "Byron", Title = "Ada Byron" });
+            db.SaveChanges();
+        }
+
+        var names = (await Options(new ExceptionViewer(900, false, false, true))).Select(o => o.Name);
+
+        // First name, then last name, then number: "Ada Byron" before "Ada Lovelace", and the lower-case "adam" among the others.
+        Assert.Equal(["Ada Byron (E-8)", "Ada Lovelace (E-1)", "adam Zuse (E-9)", "Alan Turing (E-2)", "Grace Hopper (M-1)"], names);
+    }
+
+    [Fact]
     public async Task TheList_FiltersByStatus()
     {
         await ProcessFullDayAsync();

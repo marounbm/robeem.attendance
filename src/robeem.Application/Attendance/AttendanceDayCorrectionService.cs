@@ -273,6 +273,18 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         _ => "a break-in",
     };
 
+    /// <summary>What happens to a correction the viewer sends for the employee: the steps they hold are taken, and what is left waits.</summary>
+    private static string OutcomeOf(Profile employee, ExceptionViewer viewer, CorrectionApprovalWorkflow workflow, DateTime now)
+    {
+        var probe = ApprovalRules.NewCorrectionApproval(employee.Id, now.Date, viewer.EmployeeId, now, workflow);
+        if (ApprovalRules.TakeProposerSteps(probe, employee, viewer, now))
+        {
+            return DayCorrectionOutcome.AppliedAtOnce;
+        }
+
+        return probe.Workflow != ApprovalWorkflow.Manager && probe.HrDecision is null ? DayCorrectionOutcome.AwaitsHr : DayCorrectionOutcome.AwaitsManager;
+    }
+
     private static string Describe(ResolvedShift shift) =>
         $"{shift.StartsAt:HH:mm}–{shift.EndsAt:HH:mm}" + (shift.BreakTime ? $", break {shift.BreakStartTime}–{shift.BreakEndTime}" : string.Empty);
 
@@ -597,18 +609,6 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             CannotCorrectReason = reason,
         };
         return new DayData(view, punches, supplied, needed);
-    }
-
-    /// <summary>What happens to a correction the viewer sends for the employee: the steps they hold are taken, and what is left waits.</summary>
-    private static string OutcomeOf(Profile employee, ExceptionViewer viewer, CorrectionApprovalWorkflow workflow, DateTime now)
-    {
-        var probe = ApprovalRules.NewCorrectionApproval(employee.Id, now.Date, viewer.EmployeeId, now, workflow);
-        if (ApprovalRules.TakeProposerSteps(probe, employee, viewer, now))
-        {
-            return DayCorrectionOutcome.AppliedAtOnce;
-        }
-
-        return probe.Workflow != ApprovalWorkflow.Manager && probe.HrDecision is null ? DayCorrectionOutcome.AwaitsHr : DayCorrectionOutcome.AwaitsManager;
     }
 
     private sealed record PunchData(DayPunchItem Item, NormalizedEventType Type, string TimeZoneId);

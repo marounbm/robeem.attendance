@@ -36,9 +36,10 @@ public sealed class AttendanceRecordService : IAttendanceRecordService
             employees = employees.Where(p => (own && p.Id == me) || (reports && p.ManagerId == me));
         }
 
+        // In the order the name is shown ("First Last (number)"), ignoring case, so the dropdown reads as sorted.
         var rows = await employees
-            .OrderBy(p => p.LastName)
-            .ThenBy(p => p.FirstName)
+            .OrderBy(p => p.FirstName.ToLower())
+            .ThenBy(p => p.LastName.ToLower())
             .ThenBy(p => p.EmployeeNumber)
             .Select(p => new { p.Id, p.FirstName, p.LastName, p.EmployeeNumber })
             .ToListAsync(cancellationToken);
