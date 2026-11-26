@@ -10,6 +10,15 @@ public sealed class DayCorrectionForm
 
     public DateTime Date { get; set; }
 
+    /// <summary>Gets or sets the employee whose day it is when the user is correcting it for them (a manager, or HR); null for the user's own day.</summary>
+    public int? EmployeeId { get; set; }
+
+    /// <summary>
+    /// Gets or sets what the page said would happen to a correction sent for someone else (<see cref="DayCorrectionOutcome"/>), only to word the
+    /// message after it is sent. What happens is decided by the Api, never by this.
+    /// </summary>
+    public string? Outcome { get; set; }
+
     public string? Justification { get; set; }
 
     /// <summary>Gets or sets a value indicating whether the page was opened from the day's own page, which is where it returns to.</summary>
@@ -25,6 +34,8 @@ public sealed class DayCorrectionForm
     public static DayCorrectionForm For(DayCorrectionView day) => new()
     {
         Date = day.Date,
+        EmployeeId = day.IsOnBehalf ? day.EmployeeId : null,
+        Outcome = day.OnBehalfOutcome,
         Punches = day.Punches
             .Where(p => p is { Editable: true, TransactionId: not null } || p.CorrectionId is not null)
             .Select(p => new PunchChoice { TransactionId = p.TransactionId, CorrectionId = p.CorrectionId })
@@ -38,6 +49,8 @@ public sealed class DayCorrectionForm
         return new DayCorrectionForm
         {
             Date = day.Date,
+            EmployeeId = EmployeeId,
+            Outcome = day.OnBehalfOutcome,
             Justification = Justification,
             FromDay = FromDay,
             Punches = For(day).Punches

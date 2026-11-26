@@ -181,7 +181,7 @@ public sealed class ApprovalsWebTests
         var corrections = new FakeCorrections { Day = SampleDay() };
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
-        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), false, CancellationToken.None)).Model);
+        var model = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), null, false, CancellationToken.None)).Model);
 
         Assert.Equal(new DateTime(2026, 10, 5), model.Form.Date);
         Assert.False(model.Form.FromDay);
@@ -189,7 +189,51 @@ public sealed class ApprovalsWebTests
         Assert.All(model.Form.Punches, p => Assert.True(string.IsNullOrEmpty(p.Action)));
 
         corrections.Day = null;
-        Assert.IsType<NotFoundResult>(await controller.Correct(new DateTime(2026, 10, 9), false, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.Correct(new DateTime(2026, 10, 9), null, false, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACorrectionOfSomeoneElsesDay_NamesTheEmployee_WhileTheUsersOwnDayNamesNobody()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay(onBehalf: true) };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Manager"])));
+
+        // The acting user is employee 1. Asking for employee 7's day is asked of the Api by name; asking for their own is not.
+        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), 7, true, CancellationToken.None)).Model);
+        await controller.Correct(new DateTime(2026, 10, 5), 1, false, CancellationToken.None);
+        Assert.Equal([7, (int?)null], corrections.DayReads);
+
+        // The form carries the employee and what the page promised, so the message can say what happened.
+        Assert.Equal((7, DayCorrectionOutcome.AwaitsHr), (opened.Form.EmployeeId, opened.Form.Outcome));
+
+        var sent = await controller.Correct(
+            new DayCorrectionForm { Date = new DateTime(2026, 10, 5), EmployeeId = 7, FromDay = true, Outcome = DayCorrectionOutcome.AwaitsHr, Justification = "Ada asked me" },
+            CancellationToken.None);
+
+        var request = Assert.Single(corrections.DayRequests);
+        Assert.Equal((7, "Ada asked me"), (request.EmployeeId, request.Justification));
+        Assert.Contains("HR", (string)controller.TempData["StatusMessage"]!);
+
+        // And it returns to that employee's day, not to the user's own.
+        var redirect = Assert.IsType<RedirectToActionResult>(sent);
+        Assert.Equal(("Day", "Records", 7), (redirect.ActionName, redirect.ControllerName, redirect.RouteValues!["employeeId"]));
+
+        // Their own day, even when the form names them, is sent as their own.
+        await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), EmployeeId = 1 }, CancellationToken.None);
+        Assert.Null(corrections.DayRequests[1].EmployeeId);
+    }
+
+    [Theory]
+    [InlineData(DayCorrectionOutcome.AppliedAtOnce, "applied")]
+    [InlineData(DayCorrectionOutcome.AwaitsManager, "manager")]
+    [InlineData(DayCorrectionOutcome.AwaitsHr, "HR")]
+    public async Task TheMessageAfterACorrectionForSomeoneElse_SaysWhatHappensNext(string outcome, string expected)
+    {
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), new FakeCorrections { Day = SampleDay(onBehalf: true) }, new FakeActor(["Manager"])));
+
+        await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), EmployeeId = 7, Outcome = outcome }, CancellationToken.None);
+
+        Assert.Contains(expected, (string)controller.TempData["StatusMessage"]!);
     }
 
     [Fact]
@@ -198,7 +242,7 @@ public sealed class ApprovalsWebTests
         var corrections = new FakeCorrections { Day = SampleDay() };
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
 
-        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), true, CancellationToken.None)).Model);
+        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), null, true, CancellationToken.None)).Model);
         var result = await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), FromDay = true }, CancellationToken.None);
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
@@ -455,11 +499,13 @@ public sealed class ApprovalsWebTests
         Assert.Contains("approver's decision", DisplayFormats.DayStatusHint(status, exceptions, pendingApproval: true));
     }
 
-    private static DayCorrectionView SampleDay() => new()
+    private static DayCorrectionView SampleDay(bool onBehalf = false) => new()
     {
         Date = new DateTime(2026, 10, 5),
         EmployeeId = 7,
         EmployeeName = "Ada Lovelace",
+        IsOnBehalf = onBehalf,
+        OnBehalfOutcome = onBehalf ? DayCorrectionOutcome.AwaitsHr : null,
         CanCorrect = true,
         Punches =
         [
@@ -514,7 +560,13 @@ public sealed class ApprovalsWebTests
 
         public DayCorrectionView? Day { get; set; }
 
-        public Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken) => Task.FromResult(Day);
+        public List<int?> DayReads { get; } = [];
+
+        public Task<DayCorrectionView?> GetDayAsync(DateTime date, int? employeeId, CancellationToken cancellationToken)
+        {
+            DayReads.Add(employeeId);
+            return Task.FromResult(Day);
+        }
 
         public Task<ApiCommandResult<CreatedResponse>> ProposeDayAsync(DayCorrectionRequest request, CancellationToken cancellationToken)
         {

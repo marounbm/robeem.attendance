@@ -51,21 +51,220 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     }
 
     [Fact]
-    public async Task OnlyTheEmployeeCanSeeTheirDay_AndReadingItIsAudited()
+    public async Task OnlyTheEmployeeTheirManagerAndHrCanSeeTheirDay_AndReadingItIsAudited()
     {
         AddPunches("I@08:00,O@13:00,O@13:05");
         await ProcessAsync(Monday);
+        var stranger = AddPerson("S-1", "Alan", "Turing");
 
         using (var db = Database.CreateContext(TestDatabase.TenantA))
         {
-            Assert.Null(await Service(db).GetDayAsync(EmployeeId, Monday, _managerId, CancellationToken.None));
-            Assert.Null(await Service(db).GetDayAsync(9999, Monday, 9999, CancellationToken.None));
+            // A manager's role counts only for their own reports, and a role without the identity is nothing.
+            Assert.Null(await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(_managerId), CancellationToken.None));
+            Assert.Null(await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(stranger, manager: true), CancellationToken.None));
+            Assert.Null(await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(stranger, employee: true), CancellationToken.None));
+            Assert.Null(await Service(db).GetDayAsync(9999, Monday, Viewer(9999), CancellationToken.None));
+            Assert.Empty(db.AttendanceAuditLogs.Where(a => a.Action == AttendanceAuditActions.AttendanceDataRead));
+
+            var byManager = await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(_managerId, manager: true), CancellationToken.None);
+            var byHr = await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(stranger, hr: true), CancellationToken.None);
+            Assert.True(byManager!.IsOnBehalf);
+            Assert.True(byHr!.IsOnBehalf);
+            Assert.Equal("Ada Lovelace", byManager.EmployeeName);
         }
 
-        await GetDayAsync();
+        var own = (await GetDayAsync())!;
+        Assert.False(own.IsOnBehalf);
+        Assert.Null(own.OnBehalfOutcome);
+
+        // Every read says who read: the employee's own, and the manager's and HR's on their behalf.
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        var reads = check.AttendanceAuditLogs.Where(a => a.Action == AttendanceAuditActions.AttendanceDataRead).OrderBy(a => a.Id).ToList();
+        Assert.Equal([$"employee:{_managerId}", $"employee:{stranger}", $"employee:{EmployeeId}"], reads.Select(a => a.Actor));
+        Assert.All(reads, a => Assert.Contains("for a correction", a.Details));
+        Assert.Contains($"on their behalf by employee {_managerId}", reads[0].Details);
+        Assert.DoesNotContain("on their behalf", reads[2].Details);
+    }
+
+    [Fact]
+    public async Task AManagerCorrectsTheirReportsDay_AndItIsAppliedAtOnce_BecauseTheirStepIsTheOnlyOne()
+    {
+        AllowShortDays();
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var manager = Viewer(_managerId, manager: true);
+
+        var view = await GetDayForAsync(manager);
+        Assert.Equal(DayCorrectionOutcome.AppliedAtOnce, view.OnBehalfOutcome);
+
+        var sent = await ProposeForAsync(
+            manager,
+            Request(
+                "Ada told me she clocked out for lunch twice and came back at two",
+                new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+                new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "CheckIn", At = Monday.At(14, 0) }));
+
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+
+        // One request, made by the manager for Ada, with their decision recorded in the manager's step, already applied.
+        var approval = Assert.Single(check.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+        Assert.Equal((AttendanceApprovalStatus.Applied, EmployeeId, _managerId), (approval.Status, approval.EmployeeId, approval.RequestedByEmployeeId));
+        Assert.Equal((AttendanceCorrectionDecision.Approved, _managerId), (approval.ManagerDecision!.Value, approval.ManagerDecidedById!.Value));
+        Assert.Null(approval.HrDecision);
+        Assert.NotNull(approval.AppliedAt);
+        Assert.All(check.AttendanceCorrections, c => Assert.Equal((_managerId, EmployeeId, false), (c.RequestedByEmployeeId, c.EmployeeId, c.IsPending)));
+
+        // The day was calculated again: the exceptions are closed by the correction and the day is whole.
+        Assert.All(check.AttendanceExceptions, e => Assert.Equal((AttendanceExceptionStatus.Closed, AttendanceExceptionResolutionMethod.Correction), (e.Status, e.ResolutionMethod)));
+        var record = check.AttendanceRecords.Single(r => r.IsCurrent);
+        Assert.Equal((TimeSpan.FromHours(8), AttendanceRecordStatus.Approved), (record.WorkingHours, record.Status));
+
+        // Nothing waits in any queue, and the raw punch is still there.
+        Assert.Empty(await Corrections(check).ListPendingAsync(CorrectionApprover.Manager, _managerId, CancellationToken.None));
+        Assert.Equal(4, check.NormalizedAttendanceTransactions.Count());
+
+        // The log says who did what, for whom.
+        var log = check.AttendanceAuditLogs.ToList();
+        Assert.Contains(log, a => a.Action == AttendanceAuditActions.CorrectionDecided && a.Actor == $"employee:{_managerId}" && a.Details!.Contains($"on behalf of employee {EmployeeId}") && a.Details.Contains("Applied"));
+    }
+
+    [Fact]
+    public async Task ACorrectionForSomeoneElse_NeedsAReason_AndOnlyTheirManagerOrHrMaySendIt()
+    {
+        AllowShortDays();
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var stranger = AddPerson("S-1", "Alan", "Turing");
+        var ignore = new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = stray };
+
+        var noReason = await ProposeForAsync(Viewer(_managerId, manager: true), Request("  ", ignore));
+        var notTheManager = await ProposeForAsync(Viewer(stranger, manager: true), Request("Because", ignore));
+        var anEmployee = await ProposeForAsync(Viewer(stranger, employee: true), Request("Because", ignore));
+        var noSuchEmployee = await ProposeForAsync(Viewer(stranger, hr: true), Request("Because", ignore), employeeId: 9999);
+
+        Assert.Contains(nameof(DayCorrectionRequest.Justification), noReason.Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.RequestedBy, notTheManager.Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.RequestedBy, anEmployee.Errors.Keys);
+        Assert.Contains(CorrectionErrorKeys.RequestedBy, noSuchEmployee.Errors.Keys);
 
         using var check = Database.CreateContext(TestDatabase.TenantA);
-        Assert.Contains(check.AttendanceAuditLogs.ToList(), a => a.Action == AttendanceAuditActions.AttendanceDataRead && a.Details!.Contains("for a correction"));
+        Assert.Empty(check.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction));
+        Assert.Empty(check.AttendanceCorrections);
+        Assert.All(check.AttendanceExceptions, e => Assert.Equal(AttendanceExceptionStatus.Open, e.Status));
+    }
+
+    [Fact]
+    public async Task WhenTheWorkflowAlsoNeedsHr_TheManagersCorrectionWaitsForHrOnly_AndHrDecidesItAsAnyone()
+    {
+        UseWorkflow(CorrectionApprovalWorkflow.Both);
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var hr = AddPerson("H-1", "Alan", "Turing");
+        var manager = Viewer(_managerId, manager: true);
+
+        Assert.Equal(DayCorrectionOutcome.AwaitsHr, (await GetDayForAsync(manager)).OnBehalfOutcome);
+        var sent = await ProposeForAsync(manager, Request("Ada asked me to", FixTheDay(stray)));
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var approval = Assert.Single(CorrectionApprovals(db));
+            Assert.Equal((AttendanceApprovalStatus.Pending, AttendanceCorrectionDecision.Approved, null), (approval.Status, approval.ManagerDecision, approval.HrDecision));
+
+            // Not in the manager's queue (they have already decided, and could not decide their own request anyway), but in HR's.
+            Assert.Empty(await Corrections(db).ListPendingAsync(CorrectionApprover.Manager, _managerId, CancellationToken.None));
+            var queued = Assert.Single(await Corrections(db).ListPendingAsync(CorrectionApprover.HR, hr, CancellationToken.None));
+            Assert.All(db.AttendanceExceptions, e => Assert.Equal(AttendanceExceptionStatus.PendingCorrection, e.Status));
+
+            // The proposer can't approve it themselves; HR can.
+            var self = await Corrections(db).DecideCorrectionAsync(queued.Id, _managerId, approved: true, isHrDecision: true, CancellationToken.None);
+            Assert.Contains("proposed", self.Errors.Values.Single());
+            var decided = await Corrections(db).DecideCorrectionAsync(queued.Id, hr, approved: true, isHrDecision: true, CancellationToken.None);
+            Assert.Equal(AttendanceApprovalStatus.Applied, decided.Status);
+        }
+    }
+
+    [Fact]
+    public async Task HrCorrectingForAManagedEmployee_UnderBoth_WaitsOnlyForTheManager_WhoThenCompletesIt()
+    {
+        UseWorkflow(CorrectionApprovalWorkflow.Both);
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var hr = AddPerson("H-1", "Alan", "Turing");
+
+        Assert.Equal(DayCorrectionOutcome.AwaitsManager, (await GetDayForAsync(Viewer(hr, hr: true))).OnBehalfOutcome);
+        Assert.True((await ProposeForAsync(Viewer(hr, hr: true), Request("Ada asked HR", FixTheDay(stray)))).Succeeded);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var approval = Assert.Single(CorrectionApprovals(db));
+        Assert.Equal((AttendanceApprovalStatus.Pending, null, AttendanceCorrectionDecision.Approved), (approval.Status, approval.ManagerDecision, approval.HrDecision));
+        Assert.Empty(await Corrections(db).ListPendingAsync(CorrectionApprover.HR, hr, CancellationToken.None));
+        var queued = Assert.Single(await Corrections(db).ListPendingAsync(CorrectionApprover.Manager, _managerId, CancellationToken.None));
+
+        // HR already took their step, so the manager's decision completes it.
+        var decided = await Corrections(db).DecideCorrectionAsync(queued.Id, _managerId, approved: true, isHrDecision: false, CancellationToken.None);
+        Assert.Equal(AttendanceApprovalStatus.Applied, decided.Status);
+    }
+
+    [Fact]
+    public async Task HrCorrectingForAnEmployeeWithNoManager_StandsInForTheManagerToo_SoItIsAppliedAtOnce()
+    {
+        UseWorkflow(CorrectionApprovalWorkflow.Both);
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.Profiles.Single(p => p.Id == EmployeeId).ManagerId = null;
+            db.SaveChanges();
+        }
+
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var hr = AddPerson("H-1", "Alan", "Turing");
+
+        Assert.True((await ProposeForAsync(Viewer(hr, hr: true), Request("No manager to ask", FixTheDay(stray)))).Succeeded);
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        var approval = Assert.Single(CorrectionApprovals(check));
+        Assert.Equal((AttendanceApprovalStatus.Applied, hr, hr), (approval.Status, approval.ManagerDecidedById, approval.HrDecidedById));
+    }
+
+    [Fact]
+    public async Task HrCorrectingUnderManagerOnly_ForAManagedEmployee_LeavesTheDecisionToTheManager()
+    {
+        AllowShortDays();
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+        var hr = AddPerson("H-1", "Alan", "Turing");
+
+        Assert.True((await ProposeForAsync(Viewer(hr, hr: true), Request("Ada asked HR", FixTheDay(stray)))).Succeeded);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var approval = Assert.Single(CorrectionApprovals(db));
+        Assert.Equal((AttendanceApprovalStatus.Pending, null, null), (approval.Status, approval.ManagerDecision, approval.HrDecision));
+        Assert.Single(await Corrections(db).ListPendingAsync(CorrectionApprover.Manager, _managerId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheEmployeesOwnCorrection_IsStillSentForApproval_EvenWhenTheyAreAlsoAManager()
+    {
+        AllowShortDays();
+        AddPunches("I@08:00,O@13:00,O@13:05,O@17:00");
+        await ProcessAsync(Monday);
+        var stray = (await GetDayAsync())!.Punches.Single(p => p.At == Monday.At(13, 5)).TransactionId!.Value;
+
+        // Their roles do not matter for their own day: nobody approves their own correction.
+        var sent = await ProposeForAsync(Viewer(EmployeeId, employee: true, manager: true, hr: true), Request("Mine", FixTheDay(stray)), employeeId: EmployeeId);
+
+        Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var approval = Assert.Single(CorrectionApprovals(db));
+        Assert.Equal((AttendanceApprovalStatus.Pending, null, null), (approval.Status, approval.ManagerDecision, approval.HrDecision));
     }
 
     [Fact]
@@ -485,9 +684,10 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         var punch = clean.Punches[0].TransactionId!.Value;
         Assert.Contains("no exception", (await ProposeAsync(Request("Because", new DayCorrectionEdit { Action = DayCorrectionRequest.Ignore, TransactionId = punch }))).Errors["Date"]);
 
+        // Someone who is neither the employee, their manager nor HR can't correct it, whatever they send.
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var byManager = await Service(db).ProposeAsync(EmployeeId, Request("Because"), _managerId, CancellationToken.None);
-        Assert.Contains(CorrectionErrorKeys.RequestedBy, byManager.Errors.Keys);
+        var byOther = await Service(db).ProposeAsync(EmployeeId, Request("Because"), Viewer(_managerId), CancellationToken.None);
+        Assert.Contains(CorrectionErrorKeys.RequestedBy, byOther.Errors.Keys);
     }
 
     [Fact]
@@ -551,6 +751,18 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     private static DayCorrectionRequest Request(string justification, params DayCorrectionEdit[] edits) =>
         new() { Date = Monday, Justification = justification, Edits = edits };
 
+    private static ExceptionViewer Viewer(int employeeId, bool employee = false, bool manager = false, bool hr = false) => new(employeeId, employee, manager, hr);
+
+    /// <summary>The edits that make 08:00 in, 13:00 out, 13:05 out, 17:00 out whole: the stray check-out goes, and the check-in after lunch is added.</summary>
+    private static DayCorrectionEdit[] FixTheDay(int stray) =>
+    [
+        new() { Action = DayCorrectionRequest.Ignore, TransactionId = stray },
+        new() { Action = DayCorrectionRequest.Add, EventType = "CheckIn", At = Monday.At(14, 0) },
+    ];
+
+    /// <summary>The correction requests only: the engine also queues a review approval for a record it leaves for review.</summary>
+    private static IQueryable<AttendanceApproval> CorrectionApprovals(RobeemDbContext db) => db.AttendanceApprovals.Where(a => a.Type == AttendanceApprovalType.Correction);
+
     /// <summary>Stores a check-in that an earlier request added and an approver applied; the exceptions of the day stay as they were. Returns the correction's id.</summary>
     private int AddAppliedSuppliedCheckIn(DateTime at)
     {
@@ -591,16 +803,42 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
         db.SaveChanges();
     }
 
+    private int AddPerson(string number, string first, string last)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var person = new Profile { EmployeeNumber = number, FirstName = first, LastName = last, Title = $"{first} {last}" };
+        db.Add(person);
+        db.SaveChanges();
+        return person.Id;
+    }
+
+    /// <summary>Gives the tenant's default policy this approval workflow, and forgives short days so that only the correction is under test.</summary>
+    private void UseWorkflow(CorrectionApprovalWorkflow workflow) => AddDefaultPolicy(p => (p.LateGraceMinutes, p.CorrectionApprovalWorkflow) = (600, workflow));
+
     private async Task<DayCorrectionView?> GetDayAsync()
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await Service(db).GetDayAsync(EmployeeId, Monday, EmployeeId, CancellationToken.None);
+        return await Service(db).GetDayAsync(EmployeeId, Monday, Viewer(EmployeeId, employee: true), CancellationToken.None);
+    }
+
+    /// <summary>Opens Ada's day as another user, on their behalf.</summary>
+    private async Task<DayCorrectionView> GetDayForAsync(ExceptionViewer viewer)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return (await Service(db).GetDayAsync(EmployeeId, Monday, viewer, CancellationToken.None))!;
     }
 
     private async Task<robeem.Application.Common.SaveResult> ProposeAsync(DayCorrectionRequest request)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        return await Service(db).ProposeAsync(EmployeeId, request, EmployeeId, CancellationToken.None);
+        return await Service(db).ProposeAsync(EmployeeId, request, Viewer(EmployeeId, employee: true), CancellationToken.None);
+    }
+
+    /// <summary>Sends a correction of Ada's day as another user, on their behalf (or of the employee named).</summary>
+    private async Task<robeem.Application.Common.SaveResult> ProposeForAsync(ExceptionViewer viewer, DayCorrectionRequest request, int? employeeId = null)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await Service(db).ProposeAsync(employeeId ?? EmployeeId, request, viewer, CancellationToken.None);
     }
 
     private async Task DecideFirstAsync(bool approved)
@@ -611,7 +849,7 @@ public sealed class AttendanceDayCorrectionTests : AttendanceEngineTestBase
     }
 
     private AttendanceDayCorrectionService Service(RobeemDbContext db) =>
-        new(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), Clock);
+        new(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), CreateEngine(db), Clock);
 
     private AttendanceCorrectionService Corrections(RobeemDbContext db) =>
         new(db, new AttendancePolicyResolver(db), new AttendanceApprovalService(db, CreateEngine(db), CreateAudit(db), Clock), CreateAudit(db), Clock);

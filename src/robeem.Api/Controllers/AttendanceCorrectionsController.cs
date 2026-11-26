@@ -30,35 +30,38 @@ public sealed class AttendanceCorrectionsController : ControllerBase
     }
 
     /// <summary>
-    /// One of the employee's own days with every punch and what can be done to it, for correcting it. Reading the punches is audited.
+    /// One day of an employee with every punch and what can be done to it, for correcting it: the user's own, or, for their manager or HR,
+    /// another employee's (<paramref name="employeeId"/>). Reading the punches is audited, with who read them.
     /// </summary>
     /// <param name="date">The attendance date.</param>
+    /// <param name="employeeId">The employee whose day it is; omitted for the user's own. Anyone but that employee's manager or HR gets a 404.</param>
     [HttpGet("day")]
-    [Authorize(Roles = AttendanceRoles.Employee)]
-    public async Task<ActionResult<DayCorrectionView>> Day(DateTime date, CancellationToken cancellationToken)
+    [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
+    public async Task<ActionResult<DayCorrectionView>> Day(DateTime date, int? employeeId, CancellationToken cancellationToken)
     {
-        if (_user.EmployeeId is not { } employeeId)
+        if (_user.EmployeeId is not { } self)
         {
             return NoEmployeeIdentity();
         }
 
-        return await _days.GetDayAsync(employeeId, date, employeeId, cancellationToken) is { } view ? view : NotFound();
+        return await _days.GetDayAsync(employeeId ?? self, date, Viewer(self), cancellationToken) is { } view ? view : NotFound();
     }
 
     /// <summary>
-    /// An employee sends the corrections of one of their days: punches given another type, missing punches added, punches ignored.
-    /// They are decided together. The employee is the signed-in user, never a field of the request.
+    /// Sends the corrections of one day: punches given another type, missing punches added, punches ignored. They are decided together.
+    /// The sender is the signed-in user, never a field of the request. The day is theirs, unless the request names another employee:
+    /// only that employee's manager or HR may, and they take the steps of the approval they hold (the correction may apply at once).
     /// </summary>
     [HttpPost("day")]
-    [Authorize(Roles = AttendanceRoles.Employee)]
+    [Authorize(Roles = AttendanceRoles.ExceptionViewers)]
     public async Task<ActionResult<CreatedResponse>> ProposeDay(DayCorrectionRequest request, CancellationToken cancellationToken)
     {
-        if (_user.EmployeeId is not { } employeeId)
+        if (_user.EmployeeId is not { } self)
         {
             return NoEmployeeIdentity();
         }
 
-        var result = await _days.ProposeAsync(employeeId, request, employeeId, cancellationToken);
+        var result = await _days.ProposeAsync(request.EmployeeId ?? self, request, Viewer(self), cancellationToken);
         if (result.NotFound)
         {
             return NotFound();
@@ -152,6 +155,10 @@ public sealed class AttendanceCorrectionsController : ControllerBase
             }
             : Invalid(result);
     }
+
+    /// <summary>The signed-in user and the roles they hold, which decide whose days they may correct.</summary>
+    private ExceptionViewer Viewer(int employeeId) =>
+        new(employeeId, _user.IsInRole(AttendanceRoles.Employee), _user.IsInRole(AttendanceRoles.Manager), _user.IsInRole(AttendanceRoles.HRAdministrator));
 
     private ObjectResult NoEmployeeIdentity() =>
         Problem(statusCode: StatusCodes.Status403Forbidden, title: "Your account is not linked to an employee (no employee_id claim).");

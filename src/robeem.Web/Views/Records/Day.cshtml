@@ -156,7 +156,7 @@ else
     <h2 class="h5 mb-0">Exceptions</h2>
     @if (canCorrect)
     {
-        <a class="btn btn-sm btn-primary" asp-controller="Exceptions" asp-action="Correct" asp-route-date="@dayDate" asp-route-fromDay="true">Correct this day</a>
+        <a class="btn btn-sm btn-primary" asp-controller="Exceptions" asp-action="Correct" asp-route-date="@dayDate" asp-route-employeeId="@day.EmployeeId" asp-route-fromDay="true">Correct this day</a>
     }
     else if (waiting)
     {

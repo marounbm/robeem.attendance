@@ -48,13 +48,14 @@ public sealed class ExceptionsController : Controller
     }
 
     /// <summary>
-    /// Every punch of one of the employee's days, to put it right: change a punch's type, add a missing one, or ignore one that should not count.
+    /// Every punch of one day, to put it right: change a punch's type, add a missing one, or ignore one that should not count. The user's own
+    /// day, or, for their manager or HR, another employee's (<paramref name="employeeId"/>).
     /// </summary>
     [HttpGet]
     [RequiresEmployee]
-    public async Task<IActionResult> Correct(DateTime date, bool fromDay, CancellationToken cancellationToken)
+    public async Task<IActionResult> Correct(DateTime date, int? employeeId, bool fromDay, CancellationToken cancellationToken)
     {
-        if (await _corrections.GetDayAsync(date, cancellationToken) is not { } day)
+        if (await _corrections.GetDayAsync(date, OtherThanSelf(employeeId), cancellationToken) is not { } day)
         {
             return NotFound();
         }
@@ -69,19 +70,26 @@ public sealed class ExceptionsController : Controller
     [RequiresEmployee]
     public async Task<IActionResult> Correct(DayCorrectionForm form, CancellationToken cancellationToken)
     {
+        var employeeId = OtherThanSelf(form.EmployeeId);
         var result = await _corrections.ProposeDayAsync(
-            new DayCorrectionRequest { Date = form.Date.Date, Justification = form.Justification ?? string.Empty, Edits = form.ToEdits() },
+            new DayCorrectionRequest { EmployeeId = employeeId, Date = form.Date.Date, Justification = form.Justification ?? string.Empty, Edits = form.ToEdits() },
             cancellationToken);
         if (result.Succeeded)
         {
-            TempData["StatusMessage"] = "Your corrections were sent. They now wait for the approver's decision, all together.";
-            return form.FromDay && _actor.Effective?.EmployeeId is { } employeeId
-                ? RedirectToDay(employeeId, form.Date)
+            TempData["StatusMessage"] = form.Outcome switch
+            {
+                DayCorrectionOutcome.AppliedAtOnce => "The corrections were applied and the day was calculated again.",
+                DayCorrectionOutcome.AwaitsManager => "The corrections were sent for the employee. They now wait for the employee's manager to decide, all together.",
+                DayCorrectionOutcome.AwaitsHr => "The corrections were sent for the employee. They now wait for HR to decide, all together.",
+                _ => "Your corrections were sent. They now wait for the approver's decision, all together.",
+            };
+            return form.FromDay && (employeeId ?? _actor.Effective?.EmployeeId) is { } dayEmployeeId
+                ? RedirectToDay(dayEmployeeId, form.Date)
                 : RedirectToAction(nameof(Index));
         }
 
         // Back to the page with what was typed, and why it was refused.
-        if (await _corrections.GetDayAsync(form.Date.Date, cancellationToken) is not { } day)
+        if (await _corrections.GetDayAsync(form.Date.Date, employeeId, cancellationToken) is not { } day)
         {
             return NotFound();
         }
@@ -134,6 +142,9 @@ public sealed class ExceptionsController : Controller
             ? RedirectToDay(employeeId, date, list)
             : RedirectToAction(nameof(Index));
     }
+
+    /// <summary>The employee to name to the Api: null for the acting user's own day, so that a day is only ever "on behalf" when it is someone else's.</summary>
+    private int? OtherThanSelf(int? employeeId) => employeeId is { } id && id != _actor.Effective?.EmployeeId ? id : null;
 
     private RedirectToActionResult RedirectToDay(int employeeId, DateTime date, RecordListContext? list = null)
     {

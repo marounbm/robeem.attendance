@@ -28,6 +28,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
     private readonly IAttendancePolicyResolver _policies;
     private readonly IRuleSetProvider _ruleSets;
     private readonly IAttendanceAuditTrail _audit;
+    private readonly IAttendanceProcessingEngine _engine;
     private readonly TimeProvider _clock;
 
     public AttendanceDayCorrectionService(
@@ -37,6 +38,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         IAttendancePolicyResolver policies,
         IRuleSetProvider ruleSets,
         IAttendanceAuditTrail audit,
+        IAttendanceProcessingEngine engine,
         TimeProvider clock)
     {
         _db = db;
@@ -45,21 +47,29 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         _policies = policies;
         _ruleSets = ruleSets;
         _audit = audit;
+        _engine = engine;
         _clock = clock;
     }
 
-    public async Task<DayCorrectionView?> GetDayAsync(int employeeId, DateTime date, int viewerEmployeeId, CancellationToken cancellationToken) =>
-        employeeId == viewerEmployeeId ? (await LoadAsync(employeeId, date.Date, cancellationToken))?.View : null;
+    public async Task<DayCorrectionView?> GetDayAsync(int employeeId, DateTime date, ExceptionViewer viewer, CancellationToken cancellationToken) =>
+        (await LoadAsync(employeeId, date.Date, viewer, cancellationToken))?.View;
 
-    public async Task<SaveResult> ProposeAsync(int employeeId, DayCorrectionRequest request, int requestedByEmployeeId, CancellationToken cancellationToken)
+    public async Task<SaveResult> ProposeAsync(int employeeId, DayCorrectionRequest request, ExceptionViewer requestedBy, CancellationToken cancellationToken)
     {
-        if (employeeId != requestedByEmployeeId)
+        var employee = await _db.Profiles.AsNoTracking().Include(p => p.Manager).SingleOrDefaultAsync(p => p.Id == employeeId, cancellationToken);
+        if (employee is null && employeeId == requestedBy.EmployeeId)
         {
-            return SaveResult.Invalid(CorrectionErrorKeys.RequestedBy, "A day can only be corrected by the employee it belongs to.");
+            return SaveResult.Missing();
         }
 
+        if (employee is null || !AttendanceExceptionRules.MayCorrectDayOf(employeeId, employee.ManagerId, requestedBy))
+        {
+            return SaveResult.Invalid(CorrectionErrorKeys.RequestedBy, "A day can only be corrected by the employee it belongs to, by their manager, or by HR.");
+        }
+
+        var onBehalf = employeeId != requestedBy.EmployeeId;
         var day = request.Date.Date;
-        if (await LoadAsync(employeeId, day, cancellationToken) is not { } data)
+        if (await LoadAsync(employeeId, day, requestedBy, cancellationToken) is not { } data)
         {
             return SaveResult.Missing();
         }
@@ -69,6 +79,10 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         if (justification.Length > JustificationMaxLength)
         {
             errors[nameof(DayCorrectionRequest.Justification)] = $"The justification can be at most {JustificationMaxLength} characters.";
+        }
+        else if (onBehalf && justification.Length == 0)
+        {
+            errors[nameof(DayCorrectionRequest.Justification)] = "Say why you are correcting this day for the employee: the reason is kept with the correction.";
         }
 
         if (await AttendanceStartDate.ReadAsync(_db, cancellationToken) is { } startDate && AttendanceStartDate.IsBefore(day, startDate))
@@ -87,7 +101,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         }
         else if (errors.Count == 0)
         {
-            await BuildRowsAsync(request, data, day, employeeId, rows, errors, cancellationToken);
+            await BuildRowsAsync(request, data, day, employeeId, $"employee:{requestedBy.EmployeeId}", rows, errors, cancellationToken);
             if (errors.Count == 0)
             {
                 var after = PunchesAfter(data, rows);
@@ -111,29 +125,43 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         var now = _clock.GetLocalNow().DateTime;
 
         // The request is one approval; its edits are the rows that point to it, decided together.
-        var approval = ApprovalRules.NewCorrectionApproval(employeeId, day, requestedByEmployeeId, now, policy.CorrectionApprovalWorkflow);
+        var approval = ApprovalRules.NewCorrectionApproval(employeeId, day, requestedBy.EmployeeId, now, policy.CorrectionApprovalWorkflow);
         foreach (var row in rows)
         {
             row.AttendanceApproval = approval;
             row.EmployeeId = employeeId;
             row.AttendanceDate = day;
             row.Justification = justification;
-            row.RequestedByEmployeeId = requestedByEmployeeId;
+            row.RequestedByEmployeeId = requestedBy.EmployeeId;
             row.RequestedAt = now;
         }
 
         _db.AttendanceApprovals.Add(approval);
         _db.AttendanceCorrections.AddRange(rows);
 
-        // The day's open exceptions wait for the decision together.
-        var actor = $"employee:{requestedByEmployeeId}";
+        // Someone who corrects the day for the employee takes the steps they hold: nobody decides their own request, so the steps that
+        // would have been theirs to decide are decided by sending it.
+        var complete = onBehalf && ApprovalRules.TakeProposerSteps(approval, employee, requestedBy, now);
+        var actor = $"employee:{requestedBy.EmployeeId}";
+        var by = onBehalf ? $" on behalf of employee {employeeId}" : string.Empty;
         var open = await _db.AttendanceExceptions
             .Where(e => e.EmployeeId == employeeId && e.AttendanceDate == day && e.Status == AttendanceExceptionStatus.Open)
             .ToListAsync(cancellationToken);
+
+        if (complete)
+        {
+            // Every step is taken: apply, close the exceptions and calculate the day again as one unit, as a decision does.
+            await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+            await CorrectionApplier.ApplyAsync(_db, _audit, _engine, approval, rows, open, actor, $"Proposed and approved by employee {requestedBy.EmployeeId}{by} ({rows.Count} edit(s))", now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return SaveResult.Success(rows[0].Id);
+        }
+
+        // The day's open exceptions wait for the decision together.
         foreach (var exception in open)
         {
             exception.Status = AttendanceExceptionStatus.PendingCorrection;
-            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, $"Open -> PendingCorrection: a correction of the day ({rows.Count} edit(s)) was proposed.", actor);
+            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, $"Open -> PendingCorrection: a correction of the day ({rows.Count} edit(s)) was proposed{by}.", actor);
         }
 
         await ExceptionGroupSync.ApplyAsync(_db, _audit, employeeId, day, [], cancellationToken);
@@ -253,6 +281,7 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         DayData data,
         DateTime day,
         int employeeId,
+        string actor,
         List<AttendanceCorrection> rows,
         Dictionary<string, string> errors,
         CancellationToken cancellationToken)
@@ -368,7 +397,6 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         }
 
         // An added punch is placed in the zone of the employee's punches around it, and can't be later than now.
-        var actor = $"employee:{employeeId}";
         foreach (var (type, at) in added)
         {
             var unspecified = DateTime.SpecifyKind(at, DateTimeKind.Unspecified);
@@ -400,16 +428,24 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
         }
     }
 
-    private async Task<DayData?> LoadAsync(int employeeId, DateTime day, CancellationToken cancellationToken)
+    private async Task<DayData?> LoadAsync(int employeeId, DateTime day, ExceptionViewer viewer, CancellationToken cancellationToken)
     {
-        var employee = await _db.Profiles.AsNoTracking().SingleOrDefaultAsync(p => p.Id == employeeId, cancellationToken);
-        if (employee is null)
+        var employee = await _db.Profiles.AsNoTracking().Include(p => p.Manager).SingleOrDefaultAsync(p => p.Id == employeeId, cancellationToken);
+
+        // Nothing is read, or audited as read, for a viewer who may not correct this employee's days.
+        if (employee is null || !AttendanceExceptionRules.MayCorrectDayOf(employeeId, employee.ManagerId, viewer))
         {
             return null;
         }
 
         // The punches are a direct read of normalized attendance outside the engine: audited, and saved before the read.
-        _audit.Record(AttendanceAuditActions.AttendanceDataRead, nameof(NormalizedAttendanceTransaction), null, $"Punches of employee {employeeId} on {day:yyyy-MM-dd}, for a correction.", $"employee:{employeeId}");
+        var onBehalf = employeeId != viewer.EmployeeId;
+        _audit.Record(
+            AttendanceAuditActions.AttendanceDataRead,
+            nameof(NormalizedAttendanceTransaction),
+            null,
+            $"Punches of employee {employeeId} on {day:yyyy-MM-dd}, for a correction{(onBehalf ? $" on their behalf by employee {viewer.EmployeeId}" : string.Empty)}.",
+            $"employee:{viewer.EmployeeId}");
         await _db.SaveChangesAsync(cancellationToken);
 
         var shifts = (await _schedules.ResolveShiftsInRangeAsync(employeeId, day, day, cancellationToken))
@@ -516,8 +552,9 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
 
         items = items.OrderBy(i => i.At).ThenBy(i => i.TransactionId ?? int.MaxValue).ToList();
 
-        var viewer = new ExceptionViewer(employeeId, true, false, false);
-        var listed = await _exceptions.ListAsync(new ExceptionFilter(ExceptionStatusFilter.Active, day, day, employeeId, 100), viewer, cancellationToken);
+        // The exceptions are listed as the employee sees them, whoever is correcting the day.
+        var employeeViewer = new ExceptionViewer(employeeId, true, false, false);
+        var listed = await _exceptions.ListAsync(new ExceptionFilter(ExceptionStatusFilter.Active, day, day, employeeId, 100), employeeViewer, cancellationToken);
 
         var pending = listed.Any(e => e.Status == nameof(AttendanceExceptionStatus.PendingCorrection))
             || await _db.AttendanceCorrections.AnyAsync(
@@ -554,10 +591,24 @@ public sealed class AttendanceDayCorrectionService : IAttendanceDayCorrectionSer
             RequiredPunches = AttendanceTypes.Where(t => needed[t] > 0).Select(t => t.ToString()).ToList(),
             Punches = items,
             Exceptions = listed,
+            IsOnBehalf = onBehalf,
+            OnBehalfOutcome = onBehalf ? OutcomeOf(employee, viewer, policy.CorrectionApprovalWorkflow, _clock.GetLocalNow().DateTime) : null,
             CanCorrect = reason is null,
             CannotCorrectReason = reason,
         };
         return new DayData(view, punches, supplied, needed);
+    }
+
+    /// <summary>What happens to a correction the viewer sends for the employee: the steps they hold are taken, and what is left waits.</summary>
+    private static string OutcomeOf(Profile employee, ExceptionViewer viewer, CorrectionApprovalWorkflow workflow, DateTime now)
+    {
+        var probe = ApprovalRules.NewCorrectionApproval(employee.Id, now.Date, viewer.EmployeeId, now, workflow);
+        if (ApprovalRules.TakeProposerSteps(probe, employee, viewer, now))
+        {
+            return DayCorrectionOutcome.AppliedAtOnce;
+        }
+
+        return probe.Workflow != ApprovalWorkflow.Manager && probe.HrDecision is null ? DayCorrectionOutcome.AwaitsHr : DayCorrectionOutcome.AwaitsManager;
     }
 
     private sealed record PunchData(DayPunchItem Item, NormalizedEventType Type, string TimeZoneId);

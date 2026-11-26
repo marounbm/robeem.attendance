@@ -344,22 +344,7 @@ public sealed class AttendanceApprovalService : IAttendanceApprovalService
         // the correction applied to a day that was not recalculated. Whatever the edits did not settle
         // is found again by the recalculation and opens as a new exception.
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        approval.Status = AttendanceApprovalStatus.Applied;
-        approval.AppliedAt = now;
-        group.ForEach(row => row.IsPending = false);
-
-        foreach (var exception in exceptions)
-        {
-            exception.Status = AttendanceExceptionStatus.Closed;
-            exception.ResolutionMethod = AttendanceExceptionResolutionMethod.Correction;
-            exception.ResolvedAt = now;
-            _audit.Record(AttendanceAuditActions.ExceptionStatusChanged, nameof(AttendanceException), exception.Id, "PendingCorrection -> Closed: the correction was applied.", actor);
-        }
-
-        _audit.Record(AttendanceAuditActions.CorrectionDecided, nameof(AttendanceApproval), approval.Id, $"{decision} by {role}; the correction is {approval.Status}.", actor);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        await _engine.ProcessEmployeeDayAsync(approval.EmployeeId, approval.AttendanceDate, cancellationToken);
+        await CorrectionApplier.ApplyAsync(_db, _audit, _engine, approval, group, exceptions, actor, $"{decision} by {role}", now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return ApprovalResult.Correction(approval, exceptions.FirstOrDefault()?.Status ?? AttendanceExceptionStatus.Closed);

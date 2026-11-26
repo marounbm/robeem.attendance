@@ -25,7 +25,16 @@ public sealed class DayCorrectionView
 
     public IReadOnlyList<ExceptionListItem> Exceptions { get; init; } = Array.Empty<ExceptionListItem>();
 
-    /// <summary>Gets a value indicating whether the employee can send a correction for the day now.</summary>
+    /// <summary>Gets a value indicating whether the viewer is correcting the day for the employee (as their manager or as HR) rather than their own.</summary>
+    public bool IsOnBehalf { get; init; }
+
+    /// <summary>
+    /// Gets what happens to a correction the viewer sends on the employee's behalf, one of <see cref="DayCorrectionOutcome"/>: they take the
+    /// steps of the approval they hold, so it may apply at once or wait for the other one. Null for the viewer's own day.
+    /// </summary>
+    public string? OnBehalfOutcome { get; init; }
+
+    /// <summary>Gets a value indicating whether the viewer can send a correction for the day now.</summary>
     public bool CanCorrect { get; init; }
 
     /// <summary>Gets why the day can't be corrected now; null when it can.</summary>

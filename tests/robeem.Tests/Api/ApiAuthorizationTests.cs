@@ -476,28 +476,49 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task TheDayCorrection_IsForEmployees_AndAlwaysAsTheSignedInEmployee()
+    public async Task TheDayCorrection_IsAlwaysSentAsTheSignedInUser_ForTheirOwnDayUnlessAnotherEmployeeIsNamed()
     {
-        var body = new { date = "2026-10-05", justification = "Because", employeeId = 999, edits = new[] { new { action = "Ignore", transactionId = 4 } } };
+        var own = new { date = "2026-10-05", justification = "Because", edits = new[] { new { action = "Ignore", transactionId = 4 } } };
 
         var read = await Send(HttpMethod.Get, "api/attendance/corrections/day?date=2026-10-05", As(7, AttendanceRoles.Employee));
-        var sent = await Send(HttpMethod.Post, "api/attendance/corrections/day", As(7, AttendanceRoles.Employee), body);
+        var sent = await Send(HttpMethod.Post, "api/attendance/corrections/day", As(7, AttendanceRoles.Employee), own);
 
         Assert.Equal((HttpStatusCode.OK, HttpStatusCode.Created), (read.StatusCode, sent.StatusCode));
-        Assert.Equal([(7, new DateTime(2026, 10, 5), 7)], _days.Reads);
+        Assert.Equal([(7, new DateTime(2026, 10, 5), new ExceptionViewer(7, true, false, false))], _days.Reads);
         var proposal = Assert.Single(_days.Proposals);
-        Assert.Equal((7, 7, "Because"), (proposal.EmployeeId, proposal.RequestedBy, proposal.Request.Justification));
+        Assert.Equal((7, new ExceptionViewer(7, true, false, false), "Because"), (proposal.EmployeeId, proposal.RequestedBy, proposal.Request.Justification));
         Assert.Equal("Ignore", Assert.Single(proposal.Request.Edits).Action);
 
-        foreach (var other in new[] { As(12, AttendanceRoles.Manager), As(7, AttendanceRoles.PayrollAdministrator), As(null, AttendanceRoles.Employee), null })
+        // Naming another employee is passed on with who is asking and the roles they hold: the service decides whether they may.
+        var named = new { date = "2026-10-05", justification = "Because", employeeId = 999, edits = new[] { new { action = "Ignore", transactionId = 4 } } };
+        Assert.Equal(HttpStatusCode.Created, (await Send(HttpMethod.Post, "api/attendance/corrections/day", As(7, AttendanceRoles.Employee), named)).StatusCode);
+        Assert.Equal((999, new ExceptionViewer(7, true, false, false)), (_days.Proposals[1].EmployeeId, _days.Proposals[1].RequestedBy));
+
+        foreach (var other in new[] { As(7, AttendanceRoles.PayrollAdministrator), As(null, AttendanceRoles.Employee), null })
         {
             var expected = other is null ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden;
             Assert.Equal(expected, (await Send(HttpMethod.Get, "api/attendance/corrections/day?date=2026-10-05", other)).StatusCode);
-            Assert.Equal(expected, (await Send(HttpMethod.Post, "api/attendance/corrections/day", other, body)).StatusCode);
+            Assert.Equal(expected, (await Send(HttpMethod.Post, "api/attendance/corrections/day", other, own)).StatusCode);
         }
 
         Assert.Single(_days.Reads);
-        Assert.Single(_days.Proposals);
+        Assert.Equal(2, _days.Proposals.Count);
+    }
+
+    [Fact]
+    public async Task AManagerAndHr_CanOpenAndSendAnotherEmployeesDay_AsThemselves_WithTheRolesTheyHold()
+    {
+        var body = new { date = "2026-10-05", justification = "Because", employeeId = 7, edits = new[] { new { action = "Ignore", transactionId = 4 } } };
+
+        var read = await Send(HttpMethod.Get, "api/attendance/corrections/day?date=2026-10-05&employeeId=7", As(12, AttendanceRoles.Manager));
+        var sent = await Send(HttpMethod.Post, "api/attendance/corrections/day", As(12, AttendanceRoles.Manager), body);
+        var byHr = await Send(HttpMethod.Post, "api/attendance/corrections/day", As(13, AttendanceRoles.HRAdministrator, AttendanceRoles.Employee), body);
+
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Created), (read.StatusCode, sent.StatusCode, byHr.StatusCode));
+        Assert.Equal([(7, new DateTime(2026, 10, 5), new ExceptionViewer(12, false, true, false))], _days.Reads);
+        Assert.Equal(
+            [(7, new ExceptionViewer(12, false, true, false)), (7, new ExceptionViewer(13, true, false, true))],
+            _days.Proposals.Select(p => (p.EmployeeId, p.RequestedBy)));
     }
 
     [Fact]

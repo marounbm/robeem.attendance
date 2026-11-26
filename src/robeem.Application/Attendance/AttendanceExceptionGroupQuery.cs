@@ -139,7 +139,7 @@ public sealed class AttendanceExceptionGroupQuery : IAttendanceExceptionGroupQue
                 ResolutionNote = r.ResolutionNote,
                 ActiveCount = held.Count(e => e.Status != nameof(AttendanceExceptionStatus.Closed)),
                 IsWaiting = waiting,
-                CanCorrect = !waiting && AttendanceExceptionRules.CanCorrect(r.Status, r.EmployeeId, viewer.EmployeeId),
+                CanCorrect = !waiting && AttendanceExceptionRules.CanCorrect(r.Status, r.EmployeeId, r.ManagerId, viewer),
                 CanAccept = !waiting && AttendanceExceptionRules.CanAcceptGroup(
                     r.Status,
                     held.Select(e => (Enum.Parse<AttendanceExceptionType>(e.ExceptionType), Enum.Parse<AttendanceExceptionStatus>(e.Status))),

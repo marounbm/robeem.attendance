@@ -59,7 +59,7 @@ internal static class ExceptionProjection
                 RelatedPunchAt = r.RelatedEventAt,
                 SuggestedEventTypes = AttendanceExceptionRules.Suggested(r.SuggestedEventTypes),
                 CanPropose = AttendanceExceptionRules.CanPropose(r.ExceptionType, r.Status, r.EmployeeId, viewerId, r.SuggestedEventTypes),
-                CanCorrect = AttendanceExceptionRules.CanCorrect(r.Status, r.EmployeeId, viewerId),
+                CanCorrect = AttendanceExceptionRules.CanCorrect(r.Status, r.EmployeeId, r.ManagerId, viewer),
                 CanAccept = AttendanceExceptionRules.CanAccept(r.ExceptionType, r.Status, r.EmployeeId, r.ManagerId, viewer),
                 ResolutionNote = r.ResolutionNote,
             })

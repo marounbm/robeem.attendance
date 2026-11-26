@@ -20,9 +20,16 @@ internal static class AttendanceExceptionRules
         && (type == AttendanceExceptionType.MissingPunch
             || (type == AttendanceExceptionType.InvalidSequence && suggestedEventTypes.Length > 0));
 
-    /// <summary>Whether the viewer can correct the day of the exception: it is their own and still open, whatever it is about.</summary>
-    public static bool CanCorrect(AttendanceExceptionStatus status, int employeeId, int viewerId) =>
-        employeeId == viewerId && status == AttendanceExceptionStatus.Open;
+    /// <summary>
+    /// Whether the viewer can correct the day of the exception: it is still open, whatever it is about, and the day is the viewer's own or
+    /// they act for the employee, as their manager or as HR.
+    /// </summary>
+    public static bool CanCorrect(AttendanceExceptionStatus status, int employeeId, int? managerId, ExceptionViewer viewer) =>
+        status == AttendanceExceptionStatus.Open && MayCorrectDayOf(employeeId, managerId, viewer);
+
+    /// <summary>Whether the viewer may correct this employee's days: their own, or on their behalf as their manager or as HR.</summary>
+    public static bool MayCorrectDayOf(int employeeId, int? managerId, ExceptionViewer viewer) =>
+        employeeId == viewer.EmployeeId || viewer.IsHr || (viewer.IsManager && managerId == viewer.EmployeeId);
 
     /// <summary>
     /// Whether the viewer can accept the exception as it is: a break exception that is still open, decided by HR or by the employee's

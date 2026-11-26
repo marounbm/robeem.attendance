@@ -8,7 +8,7 @@
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h3 mb-0">Correct <span class="text-muted">@DisplayFormats.Date(day.Date)</span></h1>
+    <h1 class="h3 mb-0">Correct <span class="text-muted">@DisplayFormats.Date(day.Date)@(day.IsOnBehalf ? " · " + day.EmployeeName : string.Empty)</span></h1>
     @if (Model.Form.FromDay)
     {
         <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-outline-secondary">Back to the day</a>
@@ -21,10 +21,30 @@
 
 <partial name="_StatusMessage" />
 
+@if (day.IsOnBehalf)
+{
+    <div class="alert alert-warning" role="status">
+        You are correcting <strong>@day.EmployeeName</strong>'s day on their behalf. Your name and your reason are kept with the correction, and the employee's
+        punches are not changed: it is added next to them.
+        @switch (day.OnBehalfOutcome)
+        {
+            case DayCorrectionOutcome.AppliedAtOnce:
+                <text>You hold every approval step, so the correction is <strong>applied at once</strong> and the day is calculated again.</text>
+                break;
+            case DayCorrectionOutcome.AwaitsHr:
+                <text>Your decision counts as the manager's; the correction then waits for <strong>HR</strong> to decide.</text>
+                break;
+            default:
+                <text>It then waits for the employee's <strong>manager</strong> to decide.</text>
+                break;
+        }
+    </div>
+}
+
 <p class="text-muted">
     These are all the punches of the day, as the time clock sent them. Put the day right: <strong>change</strong> a punch that has the wrong type,
     <strong>delete</strong> one that should not count (a duplicate, a tap by mistake), or <strong>add</strong> one that is missing. A deleted punch
-    stays on record, as the time clock sent it, but no longer counts: your approver decides on all of it together, and the day is then calculated again.
+    stays on record, as the time clock sent it, but no longer counts: @(day.IsOnBehalf && day.OnBehalfOutcome == DayCorrectionOutcome.AppliedAtOnce ? "the day is then calculated again" : "the approver decides on all of it together, and the day is then calculated again").
 </p>
 
 @if (day.Shifts.Count > 0)
@@ -62,6 +82,11 @@
     <div id="completeness-alert" class="alert alert-danger" role="alert" hidden></div>
     <input type="hidden" name="Date" value="@day.Date.ToString("yyyy-MM-dd")" />
     <input type="hidden" name="FromDay" value="@(Model.Form.FromDay ? "true" : "false")" />
+    @if (day.IsOnBehalf)
+    {
+        <input type="hidden" name="EmployeeId" value="@day.EmployeeId" />
+        <input type="hidden" name="Outcome" value="@day.OnBehalfOutcome" />
+    }
 
     <div class="card mb-3">
         <div class="card-header">The day's punches</div>
@@ -214,12 +239,20 @@
         <div class="card mb-3">
             <div class="card-header">Why</div>
             <div class="card-body">
-                <label class="form-label small mb-0" for="justification">Tell your approver why these corrections are needed (optional).</label>
-                <textarea id="justification" name="Justification" rows="2" maxlength="1000" class="form-control">@Model.Form.Justification</textarea>
+                @if (day.IsOnBehalf)
+                {
+                    <label class="form-label small mb-0" for="justification">Say why you are correcting this day for @day.EmployeeName (required).</label>
+                    <textarea id="justification" name="Justification" rows="2" maxlength="1000" required class="form-control">@Model.Form.Justification</textarea>
+                }
+                else
+                {
+                    <label class="form-label small mb-0" for="justification">Tell your approver why these corrections are needed (optional).</label>
+                    <textarea id="justification" name="Justification" rows="2" maxlength="1000" class="form-control">@Model.Form.Justification</textarea>
+                }
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary">Send for approval</button>
+        <button type="submit" class="btn btn-primary">@(day.IsOnBehalf && day.OnBehalfOutcome == DayCorrectionOutcome.AppliedAtOnce ? "Apply the correction" : "Send for approval")</button>
         @if (Model.Form.FromDay)
         {
             <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-link">Cancel</a>

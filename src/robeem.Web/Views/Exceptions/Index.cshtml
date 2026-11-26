@@ -12,9 +12,11 @@
 
 <p class="text-muted">
     The problems found on an employee's shift, kept together as one case: a missing punch, punches in the wrong order, or a break or a day outside
-    the rules. You see your own; a manager also sees their reports'; HR sees everyone's. To put one of your days right, press <strong>Correct</strong>:
-    it shows every punch of the day, and you can change a punch, add one that is missing, or ignore one that should not count. Your approver then
-    decides. A manager or HR can <strong>accept</strong> a case as it is, with one reason, when none of its problems needs a punch.
+    the rules. You see your own; a manager also sees their reports'; HR sees everyone's. To put a day right, press <strong>Correct</strong>:
+    it shows every punch of the day, and you can change a punch, add one that is missing, or ignore one that should not count. The approver then
+    decides. A manager (for their reports) or HR can correct a day <strong>on the employee's behalf</strong>, giving the reason: they take the
+    approval step that is theirs, so what is left, if anything, waits for the other approver. A manager or HR can also <strong>accept</strong>
+    a case as it is, with one reason, when none of its problems needs a punch.
 </p>
 
 <partial name="_StatusMessage" />
@@ -109,7 +111,7 @@
                             <td class="text-end">
                                 @if (group.CanCorrect)
                                 {
-                                    <a class="btn btn-sm btn-primary" asp-action="Correct" asp-route-date="@group.AttendanceDate.ToString("yyyy-MM-dd")">Correct</a>
+                                    <a class="btn btn-sm btn-primary" asp-action="Correct" asp-route-date="@group.AttendanceDate.ToString("yyyy-MM-dd")" asp-route-employeeId="@group.EmployeeId" aria-label="Correct the day of @group.EmployeeName">Correct</a>
                                 }
                                 else if (group.IsWaiting)
                                 {

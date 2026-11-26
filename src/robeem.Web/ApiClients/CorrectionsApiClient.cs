@@ -22,9 +22,10 @@ public sealed class CorrectionsApiClient : ICorrectionsApiClient
         return await ApiResponses.CommandAsync<CreatedResponse>(response, cancellationToken);
     }
 
-    public async Task<DayCorrectionView?> GetDayAsync(DateTime date, CancellationToken cancellationToken)
+    public async Task<DayCorrectionView?> GetDayAsync(DateTime date, int? employeeId, CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync($"{Path}/day?date={date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}", cancellationToken);
+        var query = $"date={date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}" + (employeeId is { } id ? $"&employeeId={id.ToString(CultureInfo.InvariantCulture)}" : string.Empty);
+        using var response = await _http.GetAsync($"{Path}/day?{query}", cancellationToken);
         return response.StatusCode == System.Net.HttpStatusCode.NotFound ? null : await ApiResponses.ReadAsync<DayCorrectionView>(response, cancellationToken);
     }
 

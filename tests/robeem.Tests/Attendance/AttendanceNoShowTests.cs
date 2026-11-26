@@ -163,8 +163,8 @@ public sealed class AttendanceNoShowTests : AttendanceEngineTestBase
         await ProcessAsync(Monday);
 
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var day = await new AttendanceDayCorrectionService(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), Clock)
-            .GetDayAsync(EmployeeId, Monday, EmployeeId, CancellationToken.None);
+        var day = await new AttendanceDayCorrectionService(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), CreateEngine(db), Clock)
+            .GetDayAsync(EmployeeId, Monday, new ExceptionViewer(EmployeeId, true, false, false), CancellationToken.None);
 
         Assert.True(day!.CanCorrect, day.CannotCorrectReason);
     }

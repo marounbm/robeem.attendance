@@ -290,7 +290,7 @@ public sealed class AttendanceExceptionGroupTests : AttendanceEngineTestBase
     private async Task ProposeAsync(int strayPunchId)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
-        var service = new AttendanceDayCorrectionService(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), Clock);
+        var service = new AttendanceDayCorrectionService(db, new ScheduleResolutionService(db), new AttendanceExceptionQuery(db), new AttendancePolicyResolver(db), new RuleSetProvider(db), CreateAudit(db), CreateEngine(db), Clock);
         var sent = await service.ProposeAsync(
             EmployeeId,
             new DayCorrectionRequest
@@ -303,7 +303,7 @@ public sealed class AttendanceExceptionGroupTests : AttendanceEngineTestBase
                     new DayCorrectionEdit { Action = DayCorrectionRequest.Add, EventType = "CheckIn", At = Monday.At(14, 0) },
                 ],
             },
-            EmployeeId,
+            new ExceptionViewer(EmployeeId, true, false, false),
             CancellationToken.None);
         Assert.True(sent.Succeeded, string.Join("; ", sent.Errors.Values));
     }

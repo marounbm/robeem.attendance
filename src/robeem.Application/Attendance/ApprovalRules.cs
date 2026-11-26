@@ -54,14 +54,45 @@ internal static class ApprovalRules
 
     /// <summary>
     /// Whether an approving decision completes the workflow: the manager for Manager, HR for HR and for Both (the manager decides
-    /// first), and the one decision of a review.
+    /// first), and the one decision of a review. A Both request that HR proposed on the employee's behalf already has HR's step, so
+    /// the manager's decision completes it.
     /// </summary>
     public static bool IsComplete(AttendanceApproval approval, bool decidesAsHr) => approval.Workflow switch
     {
         ApprovalWorkflow.Manager => !decidesAsHr,
         ApprovalWorkflow.ManagerOrHr => true,
-        _ => decidesAsHr,
+        _ => decidesAsHr || approval.HrDecision == AttendanceCorrectionDecision.Approved,
     };
+
+    /// <summary>
+    /// A manager or HR proposing a correction on an employee's behalf takes the steps they hold, since they are the ones who would have
+    /// decided them and nobody may decide their own request: the employee's manager takes the manager's step, HR takes HR's, and HR
+    /// takes the manager's too when the employee has no active manager (the same stand-in as in a decision). A person holding both
+    /// takes both. Returns whether the workflow is complete, so the correction applies at once; otherwise what is left waits in the
+    /// queue of the step nobody has taken.
+    /// </summary>
+    public static bool TakeProposerSteps(AttendanceApproval approval, Profile employee, ExceptionViewer proposer, DateTime now)
+    {
+        var isTheManager = proposer.IsManager && employee.ManagerId == proposer.EmployeeId;
+        var managerStep = approval.Workflow != ApprovalWorkflow.HR && (isTheManager || (proposer.IsHr && IsUnmanaged(employee)));
+        var hrStep = approval.Workflow != ApprovalWorkflow.Manager && proposer.IsHr;
+        if (managerStep)
+        {
+            (approval.ManagerDecision, approval.ManagerDecidedById, approval.ManagerDecidedAt) = (AttendanceCorrectionDecision.Approved, proposer.EmployeeId, now);
+        }
+
+        if (hrStep)
+        {
+            (approval.HrDecision, approval.HrDecidedById, approval.HrDecidedAt) = (AttendanceCorrectionDecision.Approved, proposer.EmployeeId, now);
+        }
+
+        return approval.Workflow switch
+        {
+            ApprovalWorkflow.Manager => managerStep,
+            ApprovalWorkflow.HR => hrStep,
+            _ => managerStep && hrStep,
+        };
+    }
 
     /// <summary>Pending correction requests whose next step is the manager's, for this manager's direct reports.</summary>
     public static IQueryable<AttendanceApproval> CorrectionsAwaitingManager(IQueryable<AttendanceApproval> approvals, int managerEmployeeId) =>
