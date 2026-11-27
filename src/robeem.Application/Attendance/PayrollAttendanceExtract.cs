@@ -17,16 +17,11 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
     }
 
     public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, CancellationToken cancellationToken) =>
-        GetApprovedRecordsAsync(payPeriodStart, payPeriodEnd, null, cancellationToken);
+        GetApprovedRecordsAsync(payPeriodStart, payPeriodEnd, (string?)null, cancellationToken);
 
     public async Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, string? employee, CancellationToken cancellationToken)
     {
-        var from = payPeriodStart.Date;
-        var to = payPeriodEnd.Date;
-        if (to < from)
-        {
-            throw new ArgumentException("The pay period ends before it starts.", nameof(payPeriodEnd));
-        }
+        CheckPeriod(payPeriodStart, payPeriodEnd);
 
         // The employee filter is applied in every query below, so a wide range for one employee never loads the others' days.
         var term = employee?.Trim().ToLowerInvariant();
@@ -44,6 +39,25 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
             }
         }
 
+        return await ReadAsync(payPeriodStart.Date, payPeriodEnd.Date, matching, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, IReadOnlyCollection<int> employeeIds, bool includeClosedPeriods, CancellationToken cancellationToken)
+    {
+        CheckPeriod(payPeriodStart, payPeriodEnd);
+        return employeeIds.Count == 0 ? [] : await ReadAsync(payPeriodStart.Date, payPeriodEnd.Date, employeeIds.Distinct().ToList(), cancellationToken, includeClosedPeriods);
+    }
+
+    private static void CheckPeriod(DateTime payPeriodStart, DateTime payPeriodEnd)
+    {
+        if (payPeriodEnd.Date < payPeriodStart.Date)
+        {
+            throw new ArgumentException("The pay period ends before it starts.", nameof(payPeriodEnd));
+        }
+    }
+
+    private async Task<IReadOnlyList<PayrollAttendanceDay>> ReadAsync(DateTime from, DateTime to, List<int>? matching, CancellationToken cancellationToken, bool includeClosedPeriods = false)
+    {
         var summaryQuery = _db.AttendanceDaySummaries
             .AsNoTracking()
             .Where(s => s.AttendanceDate >= from && s.AttendanceDate <= to && s.Status == AttendanceRecordStatus.Approved);
@@ -58,10 +72,12 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
             return [];
         }
 
-        var closedPeriods = await _db.PayPeriods
-            .AsNoTracking()
-            .Where(p => p.IsClosed && p.StartDate <= to && p.EndDate >= from)
-            .ToListAsync(cancellationToken);
+        var closedPeriods = includeClosedPeriods
+            ? []
+            : await _db.PayPeriods
+                .AsNoTracking()
+                .Where(p => p.IsClosed && p.StartDate <= to && p.EndDate >= from)
+                .ToListAsync(cancellationToken);
 
         // Only the employees that have an approved day in the range matter below, when the caller narrowed to some.
         var summaryEmployees = matching is null ? null : summaries.Select(s => s.EmployeeId).Distinct().ToList();
@@ -110,7 +126,8 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
             var key = (summary.EmployeeId, Date: summary.AttendanceDate.Date);
             var dayRecords = records[key].OrderBy(r => r.ScheduledStart ?? r.ActualCheckIn).ThenBy(r => r.Id).ToList();
 
-            if (closedPeriods.Any(p => p.StartDate.Date <= key.Date && key.Date <= p.EndDate.Date)
+            // A period closed for the whole company, or for this employee, takes the day out; another employee's closed period does not.
+            if (closedPeriods.Any(p => (p.EmployeeId == null || p.EmployeeId == summary.EmployeeId) && p.StartDate.Date <= key.Date && key.Date <= p.EndDate.Date)
                 || unclosedExceptions.Contains(key)
                 || dayRecords.Count == 0
                 || dayRecords.Any(r => r.Status != AttendanceRecordStatus.Approved))
@@ -163,7 +180,12 @@ public sealed class PayrollAttendanceExtract : IPayrollAttendanceExtract
                     r.BreakDuration,
                     r.LateMinutes,
                     r.EarlyDepartureMinutes,
-                    r.OvertimeMinutes)).ToList()))
+                    r.OvertimeMinutes)).ToList(),
+                d.Summary.TotalUndertimeHours,
+                d.Records.Any(r => r.ActualCheckInSource == AttendancePunchSource.Inferred
+                    || r.ActualCheckOutSource == AttendancePunchSource.Inferred
+                    || r.ActualBreakOutSource == AttendancePunchSource.Inferred
+                    || r.ActualBreakInSource == AttendancePunchSource.Inferred)))
             .OrderBy(d => d.AttendanceDate)
             .ThenBy(d => d.EmployeeNumber, StringComparer.Ordinal)
             .ToList();

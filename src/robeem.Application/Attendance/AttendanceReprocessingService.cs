@@ -55,9 +55,11 @@ public sealed class AttendanceReprocessingService : IAttendanceReprocessingServi
         // A closed pay period is payroll's: its days are never calculated again from here.
         var closed = await _db.PayPeriods.AsNoTracking()
             .Where(p => p.IsClosed && p.StartDate <= last && p.EndDate >= first)
-            .Select(p => new { p.StartDate, p.EndDate })
+            .Select(p => new { p.StartDate, p.EndDate, p.EmployeeId })
             .ToListAsync(cancellationToken);
-        var open = days.Where(d => !closed.Any(p => p.StartDate.Date <= d.Date && d.Date <= p.EndDate.Date)).ToList();
+
+        // Closed for the whole company, or for that employee: another employee's closed period does not hold a day back.
+        var open = days.Where(d => !closed.Any(p => (p.EmployeeId == null || p.EmployeeId == d.EmployeeId) && p.StartDate.Date <= d.Date && d.Date <= p.EndDate.Date)).ToList();
         var inClosedPeriods = days.Count - open.Count;
 
         // The oldest dates first. A run that stops at its limit finishes the date it is on, so the next run can start at the date after

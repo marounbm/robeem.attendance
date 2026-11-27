@@ -45,6 +45,8 @@ public static class ApiClientServiceCollectionExtensions
         AddClient<IDeviceTypesApiClient, DeviceTypesApiClient>(services);
         AddClient<ITransportsApiClient, TransportsApiClient>(services);
         AddClient<IPayPeriodsApiClient, PayPeriodsApiClient>(services);
+        AddClient<ICompensationApiClient, CompensationApiClient>(services);
+        AddClient<IPayCyclesApiClient, PayCyclesApiClient>(services);
         AddClient<IAttendanceSettingsApiClient, AttendanceSettingsApiClient>(services);
         AddClient<IPayrollApiClient, PayrollApiClient>(services);
         AddClient<IPoliciesApiClient, PoliciesApiClient>(services);

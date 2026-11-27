@@ -1,0 +1,114 @@
+@model CompensationIndexViewModel
+@{
+    ViewData["Title"] = "Compensation";
+}
+
+<h1 class="h3 mb-3">Compensation</h1>
+
+<p class="text-muted">
+    Each employee is paid over their own pay period, from their <a asp-controller="PayCycles" asp-action="Index">pay cycle</a>. For each one this
+    report adds up the overtime and the under time of the days payroll may pay for, and the penalties by their schedule's rules. Overtime and under time
+    are not exceptions: you decide them here, line by line. Open an employee to decide, and close their period when it has ended and every day of it is ready.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" asp-action="Index" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label" for="mode">Pay period</label>
+                <select id="mode" name="mode" class="form-select">
+                    <option value="@CompensationIndexViewModel.Latest" selected="@(Model.Mode == CompensationIndexViewModel.Latest)">Each one's latest period with attendance</option>
+                    <option value="@CompensationIndexViewModel.Last" selected="@(Model.Mode == CompensationIndexViewModel.Last)">Each one's last finished period (from today)</option>
+                    <option value="@CompensationIndexViewModel.Containing" selected="@(Model.Mode == CompensationIndexViewModel.Containing)">The period that contains…</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="date">…this date</label>
+                <input id="date" name="date" type="date" class="form-control" value="@Model.Date?.ToString("yyyy-MM-dd")" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="search">Employee (number or name)</label>
+                <input id="search" name="search" type="search" class="form-control" value="@Model.Search" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="pageSize">Per page</label>
+                <select id="pageSize" name="pageSize" class="form-select">
+                    @foreach (var size in CompensationIndexViewModel.PageSizes)
+                    {
+                        <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary">Show</button>
+                <a class="btn btn-outline-secondary" asp-action="Export" asp-route-search="@Model.Search" asp-route-mode="@Model.Mode" asp-route-date="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)">CSV</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Total == 0)
+{
+    <div class="card"><div class="card-body text-muted">No employee matches.</div></div>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Employee</th>
+                        <th scope="col">Schedule</th>
+                        <th scope="col">Pay period</th>
+                        <th scope="col" class="text-end">Days</th>
+                        <th scope="col" class="text-end">Worked</th>
+                        <th scope="col" class="text-end">Overtime</th>
+                        <th scope="col" class="text-end">Under time</th>
+                        <th scope="col" class="text-end" title="Overtime counted minus the under time that remains">Balance</th>
+                        <th scope="col" class="text-end">Penalty (min)</th>
+                        <th scope="col" class="text-end">To decide</th>
+                        <th scope="col" class="text-end">Not ready</th>
+                        <th scope="col"><span class="visually-hidden">Open</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        var s = item.Summary;
+                        <tr>
+                            <td>@item.EmployeeName <span class="small text-muted">@item.EmployeeNumber</span></td>
+                            <td>@(string.IsNullOrEmpty(item.ScheduleName) ? "—" : item.ScheduleName)</td>
+                            <td class="text-nowrap">
+                                @item.PeriodStart.ToString("yyyy-MM-dd") to @item.PeriodEnd.ToString("yyyy-MM-dd")
+                                @if (item.IsClosed)
+                                {
+                                    <span class="badge text-bg-secondary">Closed</span>
+                                }
+                                else if (!item.PeriodHasEnded)
+                                {
+                                    <span class="badge text-bg-info">Running</span>
+                                }
+                            </td>
+                            <td class="text-end">@s.PaidDays</td>
+                            <td class="text-end">@DisplayFormats.Minutes(s.WorkedMinutes)</td>
+                            <td class="text-end">@DisplayFormats.Minutes(s.OvertimeMinutes)</td>
+                            <td class="text-end">@DisplayFormats.Minutes(s.UndertimeMinutes)</td>
+                            <td class="text-end fw-semibold">@DisplayFormats.SignedMinutes(s.BalanceMinutes)</td>
+                            <td class="text-end">@s.PenaltyMinutes</td>
+                            <td class="text-end">@s.UndecidedLines</td>
+                            <td class="text-end">@(item.NotReadyDays == 0 ? "—" : item.NotReadyDays.ToString())</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-primary" asp-action="Employee" asp-route-id="@item.EmployeeId" asp-route-mode="@Model.Mode" asp-route-date="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)">Open</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <partial name="_Pager" model="Model.Pager" />
+}

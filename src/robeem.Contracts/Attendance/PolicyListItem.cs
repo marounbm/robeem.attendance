@@ -31,4 +31,14 @@ public sealed class PolicyListItem
     public int DuplicateTimeWindowSeconds { get; init; }
 
     public int HourlyMaxSpanHours { get; init; }
+
+    public int PayLatePenaltyPercent { get; init; }
+
+    public int PayEarlyPenaltyPercent { get; init; }
+
+    public int PayUndertimePenaltyPercent { get; init; }
+
+    public bool PayDayOffWorkIsOvertime { get; init; }
+
+    public bool PayHolidayWorkIsOvertime { get; init; }
 }

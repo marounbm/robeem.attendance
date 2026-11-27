@@ -725,6 +725,9 @@ public sealed class ApiAuthorizationTests : IAsyncDisposable
             LastEmployee = employee;
             return Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);
         }
+
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, IReadOnlyCollection<int> employeeIds, bool includeClosedPeriods, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);
     }
 
     private sealed class FakeHealth : IIntegrationHealthService

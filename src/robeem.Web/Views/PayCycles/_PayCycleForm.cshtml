@@ -1,0 +1,23 @@
+@model PayCycleInput
+
+<div class="col-md-3">
+    <label asp-for="Frequency" class="form-label"></label>
+    <select asp-for="Frequency" class="form-select">
+        <option value="Monthly">Monthly</option>
+        <option value="Weekly">Weekly</option>
+        <option value="EveryTwoWeeks">Every two weeks</option>
+    </select>
+    <span asp-validation-for="Frequency" class="text-danger small"></span>
+</div>
+<div class="col-md-3">
+    <label asp-for="StartDay" class="form-label"></label>
+    <input asp-for="StartDay" type="number" min="1" max="28" class="form-control" />
+    <div class="form-text">For a monthly cycle: 26 means the 26th to the 25th of the next month.</div>
+    <span asp-validation-for="StartDay" class="text-danger small"></span>
+</div>
+<div class="col-md-3">
+    <label asp-for="AnchorDate" class="form-label"></label>
+    <input asp-for="AnchorDate" type="date" value="@Model.AnchorDate.ToString("yyyy-MM-dd")" class="form-control" />
+    <div class="form-text">For a weekly or two-weekly cycle: any first day of a period; the others follow every 7 or 14 days.</div>
+    <span asp-validation-for="AnchorDate" class="text-danger small"></span>
+</div>

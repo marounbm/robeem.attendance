@@ -322,8 +322,8 @@ public sealed class PayrollWebTests
         var payroll = NavigationMenu.For(new FakeActor(["PayrollAdministrator"])).SelectMany(s => s.Items).Select(i => i.Controller);
         var others = NavigationMenu.For(new FakeActor(["Employee", "Manager", "HRAdministrator", "IntegrationAdministrator"])).SelectMany(s => s.Items).Select(i => i.Controller);
 
-        Assert.Equal(["Payroll", "PayPeriods"], payroll);
-        Assert.DoesNotContain(others, c => c is "Payroll" or "PayPeriods");
+        Assert.Equal(["Payroll", "Compensation", "PayCycles", "PayPeriods"], payroll);
+        Assert.DoesNotContain(others, c => c is "Payroll" or "Compensation" or "PayCycles" or "PayPeriods");
     }
 
     private static PayrollAttendanceDay Day(int employeeId, string number, int dayOfOctober, double working, double overtime) =>

@@ -110,3 +110,43 @@
         </div>
     </div>
 </div>
+
+<div class="card mb-3">
+    <div class="card-header">Pay rules (for the compensation report)</div>
+    <div class="card-body row g-3">
+        <p class="form-text mb-0">
+            How this schedule's lateness and extra work weigh in the pay. Overtime and under time are never exceptions: payroll decides them line by line
+            in the compensation report. Late and early minutes are already net of the grace above.
+        </p>
+        <div class="col-md-4">
+            <label asp-for="Input.PayLatePenaltyPercent" class="form-label"></label>
+            <input asp-for="Input.PayLatePenaltyPercent" type="number" min="0" max="@PolicyInput.MaxPenaltyPercent" class="form-control" />
+            <div class="form-text">0 is no penalty, 100 means the late minutes are simply unpaid, 200 twice that.</div>
+            <span asp-validation-for="Input.PayLatePenaltyPercent" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.PayEarlyPenaltyPercent" class="form-label"></label>
+            <input asp-for="Input.PayEarlyPenaltyPercent" type="number" min="0" max="@PolicyInput.MaxPenaltyPercent" class="form-control" />
+            <div class="form-text">The same, for minutes before the end of the shift.</div>
+            <span asp-validation-for="Input.PayEarlyPenaltyPercent" class="text-danger small"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="Input.PayUndertimePenaltyPercent" class="form-label"></label>
+            <input asp-for="Input.PayUndertimePenaltyPercent" type="number" min="0" max="@PolicyInput.MaxPenaltyPercent" class="form-control" />
+            <div class="form-text">For the under time payroll chooses to penalise, beyond the late and early minutes already counted.</div>
+            <span asp-validation-for="Input.PayUndertimePenaltyPercent" class="text-danger small"></span>
+        </div>
+        <div class="col-md-6">
+            <div class="form-check">
+                <input asp-for="Input.PayDayOffWorkIsOvertime" class="form-check-input" />
+                <label asp-for="Input.PayDayOffWorkIsOvertime" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="form-check">
+                <input asp-for="Input.PayHolidayWorkIsOvertime" class="form-check-input" />
+                <label asp-for="Input.PayHolidayWorkIsOvertime" class="form-check-label"></label>
+            </div>
+        </div>
+    </div>
+</div>

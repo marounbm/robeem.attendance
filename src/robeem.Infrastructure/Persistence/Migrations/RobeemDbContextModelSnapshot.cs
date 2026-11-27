@@ -927,6 +927,21 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.Property<int>("OvertimeThresholdMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("PayDayOffWorkIsOvertime")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PayEarlyPenaltyPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("PayHolidayWorkIsOvertime")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PayLatePenaltyPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PayUndertimePenaltyPercent")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("RaiseExceptionOnEarlyBreak")
                         .HasColumnType("boolean");
 
@@ -1773,6 +1788,138 @@ namespace robeem.Infrastructure.Persistence.Migrations
                     b.ToTable("OnDemandTimeSchedule", "HR");
                 });
 
+            modelBuilder.Entity("robeem.DataModel.PayCompensationDecision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AttendanceDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DecidedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LeaveIds")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LineKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecidedById");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AttendanceDate");
+
+                    b.ToTable("PayCompensationDecision", "Attendance");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.PayCycle", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnOrder(0);
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AnchorDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("GUID")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ModifiedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedOn")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("StartDay")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasFilter("\"EmployeeId\" IS NULL");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasFilter("\"EmployeeId\" IS NOT NULL");
+
+                    b.ToTable("PayCycle", "Attendance");
+                });
+
             modelBuilder.Entity("robeem.DataModel.PayPeriod", b =>
                 {
                     b.Property<int>("Id")
@@ -1787,6 +1934,9 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedOn")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("EmployeeId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp without time zone");
@@ -1813,7 +1963,14 @@ namespace robeem.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EmployeeId");
+
                     b.HasIndex("TenantId", "StartDate", "EndDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PayPeriod_TenantId_StartDate_EndDate_CompanyWide")
+                        .HasFilter("\"EmployeeId\" IS NULL");
+
+                    b.HasIndex("TenantId", "EmployeeId", "StartDate", "EndDate")
                         .IsUnique();
 
                     b.ToTable("PayPeriod", "Attendance");
@@ -2707,6 +2864,45 @@ namespace robeem.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("TimeSchedule");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.PayCompensationDecision", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "DecidedBy")
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DecidedBy");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.PayCycle", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("robeem.DataModel.PayPeriod", b =>
+                {
+                    b.HasOne("robeem.DataModel.Profile", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("robeem.DataModel.Profile", b =>

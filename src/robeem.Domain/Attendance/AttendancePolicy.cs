@@ -87,6 +87,27 @@ namespace robeem.DataModel
         /// </summary>
         public int HourlyMaxSpanHours { get; set; } = 16;
 
+        /// <summary>
+        /// Gets or sets how the minutes an employee arrived late (already net of the grace) weigh in the pay period's penalties, in percent:
+        /// 0 is no penalty, 100 means those minutes are simply unpaid, 200 twice that.
+        /// </summary>
+        public int PayLatePenaltyPercent { get; set; }
+
+        /// <summary>Gets or sets how the minutes an employee left early (already net of the grace) weigh in the penalties, in percent.</summary>
+        public int PayEarlyPenaltyPercent { get; set; }
+
+        /// <summary>
+        /// Gets or sets how the under time a payroll administrator decides to penalise weighs in the penalties, in percent. Only the part
+        /// that is not already late or early minutes counts, so no minute is penalised twice.
+        /// </summary>
+        public int PayUndertimePenaltyPercent { get; set; } = 100;
+
+        /// <summary>Gets or sets a value indicating whether work on a day the employee is not scheduled is an overtime line of the compensation report.</summary>
+        public bool PayDayOffWorkIsOvertime { get; set; } = true;
+
+        /// <summary>Gets or sets a value indicating whether work on a public holiday is an overtime line of the compensation report.</summary>
+        public bool PayHolidayWorkIsOvertime { get; set; } = true;
+
         #region not mapped
         [NotMapped]
         public bool IsTenantDefault => TimeScheduleId is null;

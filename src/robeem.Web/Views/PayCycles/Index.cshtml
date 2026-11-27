@@ -1,0 +1,93 @@
+@model PayCyclesIndexViewModel
+@{
+    ViewData["Title"] = "Pay cycles";
+}
+
+<h1 class="h3 mb-3">Pay cycles</h1>
+
+<p class="text-muted">
+    How often each employee is paid. An employee's pay period follows from their cycle: their own when they have one, else the default below,
+    else the calendar month. Periods are worked out from the cycle; they are only stored when payroll closes one on the
+    <a asp-controller="Compensation" asp-action="Index">Compensation</a> screen.
+</p>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-4">
+    <div class="card-header">Default cycle</div>
+    <div class="card-body">
+        <p class="mb-3">
+            Now: <strong>@Model.Default.Description</strong>. Current period
+            @Model.Default.CurrentStart.ToString("yyyy-MM-dd") to @Model.Default.CurrentEnd.ToString("yyyy-MM-dd"); the last finished one
+            @Model.Default.LastStart.ToString("yyyy-MM-dd") to @Model.Default.LastEnd.ToString("yyyy-MM-dd").
+        </p>
+        <form method="post" asp-action="SaveDefault" class="row g-3 align-items-start">
+            <partial name="_PayCycleForm" model="Model.DefaultInput" />
+            <div class="col-md-3 pt-4"><button type="submit" class="btn btn-primary mt-2">Save the default</button></div>
+        </form>
+    </div>
+</div>
+
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label" for="search">Employee (number or name)</label>
+        <input id="search" name="search" type="search" class="form-control" value="@Model.Search" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select">
+            @foreach (var size in PayCyclesIndexViewModel.PageSizes)
+            {
+                <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-primary">Show</button></div>
+</form>
+
+<div class="card mb-3">
+    @if (Model.Employees.Count == 0)
+    {
+        <div class="card-body text-muted">No employee matches.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Employee</th>
+                        <th scope="col">Cycle</th>
+                        <th scope="col">From</th>
+                        <th scope="col">Current period</th>
+                        <th scope="col">Last finished period</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var employee in Model.Employees)
+                    {
+                        <tr>
+                            <td>@employee.EmployeeName <span class="small text-muted">@employee.EmployeeNumber</span></td>
+                            <td>@employee.Cycle.Description</td>
+                            <td>@(employee.Source == "Own" ? "Own cycle" : employee.Source)</td>
+                            <td class="text-nowrap">@employee.Cycle.CurrentStart.ToString("yyyy-MM-dd") to @employee.Cycle.CurrentEnd.ToString("yyyy-MM-dd")</td>
+                            <td class="text-nowrap">@employee.Cycle.LastStart.ToString("yyyy-MM-dd") to @employee.Cycle.LastEnd.ToString("yyyy-MM-dd")</td>
+                            <td class="text-end text-nowrap">
+                                <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@employee.EmployeeId">Change</a>
+                                @if (employee.Source == "Own")
+                                {
+                                    <form method="post" asp-action="Remove" asp-route-id="@employee.EmployeeId" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Use the default</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<partial name="_Pager" model="Model.Pager" />

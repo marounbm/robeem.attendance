@@ -79,6 +79,40 @@ public sealed class AttendanceReprocessingServiceTests : AttendanceEngineTestBas
     }
 
     [Fact]
+    public async Task APayPeriodClosedForOneEmployee_HoldsBackOnlyThatEmployeesDays()
+    {
+        await WorkAsync(Monday, "I@09:30,O@17:00");
+        int other;
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var grace = new Profile { EmployeeNumber = "E-2", FirstName = "Grace", LastName = "Hopper", Title = "Grace Hopper" };
+            db.Profiles.Add(grace);
+            db.SaveChanges();
+            other = grace.Id;
+
+            // Closed for Grace: Ada's day of the same dates is still hers to be calculated again.
+            db.PayPeriods.Add(new PayPeriod { EmployeeId = other, StartDate = Monday, EndDate = Monday.AddDays(6), IsClosed = true });
+            db.SaveChanges();
+        }
+
+        ChangePolicy(p => (p.LateGraceMinutes, p.EarlyDepartureGraceMinutes) = (10, 10));
+        var notHeld = await ReprocessAsync(Monday);
+
+        Assert.Equal((1, 0), (notHeld.DaysExamined, notHeld.DaysInClosedPeriods));
+
+        // Closed for Ada herself, it holds her day back.
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.PayPeriods.Add(new PayPeriod { EmployeeId = EmployeeId, StartDate = Monday, EndDate = Monday.AddDays(6), IsClosed = true });
+            db.SaveChanges();
+        }
+
+        var held = await ReprocessAsync(Monday);
+
+        Assert.Equal((0, 1), (held.DaysExamined, held.DaysInClosedPeriods));
+    }
+
+    [Fact]
     public async Task ADayInAClosedPayPeriod_IsNeverCalculatedAgain()
     {
         await WorkAsync(Monday, "I@09:30,O@17:00");

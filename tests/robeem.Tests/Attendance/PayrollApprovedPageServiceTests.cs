@@ -159,5 +159,8 @@ public sealed class PayrollApprovedPageServiceTests
             AskedEmployee = employee;
             return Task.FromResult(PayrollApprovedPageService.Filter(_days, employee));
         }
+
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, IReadOnlyCollection<int> employeeIds, bool includeClosedPeriods, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>(_days.Where(d => employeeIds.Contains(d.EmployeeId)).ToList());
     }
 }

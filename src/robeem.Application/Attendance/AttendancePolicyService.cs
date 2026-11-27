@@ -46,6 +46,11 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 UnlabeledPunchInterpretationMode = r.Policy.UnlabeledPunchInterpretationMode.ToString(),
                 DuplicateTimeWindowSeconds = r.Policy.DuplicateTimeWindowSeconds,
                 HourlyMaxSpanHours = r.Policy.HourlyMaxSpanHours,
+                PayLatePenaltyPercent = r.Policy.PayLatePenaltyPercent,
+                PayEarlyPenaltyPercent = r.Policy.PayEarlyPenaltyPercent,
+                PayUndertimePenaltyPercent = r.Policy.PayUndertimePenaltyPercent,
+                PayDayOffWorkIsOvertime = r.Policy.PayDayOffWorkIsOvertime,
+                PayHolidayWorkIsOvertime = r.Policy.PayHolidayWorkIsOvertime,
             })
             .ToList();
     }
@@ -68,6 +73,11 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
                 UnlabeledPunchInterpretationMode = policy.UnlabeledPunchInterpretationMode.ToString(),
                 DuplicateTimeWindowSeconds = policy.DuplicateTimeWindowSeconds,
                 HourlyMaxSpanHours = policy.HourlyMaxSpanHours,
+                PayLatePenaltyPercent = policy.PayLatePenaltyPercent,
+                PayEarlyPenaltyPercent = policy.PayEarlyPenaltyPercent,
+                PayUndertimePenaltyPercent = policy.PayUndertimePenaltyPercent,
+                PayDayOffWorkIsOvertime = policy.PayDayOffWorkIsOvertime,
+                PayHolidayWorkIsOvertime = policy.PayHolidayWorkIsOvertime,
             };
     }
 
@@ -177,6 +187,9 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         Range(errors, nameof(PolicyInput.OvertimeThresholdMinutes), input.OvertimeThresholdMinutes, 0, PolicyInput.MaxOvertimeThresholdMinutes, "minutes");
         Range(errors, nameof(PolicyInput.DuplicateTimeWindowSeconds), input.DuplicateTimeWindowSeconds, 1, PolicyInput.MaxDuplicateWindowSeconds, "seconds");
         Range(errors, nameof(PolicyInput.HourlyMaxSpanHours), input.HourlyMaxSpanHours, 1, PolicyInput.MaxHourlySpanHours, "hours");
+        Range(errors, nameof(PolicyInput.PayLatePenaltyPercent), input.PayLatePenaltyPercent, 0, PolicyInput.MaxPenaltyPercent, "percent");
+        Range(errors, nameof(PolicyInput.PayEarlyPenaltyPercent), input.PayEarlyPenaltyPercent, 0, PolicyInput.MaxPenaltyPercent, "percent");
+        Range(errors, nameof(PolicyInput.PayUndertimePenaltyPercent), input.PayUndertimePenaltyPercent, 0, PolicyInput.MaxPenaltyPercent, "percent");
 
         if (!PolicyInput.Workflows.Contains(input.CorrectionApprovalWorkflow, StringComparer.Ordinal))
         {
@@ -211,9 +224,14 @@ public sealed class AttendancePolicyService : IAttendancePolicyService
         policy.UnlabeledPunchInterpretationMode = Enum.Parse<UnlabeledPunchInterpretationMode>(input.UnlabeledPunchInterpretationMode);
         policy.DuplicateTimeWindowSeconds = input.DuplicateTimeWindowSeconds;
         policy.HourlyMaxSpanHours = input.HourlyMaxSpanHours;
+        policy.PayLatePenaltyPercent = input.PayLatePenaltyPercent;
+        policy.PayEarlyPenaltyPercent = input.PayEarlyPenaltyPercent;
+        policy.PayUndertimePenaltyPercent = input.PayUndertimePenaltyPercent;
+        policy.PayDayOffWorkIsOvertime = input.PayDayOffWorkIsOvertime;
+        policy.PayHolidayWorkIsOvertime = input.PayHolidayWorkIsOvertime;
     }
 
     private static string Summary(AttendancePolicy p) => string.Create(
         CultureInfo.InvariantCulture,
-        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, hourly shifts up to {p.HourlyMaxSpanHours} h.");
+        $"rounding {p.RoundingRuleMinutes} min, late grace {p.LateGraceMinutes} min, early grace {p.EarlyDepartureGraceMinutes} min, overtime after {p.OvertimeThresholdMinutes} min, overtime pre-approval {(p.RequiresOvertimePreApproval ? "on" : "off")}, corrections by {p.CorrectionApprovalWorkflow}, unlabeled punches {p.UnlabeledPunchInterpretationMode}, duplicate window {p.DuplicateTimeWindowSeconds} s, hourly shifts up to {p.HourlyMaxSpanHours} h, pay penalties late {p.PayLatePenaltyPercent}% early {p.PayEarlyPenaltyPercent}% under time {p.PayUndertimePenaltyPercent}%, day-off work {(p.PayDayOffWorkIsOvertime ? "is" : "is not")} overtime, holiday work {(p.PayHolidayWorkIsOvertime ? "is" : "is not")} overtime.");
 }

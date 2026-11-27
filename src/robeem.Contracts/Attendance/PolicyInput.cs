@@ -10,6 +10,7 @@ public sealed class PolicyInput
     public const int MaxOvertimeThresholdMinutes = 480;
     public const int MaxDuplicateWindowSeconds = 3600;
     public const int MaxHourlySpanHours = 24;
+    public const int MaxPenaltyPercent = 500;
 
     /// <summary>The workflows a correction can follow, as the policy's <c>CorrectionApprovalWorkflow</c> names them.</summary>
     public static readonly IReadOnlyList<string> Workflows = ["Manager", "HR", "Both"];
@@ -60,4 +61,22 @@ public sealed class PolicyInput
     [Range(1, MaxHourlySpanHours)]
     [Display(Name = "Longest hourly shift (hours)")]
     public int HourlyMaxSpanHours { get; set; } = 16;
+
+    [Range(0, MaxPenaltyPercent)]
+    [Display(Name = "Late arrival penalty (%)")]
+    public int PayLatePenaltyPercent { get; set; }
+
+    [Range(0, MaxPenaltyPercent)]
+    [Display(Name = "Early departure penalty (%)")]
+    public int PayEarlyPenaltyPercent { get; set; }
+
+    [Range(0, MaxPenaltyPercent)]
+    [Display(Name = "Under time penalty (%)")]
+    public int PayUndertimePenaltyPercent { get; set; } = 100;
+
+    [Display(Name = "Work on a day off is overtime")]
+    public bool PayDayOffWorkIsOvertime { get; set; } = true;
+
+    [Display(Name = "Work on a public holiday is overtime")]
+    public bool PayHolidayWorkIsOvertime { get; set; } = true;
 }

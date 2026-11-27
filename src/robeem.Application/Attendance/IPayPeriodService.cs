@@ -10,8 +10,16 @@ namespace robeem.Application.Attendance;
 /// </summary>
 public interface IPayPeriodService
 {
-    /// <summary>Lists the pay periods, latest first.</summary>
+    /// <summary>Lists the company-wide pay periods, latest first. An employee's own periods (made when payroll closes them) are not listed here.</summary>
     Task<IReadOnlyList<PayPeriodItem>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Closes an employee's own pay period (the dates their pay cycle gives), making the row when there is none yet. Closed, payroll no longer
+    /// reads that employee's days in it; other employees are not affected. Refused when the employee does not exist, the period is already
+    /// closed, or it overlaps another period of the same employee (their cycle changed). Whether the period is ready to close is the
+    /// caller's to check.
+    /// </summary>
+    Task<SaveResult> CloseForEmployeeAsync(int employeeId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken);
 
     /// <summary>Creates an open period. Refused when it ends before it starts, is longer than a year, or overlaps another period.</summary>
     Task<SaveResult> CreateAsync(PayPeriodInput input, CancellationToken cancellationToken);

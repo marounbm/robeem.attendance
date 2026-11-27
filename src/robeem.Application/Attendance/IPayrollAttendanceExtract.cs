@@ -32,4 +32,12 @@ public interface IPayrollAttendanceExtract
     /// </summary>
     /// <exception cref="ArgumentException">The end is before the start.</exception>
     Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, string? employee, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same days, kept to exactly these employees (an empty collection returns none). The employees' own pay periods are respected:
+    /// a period closed for one employee takes that employee's days out and no one else's. <paramref name="includeClosedPeriods"/> is for
+    /// showing the report of a period that was closed (read-only): it keeps the days of closed periods, and nothing else changes.
+    /// </summary>
+    /// <exception cref="ArgumentException">The end is before the start.</exception>
+    Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime payPeriodStart, DateTime payPeriodEnd, IReadOnlyCollection<int> employeeIds, bool includeClosedPeriods, CancellationToken cancellationToken);
 }

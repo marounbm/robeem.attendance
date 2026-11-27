@@ -12,4 +12,6 @@ public sealed record PayrollAttendanceDay(
     TimeSpan TotalWorkingHours,
     TimeSpan TotalOvertimeHours,
     TimeSpan TotalBreakHours,
-    IReadOnlyList<PayrollAttendanceShift> Shifts);
+    IReadOnlyList<PayrollAttendanceShift> Shifts,
+    TimeSpan TotalUndertimeHours = default,
+    bool HasInferredPunches = false);

@@ -89,6 +89,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAttendanceDeviceTypeService, AttendanceDeviceTypeService>();
         services.AddScoped<IAttendanceTransportService, AttendanceTransportService>();
         services.AddScoped<IPayPeriodService, PayPeriodService>();
+        services.AddScoped<IPayCycleService, PayCycleService>();
+        services.AddScoped<IPayrollCompensationService, PayrollCompensationService>();
         services.AddScoped<IAttendanceSettingsService, AttendanceSettingsService>();
         services.AddScoped<IAttendancePolicyService, AttendancePolicyService>();
         services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();

@@ -22,8 +22,48 @@ public sealed class PayPeriodService : IPayPeriodService
 
     public async Task<IReadOnlyList<PayPeriodItem>> ListAsync(CancellationToken cancellationToken)
     {
-        var periods = await _db.PayPeriods.AsNoTracking().OrderByDescending(p => p.StartDate).ThenByDescending(p => p.Id).ToListAsync(cancellationToken);
+        var periods = await _db.PayPeriods.AsNoTracking().Where(p => p.EmployeeId == null).OrderByDescending(p => p.StartDate).ThenByDescending(p => p.Id).ToListAsync(cancellationToken);
         return periods.Select(p => new PayPeriodItem { Id = p.Id, StartDate = p.StartDate.Date, EndDate = p.EndDate.Date, IsClosed = p.IsClosed }).ToList();
+    }
+
+    public async Task<SaveResult> CloseForEmployeeAsync(int employeeId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken)
+    {
+        var start = startDate.Date;
+        var end = endDate.Date;
+        if (!await _db.Profiles.AnyAsync(p => p.Id == employeeId, cancellationToken))
+        {
+            return SaveResult.Missing();
+        }
+
+        if (end < start)
+        {
+            return SaveResult.Invalid(nameof(PayPeriodInput.EndDate), "The period ends before it starts.");
+        }
+
+        var own = await _db.PayPeriods.Where(p => p.EmployeeId == employeeId && p.StartDate <= end && p.EndDate >= start).ToListAsync(cancellationToken);
+        if (own.Any(p => p.StartDate.Date != start || p.EndDate.Date != end))
+        {
+            var other = own.First(p => p.StartDate.Date != start || p.EndDate.Date != end);
+            return SaveResult.Invalid(nameof(PayPeriodInput.StartDate), $"The period overlaps another of this employee's ({other.StartDate:yyyy-MM-dd} to {other.EndDate:yyyy-MM-dd}).");
+        }
+
+        var period = own.FirstOrDefault();
+        if (period is { IsClosed: true })
+        {
+            return SaveResult.Invalid("id", "The pay period is already closed.");
+        }
+
+        if (period is null)
+        {
+            period = new PayPeriod { EmployeeId = employeeId, StartDate = DateTime.SpecifyKind(start, DateTimeKind.Unspecified), EndDate = DateTime.SpecifyKind(end, DateTimeKind.Unspecified) };
+            _db.PayPeriods.Add(period);
+        }
+
+        period.IsClosed = true;
+        await _db.SaveChangesAsync(cancellationToken);
+        _audit.Record(AttendanceAuditActions.PayPeriodChanged, nameof(PayPeriod), period.Id, $"Closed {start:yyyy-MM-dd} to {end:yyyy-MM-dd} for employee {employeeId}.");
+        await _db.SaveChangesAsync(cancellationToken);
+        return SaveResult.Success(period.Id);
     }
 
     public async Task<SaveResult> CreateAsync(PayPeriodInput input, CancellationToken cancellationToken)
@@ -40,7 +80,7 @@ public sealed class PayPeriodService : IPayPeriodService
             return SaveResult.Invalid(nameof(PayPeriodInput.EndDate), $"A pay period can be at most {MaxDays} days.");
         }
 
-        var overlap = await _db.PayPeriods.AsNoTracking().FirstOrDefaultAsync(p => p.StartDate <= end && p.EndDate >= start, cancellationToken);
+        var overlap = await _db.PayPeriods.AsNoTracking().FirstOrDefaultAsync(p => p.EmployeeId == null && p.StartDate <= end && p.EndDate >= start, cancellationToken);
         if (overlap is not null)
         {
             return SaveResult.Invalid(nameof(PayPeriodInput.StartDate), $"The period overlaps another one ({overlap.StartDate:yyyy-MM-dd} to {overlap.EndDate:yyyy-MM-dd}).");

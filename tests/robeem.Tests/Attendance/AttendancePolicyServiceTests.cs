@@ -70,6 +70,46 @@ public sealed class AttendancePolicyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ThePayRules_AreStored_AndReadBack_AndANewPolicyStartsWithTheOnesThatChangeNothing()
+    {
+        var plain = (await CreateAsync(Input("Plain", ScheduleId("Day shift")))).Id!.Value;
+        var input = Input("Penalties", ScheduleId("Night shift"));
+        input.PayLatePenaltyPercent = 100;
+        input.PayEarlyPenaltyPercent = 50;
+        input.PayUndertimePenaltyPercent = 200;
+        input.PayDayOffWorkIsOvertime = false;
+        input.PayHolidayWorkIsOvertime = false;
+        var strict = (await CreateAsync(input)).Id!.Value;
+
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        var startingPoint = (await service.GetInputAsync(plain, CancellationToken.None))!;
+        var back = (await service.GetInputAsync(strict, CancellationToken.None))!;
+        var listed = (await service.ListAsync(CancellationToken.None)).Single(p => p.Id == strict);
+
+        Assert.Equal((0, 0, 100, true, true), (startingPoint.PayLatePenaltyPercent, startingPoint.PayEarlyPenaltyPercent, startingPoint.PayUndertimePenaltyPercent, startingPoint.PayDayOffWorkIsOvertime, startingPoint.PayHolidayWorkIsOvertime));
+        Assert.Equal((100, 50, 200, false, false), (back.PayLatePenaltyPercent, back.PayEarlyPenaltyPercent, back.PayUndertimePenaltyPercent, back.PayDayOffWorkIsOvertime, back.PayHolidayWorkIsOvertime));
+        Assert.Equal((100, 50, 200, false, false), (listed.PayLatePenaltyPercent, listed.PayEarlyPenaltyPercent, listed.PayUndertimePenaltyPercent, listed.PayDayOffWorkIsOvertime, listed.PayHolidayWorkIsOvertime));
+        Assert.Contains("late 100% early 50% under time 200%", db.AttendanceAuditLogs.Select(a => a.Details).AsEnumerable().Last(d => d!.Contains("Penalties", StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData(nameof(PolicyInput.PayLatePenaltyPercent), -1)]
+    [InlineData(nameof(PolicyInput.PayEarlyPenaltyPercent), 501)]
+    [InlineData(nameof(PolicyInput.PayUndertimePenaltyPercent), 1000)]
+    public async Task APenaltyPercentOutsideItsRange_IsRefusedByName(string field, int value)
+    {
+        var input = Input("Bad pay rule");
+        typeof(PolicyInput).GetProperty(field)!.SetValue(input, value);
+
+        var result = await CreateAsync(input);
+
+        Assert.Contains("Use between 0 and 500 percent", result.Errors[field]);
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(db.AttendancePolicies);
+    }
+
+    [Fact]
     public async Task ANewPolicy_StartsWithTheStartingBreakNumbers_WhichAreSetInRulesFromThen()
     {
         await CreateAsync(Input("Breaks", ScheduleId("Night shift")));

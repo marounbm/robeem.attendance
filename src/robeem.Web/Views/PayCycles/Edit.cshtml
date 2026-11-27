@@ -1,0 +1,24 @@
+@model PayCycleEditViewModel
+@{
+    ViewData["Title"] = "Pay cycle — " + Model.EmployeeLabel;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Pay cycle <span class="text-muted">@Model.EmployeeLabel</span></h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back to pay cycles</a>
+</div>
+
+<p class="text-muted">
+    @(Model.HasOwn ? "This employee has a cycle of their own." : "This employee has no cycle of their own: the default applies. Saving this gives them one.")
+</p>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.EmployeeId" class="card card-body row g-3 align-items-start">
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+    <div class="row g-3">
+        <partial name="_PayCycleForm" model="Model.Input" />
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a asp-action="Index" class="btn btn-link">Cancel</a>
+    </div>
+</form>

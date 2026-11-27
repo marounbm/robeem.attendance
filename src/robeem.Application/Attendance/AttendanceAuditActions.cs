@@ -21,6 +21,12 @@ public static class AttendanceAuditActions
     /// <summary>A pay period was created, closed or reopened.</summary>
     public const string PayPeriodChanged = "PayPeriodChanged";
 
+    /// <summary>The tenant's default pay cycle, or an employee's own, was set or removed.</summary>
+    public const string PayCycleChanged = "PayCycleChanged";
+
+    /// <summary>A payroll administrator decided a line of an employee's compensation report (overtime or under time), possibly adding leave to the employee's leaves.</summary>
+    public const string CompensationDecided = "CompensationDecided";
+
     /// <summary>The tenant's attendance settings (the date the punching started) were changed.</summary>
     public const string AttendanceSettingsChanged = "AttendanceSettingsChanged";
 

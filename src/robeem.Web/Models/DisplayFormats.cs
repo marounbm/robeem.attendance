@@ -15,6 +15,14 @@ public static class DisplayFormats
     /// <summary>Writes minutes as hours and minutes, e.g. 83 as <c>1:23</c>.</summary>
     public static string Minutes(int minutes) => Hours(TimeSpan.FromMinutes(minutes));
 
+    /// <summary>Writes minutes as hours and minutes with a sign, for a balance: <c>+1:23</c>, <c>−0:45</c>, <c>0:00</c>.</summary>
+    public static string SignedMinutes(int minutes) => minutes switch
+    {
+        > 0 => "+" + Minutes(minutes),
+        < 0 => "−" + Minutes(-minutes),
+        _ => Minutes(0),
+    };
+
     public static string Date(DateTime date) => date.ToString("ddd yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>Writes a short duration the way a job run needs it: <c>&lt;1 s</c>, <c>12 s</c>, <c>3 min 05 s</c>.</summary>

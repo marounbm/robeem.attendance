@@ -29,6 +29,14 @@ namespace robeem.DataModel
 
         public bool IsClosed { get; set; }
 
+        /// <summary>
+        /// Gets or sets the employee whose period this is: an employee's own period is made, from their <see cref="PayCycle"/>, when payroll
+        /// closes it. Null is a company-wide period, which applies to every employee.
+        /// </summary>
+        public int? EmployeeId { get; set; }
+
+        public Profile? Employee { get; set; }
+
         #region not mapped
         [NotMapped]
         public override string Title => $"{StartDate:yyyy-MM-dd} to {EndDate:yyyy-MM-dd}";

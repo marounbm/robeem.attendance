@@ -1,0 +1,298 @@
+@model CompensationEmployeeViewModel
+@{
+    var report = Model.Report;
+    var s = report.Summary;
+    ViewData["Title"] = $"Compensation — {report.EmployeeName}";
+    var dateValue = Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null;
+    var decidable = report.Lines.Where(l => l.AllowedDecisions.Count > 0).ToList();
+    var index = 0;
+
+    string Words(string name) => DisplayFormats.Words(name);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">@report.EmployeeName <span class="text-muted fs-5">@report.EmployeeNumber</span></h1>
+    <div class="d-flex gap-2">
+        <a asp-action="Employee" asp-route-id="@report.EmployeeId" asp-route-mode="@CompensationIndexViewModel.Containing" asp-route-date="@report.PeriodStart.AddDays(-1).ToString("yyyy-MM-dd")" class="btn btn-outline-secondary" title="The pay period before this one">« Previous period</a>
+        <a asp-action="Employee" asp-route-id="@report.EmployeeId" asp-route-mode="@CompensationIndexViewModel.Containing" asp-route-date="@report.PeriodEnd.AddDays(1).ToString("yyyy-MM-dd")" class="btn btn-outline-secondary" title="The pay period after this one">Next period »</a>
+        <a asp-action="Index" asp-route-mode="@Model.Mode" asp-route-date="@dateValue" class="btn btn-outline-secondary">Back to the overview</a>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<div class="card mb-3">
+    <div class="card-body row g-3">
+        <div class="col-md-3"><div class="small text-muted">Pay period</div><div class="fs-5">@report.PeriodStart.ToString("yyyy-MM-dd") to @report.PeriodEnd.ToString("yyyy-MM-dd")</div></div>
+        <div class="col-md-3"><div class="small text-muted">Pay cycle</div><div>@report.CycleDescription</div></div>
+        <div class="col-md-3"><div class="small text-muted">Schedule</div><div>@(string.IsNullOrEmpty(report.ScheduleName) ? "—" : report.ScheduleName)</div></div>
+        <div class="col-md-3">
+            <div class="small text-muted">Status</div>
+            <div>
+                @if (report.IsClosed)
+                {
+                    <span class="badge text-bg-secondary">Closed</span>
+                }
+                else if (!report.PeriodHasEnded)
+                {
+                    <span class="badge text-bg-info">Running</span>
+                }
+                else
+                {
+                    <span class="badge text-bg-primary">Open</span>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (report.NotReadyDays.Count > 0)
+{
+    <div class="alert alert-warning" role="status">
+        <strong>@report.NotReadyDays.Count day(s) of this period are not ready for payroll</strong> and are not in the report below:
+        @string.Join(", ", report.NotReadyDays.Select(d => d.ToString("yyyy-MM-dd")))
+        — an exception to settle, a day to review or approve. The period can't be closed until they are settled
+        (<a asp-controller="Exceptions" asp-action="Index">Exceptions</a>, <a asp-controller="Approvals" asp-action="Index">Approvals</a>).
+    </div>
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">Before the decisions</div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between"><span>Days paid</span><span>@s.PaidDays</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Worked</span><span>@DisplayFormats.Minutes(s.WorkedMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Regular</span><span>@DisplayFormats.Minutes(s.RegularMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Overtime</span><span>@DisplayFormats.Minutes(s.OvertimeMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time</span><span>@DisplayFormats.Minutes(s.UndertimeMinutes)</span></li>
+            </ul>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">The decisions</div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between"><span>Overtime accepted</span><span>@DisplayFormats.Minutes(s.OvertimeAcceptedMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Overtime ignored</span><span>@DisplayFormats.Minutes(s.OvertimeIgnoredMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time ignored</span><span>@DisplayFormats.Minutes(s.UndertimeIgnoredMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time, paid leave</span><span>@DisplayFormats.Minutes(s.UndertimePaidLeaveMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time, unpaid leave</span><span>@DisplayFormats.Minutes(s.UndertimeUnpaidLeaveMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time, penalised</span><span>@DisplayFormats.Minutes(s.UndertimePenalisedMinutes)</span></li>
+            </ul>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">After the decisions</div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between"><span>Overtime counted</span><span>@DisplayFormats.Minutes(s.OvertimeCountedMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Under time remaining</span><span>@DisplayFormats.Minutes(s.UndertimeRemainingMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between fw-semibold"><span>Balance (overtime − under time)</span><span>@DisplayFormats.SignedMinutes(s.BalanceMinutes)</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Penalties accumulated</span><span>@s.PenaltyMinutes min</span></li>
+                <li class="list-group-item d-flex justify-content-between"><span>Lines still to decide</span><span>@s.UndecidedLines</span></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Lines</div>
+    @if (report.Lines.Count == 0)
+    {
+        <div class="card-body text-muted">This period has no overtime, under time or penalty to decide.</div>
+    }
+    else
+    {
+        <form method="post" asp-action="Decide" id="decide-form">
+            <input type="hidden" name="EmployeeId" value="@report.EmployeeId" />
+            <input type="hidden" name="PeriodStart" value="@report.PeriodStart.ToString("yyyy-MM-dd")" />
+            <input type="hidden" name="Mode" value="@Model.Mode" />
+            <input type="hidden" name="Date" value="@dateValue" />
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Line</th>
+                            <th scope="col">Scheduled</th>
+                            <th scope="col" class="text-end">Worked</th>
+                            <th scope="col" class="text-end">Minutes</th>
+                            <th scope="col" class="text-end">Late</th>
+                            <th scope="col" class="text-end">Early</th>
+                            <th scope="col" class="text-end">Penalty</th>
+                            <th scope="col" class="text-end" title="Penalty minutes accumulated up to this line">Accumulated</th>
+                            <th scope="col">Decision</th>
+                            <th scope="col">Decide</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in report.Lines)
+                        {
+                            <tr class="@(line.NeedsDecision ? "table-warning" : null)">
+                                <td class="text-nowrap"><a asp-controller="Records" asp-action="Day" asp-route-employeeId="@report.EmployeeId" asp-route-date="@line.Date.ToString("yyyy-MM-dd")">@DisplayFormats.Date(line.Date)</a></td>
+                                <td>
+                                    @if (line.LineKind == CompensationLine.Overtime)
+                                    {
+                                        <span class="badge text-bg-success">Overtime</span> <span class="small text-muted">@Words(line.OvertimeKind)</span>
+                                    }
+                                    else if (line.LineKind == CompensationLine.Undertime)
+                                    {
+                                        <span class="badge text-bg-danger">Under time</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-secondary">Penalty</span>
+                                    }
+                                </td>
+                                <td class="text-nowrap">@line.Scheduled</td>
+                                <td class="text-end">@DisplayFormats.Minutes(line.WorkedMinutes)</td>
+                                <td class="text-end">@(line.LineKind == CompensationLine.Penalty ? "—" : DisplayFormats.Minutes(line.Minutes))</td>
+                                <td class="text-end">@(line.LateMinutes == 0 ? "—" : line.LateMinutes.ToString())</td>
+                                <td class="text-end">@(line.EarlyMinutes == 0 ? "—" : line.EarlyMinutes.ToString())</td>
+                                <td class="text-end">@(line.PenaltyMinutes == 0 ? "—" : line.PenaltyMinutes.ToString())</td>
+                                <td class="text-end">@line.RunningPenaltyMinutes</td>
+                                <td>
+                                    @if (line.IsCoveredByLeave)
+                                    {
+                                        <span class="badge text-bg-info">@Words(line.Decision ?? string.Empty)</span>
+                                        <div class="small text-muted">Added to the employee's leaves</div>
+                                    }
+                                    else if (line.Decision is not null && !line.NeedsDecision)
+                                    {
+                                        <span class="badge text-bg-primary">@Words(line.Decision)</span>
+                                        <div class="small text-muted">@line.DecidedByName</div>
+                                    }
+                                    else if (line.LineKind == CompensationLine.Overtime)
+                                    {
+                                        <span class="small text-muted">Counts as overtime (not decided)</span>
+                                    }
+                                    else if (line.LineKind == CompensationLine.Undertime)
+                                    {
+                                        <span class="small text-muted">Offsets the overtime (not decided)</span>
+                                    }
+                                </td>
+                                <td style="min-width: 17rem;">
+                                    @if (line.AllowedDecisions.Count > 0)
+                                    {
+                                        <input type="hidden" name="Lines[@index].Date" value="@line.Date.ToString("yyyy-MM-dd")" />
+                                        <input type="hidden" name="Lines[@index].LineKind" value="@line.LineKind" />
+                                        <select name="Lines[@index].Decision" class="form-select form-select-sm decision-choice" aria-label="Decision for @line.LineKind of @line.Date.ToString("yyyy-MM-dd")">
+                                            <option value="">Leave as it is</option>
+                                            @foreach (var allowed in line.AllowedDecisions)
+                                            {
+                                                <option value="@allowed">@(allowed switch { "PaidLeave" => "Paid leave (added to leaves)", "UnpaidLeave" => "Unpaid leave (added to leaves)", "Penalise" => "Penalise", _ => Words(allowed) })</option>
+                                            }
+                                        </select>
+                                        @if (line.AllowedDecisions.Contains("PaidLeave"))
+                                        {
+                                            <select name="Lines[@index].LeaveType" class="form-select form-select-sm mt-1" aria-label="Type of paid leave" title="The type of leave a paid-leave decision adds">
+                                                @foreach (var type in Model.PaidLeaveTypes)
+                                                {
+                                                    <option value="@type">Paid leave type: @type</option>
+                                                }
+                                            </select>
+                                        }
+
+                                        <input type="text" name="Lines[@index].Note" maxlength="500" class="form-control form-control-sm mt-1" placeholder="Note (optional)" aria-label="Note" />
+                                        index++;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (decidable.Count > 0)
+            {
+                <div class="card-footer d-flex flex-wrap gap-2 align-items-center">
+                    <button type="submit" class="btn btn-primary">Record decisions</button>
+                    <span class="text-muted small">Only the lines you gave a decision are recorded. A leave decision adds part-day leaves to the employee's leaves over the time missed at the start and end of the shift.</span>
+                </div>
+            }
+        </form>
+    }
+</div>
+
+@if (!report.IsClosed && report.Lines.Any(l => l is { LineKind: CompensationLine.Undertime, NeedsDecision: true, IsCoveredByLeave: false }))
+{
+    <div class="card mb-3">
+        <div class="card-header">All the under time that has no decision</div>
+        <div class="card-body">
+            <form method="post" asp-action="Decide" class="row g-2 align-items-end">
+                <input type="hidden" name="EmployeeId" value="@report.EmployeeId" />
+                <input type="hidden" name="PeriodStart" value="@report.PeriodStart.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="Mode" value="@Model.Mode" />
+                <input type="hidden" name="Date" value="@dateValue" />
+                <div class="col-auto">
+                    <label class="form-label small mb-0" for="bulk">Decide them all as</label>
+                    <select id="bulk" name="UndecidedUndertime" class="form-select form-select-sm">
+                        <option value="Penalise">Penalise</option>
+                        <option value="Ignore">Ignore</option>
+                    </select>
+                </div>
+                <div class="col-auto"><button type="submit" class="btn btn-outline-primary btn-sm">Apply</button></div>
+                <div class="col-12 form-text">Leave is decided line by line, because it adds leaves to the employee's leaves.</div>
+            </form>
+        </div>
+    </div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">The one overtime line</div>
+    <div class="card-body">
+        @if (s.BalanceMinutes >= 0)
+        {
+            <p class="fs-5 mb-1">Overtime: <strong>@DisplayFormats.Minutes(s.OvertimeLineMinutes)</strong></p>
+            <div class="small text-muted">Overtime counted @DisplayFormats.Minutes(s.OvertimeCountedMinutes) minus under time remaining @DisplayFormats.Minutes(s.UndertimeRemainingMinutes).</div>
+        }
+        else
+        {
+            <p class="fs-5 mb-1">Under time left over: <strong>@DisplayFormats.Minutes(s.DeficitMinutes)</strong></p>
+            <div class="small text-muted">The under time remaining (@DisplayFormats.Minutes(s.UndertimeRemainingMinutes)) is more than the overtime counted (@DisplayFormats.Minutes(s.OvertimeCountedMinutes)).</div>
+        }
+
+        @if (s.UndertimeUnpaidLeaveMinutes > 0)
+        {
+            <div class="small mt-2">Unpaid leave in the period: @DisplayFormats.Minutes(s.UndertimeUnpaidLeaveMinutes).</div>
+        }
+
+        <div class="small mt-1">Penalties accumulated: @s.PenaltyMinutes minutes.</div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Closing the period</div>
+    <div class="card-body">
+        @if (report.IsClosed)
+        {
+            <p class="mb-2">The period is closed: payroll no longer reads its days and its decisions are locked.</p>
+            <form method="post" asp-action="Reopen" class="row g-2 align-items-end">
+                <input type="hidden" name="EmployeeId" value="@report.EmployeeId" />
+                <input type="hidden" name="PeriodStart" value="@report.PeriodStart.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="Mode" value="@Model.Mode" />
+                <input type="hidden" name="Date" value="@dateValue" />
+                <div class="col-md-6">
+                    <label class="form-label small mb-0" for="reason">Reason to reopen (kept in the audit log)</label>
+                    <input id="reason" name="Reason" maxlength="1000" class="form-control form-control-sm" />
+                </div>
+                <div class="col-auto"><button type="submit" class="btn btn-outline-secondary btn-sm">Reopen</button></div>
+            </form>
+        }
+        else if (report.CanClose)
+        {
+            <p class="mb-2">The period has ended and every day of it is ready. Closing it ends payroll's reading of its days and locks the decisions.</p>
+            <form method="post" asp-action="Close">
+                <input type="hidden" name="EmployeeId" value="@report.EmployeeId" />
+                <input type="hidden" name="PeriodStart" value="@report.PeriodStart.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="Mode" value="@Model.Mode" />
+                <input type="hidden" name="Date" value="@dateValue" />
+                <button type="submit" class="btn btn-primary">Close the pay period</button>
+            </form>
+        }
+        else
+        {
+            <p class="mb-0 text-muted">@report.CannotCloseReason</p>
+        }
+    </div>
+</div>

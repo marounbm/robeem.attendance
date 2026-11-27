@@ -145,6 +145,8 @@ public sealed class PayPeriodsEndpointTests : IAsyncDisposable
 
         public Task<SaveResult> CloseAsync(int id, CancellationToken cancellationToken) => Record("close");
 
+        public Task<SaveResult> CloseForEmployeeAsync(int employeeId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken) => Record("close-employee");
+
         public Task<SaveResult> ReopenAsync(int id, string? reason, CancellationToken cancellationToken)
         {
             Reopens.Add(("reopen", id, reason));
@@ -170,5 +172,8 @@ public sealed class PayPeriodsEndpointTests : IAsyncDisposable
             Asked++;
             return Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);
         }
+
+        public Task<IReadOnlyList<PayrollAttendanceDay>> GetApprovedRecordsAsync(DateTime from, DateTime to, IReadOnlyCollection<int> employeeIds, bool includeClosedPeriods, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PayrollAttendanceDay>>([]);
     }
 }

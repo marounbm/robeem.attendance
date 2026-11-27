@@ -44,6 +44,7 @@ public sealed class TestEmployeeRemoverTests : IDisposable
     {
         await PrepareAsync();
         var other = Snapshot("100004");
+        AddPayRowsFor("100001", "100004");
         var previewed = (await RemoveAsync(File("100001"), preview: true)).Result!;
 
         var outcome = await RemoveAsync(File("100001", "NO-SUCH"), confirmation: TestDatabase.TenantA);
@@ -65,6 +66,13 @@ public sealed class TestEmployeeRemoverTests : IDisposable
             Assert.DoesNotContain(db.ExternalEmployeeIdMappings, m => m.ExternalEmployeeId == "100001");
             var entry = Assert.Single(db.AttendanceAuditLogs, a => a.Action == AttendanceAuditActions.TestEmployeesDeleted);
             Assert.Contains("100001", entry.Details);
+
+            // The pay data of the deleted employee goes with them: decisions, their own pay cycle and their closed period. The other's stays.
+            var remaining = db.Profiles.Single(p => p.EmployeeNumber == "100004").Id;
+            Assert.Equal(remaining, Assert.Single(db.PayCompensationDecisions).EmployeeId);
+            Assert.Equal(remaining, Assert.Single(db.PayCycles).EmployeeId);
+            Assert.Equal(remaining, Assert.Single(db.PayPeriods).EmployeeId);
+            Assert.Equal(1, Count(result, "Compensation decisions"));
         }
 
         // The other employee has all of theirs, as it was.
@@ -127,6 +135,29 @@ public sealed class TestEmployeeRemoverTests : IDisposable
     private static string File(params string[] numbers) => "employee_number\r\n" + string.Join("\r\n", numbers) + "\r\n";
 
     private static int Count(robeem.Contracts.Attendance.TestEmployeeDeleteResult result, string name) => result.Counts.Single(c => c.Name == name).Count;
+
+    /// <summary>Gives each employee a compensation decision, a pay cycle of their own and a closed pay period.</summary>
+    private void AddPayRowsFor(params string[] numbers)
+    {
+        using var db = _harness.Database.CreateContext(TestDatabase.TenantA);
+        foreach (var id in numbers.Select(n => db.Profiles.Single(p => p.EmployeeNumber == n).Id))
+        {
+            db.PayCompensationDecisions.Add(new PayCompensationDecision
+            {
+                EmployeeId = id,
+                AttendanceDate = new DateTime(2026, 4, 6),
+                LineKind = CompensationLineKind.Overtime,
+                Decision = CompensationDecisionKind.Ignore,
+                Minutes = 30,
+                DecidedById = id,
+                DecidedAt = new DateTime(2026, 5, 1),
+            });
+            db.PayCycles.Add(new PayCycle { EmployeeId = id, Frequency = PayCycleFrequency.Weekly });
+            db.PayPeriods.Add(new PayPeriod { EmployeeId = id, StartDate = new DateTime(2026, 4, 1), EndDate = new DateTime(2026, 4, 30), IsClosed = true });
+        }
+
+        db.SaveChanges();
+    }
 
     private async Task<TestEmployeeDeleteOutcome> RemoveAsync(string csv, string? confirmation = null, bool preview = false, bool enabled = true)
     {

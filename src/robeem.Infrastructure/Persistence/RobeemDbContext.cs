@@ -84,6 +84,10 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
 
     public DbSet<PayPeriod> PayPeriods => Set<PayPeriod>();
 
+    public DbSet<PayCycle> PayCycles => Set<PayCycle>();
+
+    public DbSet<PayCompensationDecision> PayCompensationDecisions => Set<PayCompensationDecision>();
+
     public DbSet<AttendanceSettings> AttendanceSettings => Set<AttendanceSettings>();
 
     public DbSet<AttendanceRuleSet> AttendanceRuleSets => Set<AttendanceRuleSet>();
@@ -120,6 +124,7 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         async Task DeleteAsync<T>(string name, IQueryable<T> rows) =>
             deleted.Add(new AttendanceDataCount { Name = name, Count = await rows.ExecuteDeleteAsync(cancellationToken) });
 
+        await DeleteAsync("Compensation decisions", PayCompensationDecisions);
         await AttendanceCorrections.ExecuteUpdateAsync(s => s.SetProperty(c => c.CancelsCorrectionId, (int?)null), cancellationToken);
         await DeleteAsync("Corrections", AttendanceCorrections);
         await DeleteAsync("Exceptions", AttendanceExceptions);
@@ -200,6 +205,9 @@ public class RobeemDbContext : DbContext, IRobeemDbContext
         await Step("Employee-id mappings", ExternalEmployeeIdMappings.Where(m => ids.Contains(m.EmployeeId)));
         await Step("Schedule assignments", TimeScheduleEmployees.Where(a => ids.Contains(a.EmployeeId)));
         await Step("Leaves", EmployeeLeaves.Where(l => ids.Contains(l.EmployeeId)));
+        await Step("Compensation decisions", PayCompensationDecisions.Where(d => ids.Contains(d.EmployeeId)));
+        await Step("Pay cycles", PayCycles.Where(c => c.EmployeeId != null && ids.Contains(c.EmployeeId.Value)));
+        await Step("Pay periods", PayPeriods.Where(p => p.EmployeeId != null && ids.Contains(p.EmployeeId.Value)));
         await Step("Employees", Profiles.Where(p => ids.Contains(p.Id)));
         return result;
     }

@@ -16,6 +16,8 @@ public static class AuditActionCatalog
         "IntegrationRunRequested",
         "ConnectionTested",
         "PayPeriodChanged",
+        "PayCycleChanged",
+        "CompensationDecided",
         "AttendanceSettingsChanged",
         "PolicyChanged",
         "DayReprocessed",

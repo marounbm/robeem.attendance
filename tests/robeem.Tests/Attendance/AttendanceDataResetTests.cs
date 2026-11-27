@@ -57,6 +57,41 @@ public sealed class AttendanceDataResetTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task ResetAlsoDeletesTheCompensationDecisions_ButKeepsThePayCyclesAndPeriods()
+    {
+        await ImportADayAsync();
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            db.PayCompensationDecisions.Add(new PayCompensationDecision
+            {
+                EmployeeId = EmployeeId,
+                AttendanceDate = Monday,
+                LineKind = CompensationLineKind.Overtime,
+                Decision = CompensationDecisionKind.Ignore,
+                Minutes = 30,
+                DecidedById = EmployeeId,
+                DecidedAt = Monday,
+            });
+            db.PayCycles.Add(new PayCycle { EmployeeId = EmployeeId, Frequency = PayCycleFrequency.Weekly });
+            db.PayPeriods.Add(new PayPeriod { EmployeeId = EmployeeId, StartDate = Monday, EndDate = Monday.AddDays(6), IsClosed = true });
+            db.SaveChanges();
+        }
+
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var summary = await Service(db, enabled: true).GetSummaryAsync(CancellationToken.None);
+            Assert.Equal(1, Count(summary.Deletes, "Compensation decisions"));
+            Assert.Equal(1, Count(summary.Keeps, "Pay cycles"));
+            Assert.Equal(AttendanceDataResetOutcome.Done, (await Service(db, enabled: true).ResetAsync(TestDatabase.TenantA, CancellationToken.None)).Outcome);
+        }
+
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(check.PayCompensationDecisions);
+        Assert.Single(check.PayCycles);
+        Assert.Single(check.PayPeriods);
+    }
+
+    [Fact]
     public async Task ResetNeedsTheHostToAllowIt_AndTheTenantIdTyped_OrNothingIsDeleted()
     {
         await ImportADayAsync();
