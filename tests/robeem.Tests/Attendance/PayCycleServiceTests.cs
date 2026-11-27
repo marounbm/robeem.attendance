@@ -58,6 +58,35 @@ public sealed class PayCycleServiceTests : IDisposable
         Assert.Empty(db.PayCycles);
     }
 
+    [Theory]
+    [InlineData("SemiMonthly", 1)]
+    [InlineData("SemiMonthly", 13)]
+    [InlineData("EveryFourWeeks", 0)]
+    [InlineData("Weekly", 99)]
+    public async Task EveryKindOfCycleIsSaved_AndTheStartDayOnlyMattersWhereItIsRead(string frequency, int startDay)
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+
+        var saved = await Service(db).SaveDefaultAsync(new PayCycleInput { Frequency = frequency, StartDay = startDay, AnchorDate = new DateTime(2026, 4, 1) }, CancellationToken.None);
+
+        Assert.True(saved.Succeeded, string.Join("; ", saved.Errors.Values));
+        Assert.Equal(frequency, Assert.Single(db.PayCycles).Frequency.ToString());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(14)]
+    [InlineData(28)]
+    public async Task ATwiceAMonthCycle_CanStartOnDay1To13Only_BecauseItsSecondPeriodStarts15DaysLater(int startDay)
+    {
+        using var db = _database.CreateContext(TestDatabase.TenantA);
+
+        var result = await Service(db).SaveDefaultAsync(new PayCycleInput { Frequency = "SemiMonthly", StartDay = startDay }, CancellationToken.None);
+
+        Assert.Contains("day 1 to 13", result.Errors[nameof(PayCycleInput.StartDay)]);
+        Assert.Empty(db.PayCycles);
+    }
+
     [Fact]
     public async Task AnEmployeeCanHaveTheirOwnCycle_AndTheListSaysWhichApplies()
     {

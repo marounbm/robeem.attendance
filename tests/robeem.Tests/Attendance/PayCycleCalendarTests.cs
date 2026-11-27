@@ -54,7 +54,59 @@ public sealed class PayCycleCalendarTests
     }
 
     [Theory]
+    [InlineData("2026-04-28", "2026-04-01", "2026-04-28")]
+    [InlineData("2026-04-29", "2026-04-29", "2026-05-26")]
+    [InlineData("2026-03-31", "2026-03-04", "2026-03-31")]
+    public void AnEveryFourWeeksCycle_RunsTwentyEightDaysFromItsAnchor(string date, string start, string end)
+    {
+        Assert.Equal((D(start), D(end)), PayCycleCalendar.PeriodContaining(Cycle(PayCycleFrequency.EveryFourWeeks), D(date)));
+    }
+
+    [Theory]
+    [InlineData(1, "2026-11-01", "2026-11-01", "2026-11-15")]
+    [InlineData(1, "2026-11-15", "2026-11-01", "2026-11-15")]
+    [InlineData(1, "2026-11-16", "2026-11-16", "2026-11-30")]
+    [InlineData(1, "2026-02-20", "2026-02-16", "2026-02-28")]
+    [InlineData(1, "2028-02-29", "2028-02-16", "2028-02-29")]
+    [InlineData(1, "2026-12-31", "2026-12-16", "2026-12-31")]
+    [InlineData(11, "2026-11-05", "2026-10-26", "2026-11-10")]
+    [InlineData(11, "2026-11-11", "2026-11-11", "2026-11-25")]
+    [InlineData(11, "2026-11-26", "2026-11-26", "2026-12-10")]
+    [InlineData(11, "2027-01-05", "2026-12-26", "2027-01-10")]
+    [InlineData(11, "2026-03-05", "2026-02-26", "2026-03-10")]
+    [InlineData(13, "2026-02-28", "2026-02-28", "2026-03-12")]
+    [InlineData(13, "2026-02-27", "2026-02-13", "2026-02-27")]
+    public void ATwiceAMonthCycle_HasTwoPeriodsAMonth_FromItsStartDay(int startDay, string date, string start, string end)
+    {
+        Assert.Equal((D(start), D(end)), PayCycleCalendar.PeriodContaining(Cycle(PayCycleFrequency.SemiMonthly, startDay: startDay), D(date)));
+    }
+
+    [Fact]
+    public void ATwiceAMonthCycle_CoversEveryDayOnce_WithNoGapAndNoOverlap()
+    {
+        foreach (var startDay in new[] { 1, 6, 11, 13 })
+        {
+            var cycle = Cycle(PayCycleFrequency.SemiMonthly, startDay: startDay);
+            var (start, end) = PayCycleCalendar.PeriodContaining(cycle, D("2026-01-01"));
+            for (var day = D("2026-01-01"); day <= D("2028-03-31"); day = day.AddDays(1))
+            {
+                // The period of a day contains it, and the next day is in the same period or in the one that starts right after.
+                if (day > end)
+                {
+                    Assert.Equal(end.AddDays(1), PayCycleCalendar.PeriodContaining(cycle, day).Start);
+                    (start, end) = PayCycleCalendar.PeriodContaining(cycle, day);
+                }
+
+                Assert.Equal((start, end), PayCycleCalendar.PeriodContaining(cycle, day));
+                Assert.InRange(day, start, end);
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(PayCycleFrequency.Weekly, "2026-11-12", "2026-11-04", "2026-11-10")]
+    [InlineData(PayCycleFrequency.EveryFourWeeks, "2026-11-12", "2026-10-14", "2026-11-10")]
+    [InlineData(PayCycleFrequency.SemiMonthly, "2026-11-12", "2026-10-13", "2026-10-27")]
     [InlineData(PayCycleFrequency.EveryTwoWeeks, "2026-11-12", "2026-10-28", "2026-11-10")]
     [InlineData(PayCycleFrequency.Monthly, "2026-11-12", "2026-09-26", "2026-10-25")]
     public void TheLastFinishedPeriod_IsTheOneBeforeTheOneThatContainsToday(PayCycleFrequency frequency, string today, string start, string end)
@@ -82,6 +134,9 @@ public sealed class PayCycleCalendarTests
         Assert.Equal("Monthly, from the 13th", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.Monthly, startDay: 13)));
         Assert.Equal("Weekly, from 2026-04-01 (Wed)", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.Weekly)));
         Assert.Equal("Every 2 weeks, from 2026-04-01 (Wed)", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.EveryTwoWeeks)));
+        Assert.Equal("Every 4 weeks, from 2026-04-01 (Wed)", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.EveryFourWeeks)));
+        Assert.Equal("Twice a month: 1st to 15th, 16th to the end of the month", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.SemiMonthly)));
+        Assert.Equal("Twice a month: 11th to 25th, 26th to the 10th of the next month", PayCycleCalendar.Describe(Cycle(PayCycleFrequency.SemiMonthly, startDay: 11)));
     }
 
     private static DateTime D(string iso) => DateTime.ParseExact(iso, "yyyy-MM-dd", global::System.Globalization.CultureInfo.InvariantCulture);

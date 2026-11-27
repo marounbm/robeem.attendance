@@ -35,7 +35,15 @@ Punches are calculated into days. A day is **payable** once it is approved and h
    | Work on a public holiday is overtime | All the work of a holiday becomes an overtime line |
 
    Keep **Overtime needs approval first** off, or every overtime day waits in *Approvals* before payroll can read it.
-4. **Pay cycles** (*Payroll → Pay cycles*, payroll): set the **default** cycle (for example monthly from day 26, which gives the 26th to the 25th), then give any employee a cycle of their own. With no cycle at all, the period is the calendar month.
+4. **Pay cycles** (*Payroll → Pay cycles*, payroll): set the **default** cycle, then give any employee a cycle of their own. With no cycle at all, the period is the calendar month. The kinds of cycle:
+
+   | Cycle | Periods | Set with |
+   |---|---|---|
+   | Monthly | One a month, from a day of the month to the day before it in the next. Day 1 is the calendar month; 26 gives the 26th to the 25th | The day of the month (1 to 28) |
+   | Twice a month | Two a month: the 1st to the 15th and the 16th to the end of the month; from start day 11 they are the 11th to the 25th and the 26th to the 10th | The first start day (1 to 13) |
+   | Every two weeks | 14 days each, 26 a year | A first day of a period |
+   | Weekly | 7 days each, 52 a year; the weekday of the first day is the day each period starts on | A first day of a period |
+   | Every four weeks | 28 days each, 13 a year | A first day of a period |
 5. **Holidays and leaves** (HR) are entered as usual. They excuse time, and saving one settles the affected days at once.
 
 ## 2. Every day

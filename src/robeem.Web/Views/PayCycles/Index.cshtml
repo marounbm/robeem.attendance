@@ -11,6 +11,24 @@
     <a asp-controller="Compensation" asp-action="Index">Compensation</a> screen.
 </p>
 
+<div class="card mb-4">
+    <div class="card-header">The kinds of cycle</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr><th scope="col">Cycle</th><th scope="col">Periods</th><th scope="col">Set with</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Monthly</td><td>One a month: from a day of the month to the day before it in the next (day 1 is the calendar month; 26 gives the 26th to the 25th).</td><td>The day of the month</td></tr>
+                <tr><td>Twice a month</td><td>Two a month: the 1st to the 15th and the 16th to the end of the month, or from another start day (11 gives the 11th to the 25th and the 26th to the 10th).</td><td>The first start day, 1 to 13</td></tr>
+                <tr><td>Every two weeks</td><td>14 days each, 26 a year.</td><td>A first day of a period</td></tr>
+                <tr><td>Weekly</td><td>7 days each, 52 a year. The weekday of the first day is the day each period starts on.</td><td>A first day of a period</td></tr>
+                <tr><td>Every four weeks</td><td>28 days each, 13 a year.</td><td>A first day of a period</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <partial name="_StatusMessage" />
 
 <div class="card mb-4">

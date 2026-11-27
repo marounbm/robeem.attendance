@@ -1,23 +1,65 @@
 @model PayCycleInput
 
-<div class="col-md-3">
+<div class="col-md-4" data-pay-cycle>
     <label asp-for="Frequency" class="form-label"></label>
-    <select asp-for="Frequency" class="form-select">
-        <option value="Monthly">Monthly</option>
+    <select asp-for="Frequency" class="form-select" data-cycle-frequency>
+        <option value="Monthly">Monthly: once a month</option>
+        <option value="SemiMonthly">Twice a month (semi-monthly)</option>
+        <option value="EveryTwoWeeks">Every two weeks (bi-weekly)</option>
         <option value="Weekly">Weekly</option>
-        <option value="EveryTwoWeeks">Every two weeks</option>
+        <option value="EveryFourWeeks">Every four weeks</option>
     </select>
+    <div class="form-text" data-cycle-help></div>
     <span asp-validation-for="Frequency" class="text-danger small"></span>
 </div>
-<div class="col-md-3">
+<div class="col-md-3" data-cycle-startday>
     <label asp-for="StartDay" class="form-label"></label>
     <input asp-for="StartDay" type="number" min="1" max="28" class="form-control" />
-    <div class="form-text">For a monthly cycle: 26 means the 26th to the 25th of the next month.</div>
+    <div class="form-text" data-cycle-startday-help></div>
     <span asp-validation-for="StartDay" class="text-danger small"></span>
 </div>
-<div class="col-md-3">
+<div class="col-md-3" data-cycle-anchor>
     <label asp-for="AnchorDate" class="form-label"></label>
     <input asp-for="AnchorDate" type="date" value="@Model.AnchorDate.ToString("yyyy-MM-dd")" class="form-control" />
-    <div class="form-text">For a weekly or two-weekly cycle: any first day of a period; the others follow every 7 or 14 days.</div>
+    <div class="form-text">The first day of any one period; the others follow every 7, 14 or 28 days. Its weekday is the day the period starts on.</div>
     <span asp-validation-for="AnchorDate" class="text-danger small"></span>
 </div>
+
+<script>
+    // Shows only what the chosen kind of cycle reads: a monthly or twice-a-month cycle a day of the month, the weekly ones a first day.
+    (function () {
+        var kinds = {
+            Monthly: { day: true, max: 28, help: 'Paid once a month. Day 1 is the calendar month; 26 gives the 26th to the 25th of the next month.', dayHelp: 'The day of the month a period starts on, 1 to 28.' },
+            SemiMonthly: { day: true, max: 13, help: 'Paid twice a month: from the start day for 15 days, then from the day after to the day before the start day of the next month.', dayHelp: '1 gives the 1st to the 15th and the 16th to the end of the month; 11 gives the 11th to the 25th and the 26th to the 10th. Use 1 to 13.' },
+            EveryTwoWeeks: { day: false, help: 'Paid every 14 days (26 periods a year).' },
+            Weekly: { day: false, help: 'Paid every 7 days (52 periods a year).' },
+            EveryFourWeeks: { day: false, help: 'Paid every 28 days (13 periods a year).' }
+        };
+
+        document.querySelectorAll('[data-pay-cycle]').forEach(function (group) {
+            var form = group.closest('form');
+            var select = group.querySelector('[data-cycle-frequency]');
+            var dayGroup = form.querySelector('[data-cycle-startday]');
+            var dayInput = dayGroup.querySelector('input');
+            var anchorGroup = form.querySelector('[data-cycle-anchor]');
+
+            function show() {
+                var kind = kinds[select.value] || kinds.Monthly;
+                group.querySelector('[data-cycle-help]').textContent = kind.help;
+                dayGroup.hidden = !kind.day;
+                anchorGroup.hidden = kind.day;
+                if (kind.day) {
+                    dayInput.max = kind.max;
+                    if (parseInt(dayInput.value, 10) > kind.max) {
+                        dayInput.value = kind.max;
+                    }
+
+                    dayGroup.querySelector('[data-cycle-startday-help]').textContent = kind.dayHelp;
+                }
+            }
+
+            select.addEventListener('change', show);
+            show();
+        });
+    })();
+</script>

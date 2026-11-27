@@ -156,7 +156,15 @@ public sealed class PayCycleService : IPayCycleService
             errors[nameof(PayCycleInput.Frequency)] = $"Choose one of: {string.Join(", ", PayCycleInput.Frequencies)}.";
         }
 
-        if (input.StartDay < 1 || input.StartDay > PayCycleCalendar.MaxStartDay)
+        // Only a monthly or twice-a-month cycle reads the start day, so only then is it checked (the others keep whatever the form posted).
+        if (input.Frequency == nameof(PayCycleFrequency.SemiMonthly))
+        {
+            if (input.StartDay < 1 || input.StartDay > PayCycleCalendar.MaxSemiMonthlyStartDay)
+            {
+                errors[nameof(PayCycleInput.StartDay)] = $"A cycle twice a month can start on day 1 to {PayCycleCalendar.MaxSemiMonthlyStartDay}: its second period starts 15 days later, and every month has that day.";
+            }
+        }
+        else if (input.Frequency == nameof(PayCycleFrequency.Monthly) && (input.StartDay < 1 || input.StartDay > PayCycleCalendar.MaxStartDay))
         {
             errors[nameof(PayCycleInput.StartDay)] = $"The month can start on day 1 to {PayCycleCalendar.MaxStartDay}, so that every month has it.";
         }
