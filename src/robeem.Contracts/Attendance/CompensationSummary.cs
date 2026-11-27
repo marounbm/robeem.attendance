@@ -33,6 +33,7 @@ public sealed class CompensationSummary
     public int UndertimePenalisedMinutes { get; init; }
 
     // After the decisions.
+
     /// <summary>Gets the overtime that counts: all of it except what was ignored (overtime nobody decided counts by default).</summary>
     public int OvertimeCountedMinutes { get; init; }
 

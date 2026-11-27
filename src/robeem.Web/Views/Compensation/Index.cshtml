@@ -43,7 +43,8 @@
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary">Show</button>
-                <a class="btn btn-outline-secondary" asp-action="Export" asp-route-search="@Model.Search" asp-route-mode="@Model.Mode" asp-route-date="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)">CSV</a>
+                <a class="btn btn-outline-secondary" asp-action="Export" asp-route-search="@Model.Search" asp-route-mode="@Model.Mode" asp-route-date="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)" title="One line per employee: the totals of the report">CSV</a>
+                <a class="btn btn-outline-secondary" asp-action="ExportDays" asp-route-search="@Model.Search" asp-route-mode="@Model.Mode" asp-route-date="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)" title="One line per employee per day, with the decisions">Days CSV</a>
             </div>
         </form>
     </div>
@@ -64,7 +65,9 @@ else
         </form>
         <span class="small text-muted">
             Closes, for every employee of this list (all pages), the period shown, when it has ended and nothing in it is not ready. Employees that are not ready are left open and named.
-            Periods for the whole company at once are on <a asp-controller="PayPeriods" asp-action="Index">Company pay periods</a>.
+            The days behind these numbers are on each employee's page, and in <strong>Days CSV</strong>.
+            Also: <a asp-controller="Payroll" asp-action="Index">approved days before any decision</a> (the payroll gate as it is) and
+            <a asp-controller="PayPeriods" asp-action="Index">company pay periods</a> (for the whole company at once).
         </span>
     </div>
 

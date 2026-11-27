@@ -66,7 +66,7 @@ public static class NavigationMenu
     private static readonly NavSection PayrollSection = new(
         "Payroll",
         [
-            new NavItem("Payroll", "Payroll", "Index", "The approved days payroll may pay for, per period, with a CSV export.", Payroll),
+            new NavItem("Approved days", "Payroll", "Index", "The approved days payroll may pay for, before any decision, over the dates you give, with a CSV export. Compensation has the same days for each employee's own pay period, with the decisions.", Payroll) { TabOf = "Compensation" },
             new NavItem("Compensation", "Compensation", "Index", "Each employee's overtime, under time and penalties for their own pay period: decide each line (ignore, leave, overtime), see the balance, close the period.", Payroll),
             new NavItem("Pay cycles", "PayCycles", "Index", "How often each employee is paid, which gives their pay periods: a default and each employee's own.", Payroll),
             new NavItem("Company pay periods", "PayPeriods", "Index", "Pay periods that apply to every employee at once: create, close and reopen; closing ends payroll extraction of a period for all.", Payroll) { TabOf = "Compensation" },

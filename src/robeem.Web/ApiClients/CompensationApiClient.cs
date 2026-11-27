@@ -28,6 +28,12 @@ public sealed class CompensationApiClient : ICompensationApiClient
         return await ApiResponses.ReadAsync<List<CompensationOverviewItem>>(response, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string mode, DateTime? date, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync($"{Path}/days?{Query(search, mode, date)}", cancellationToken);
+        return await ApiResponses.ReadAsync<List<CompensationDayRow>>(response, cancellationToken);
+    }
+
     public async Task<CompensationReport?> GetReportAsync(int employeeId, string mode, DateTime? date, CancellationToken cancellationToken)
     {
         using var response = await _http.GetAsync($"{Path}/{Number(employeeId)}?{Query(null, mode, date)}", cancellationToken);

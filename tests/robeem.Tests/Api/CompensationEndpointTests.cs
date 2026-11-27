@@ -33,6 +33,7 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
     [
         ["GET", "api/attendance/payroll/compensation", null!],
         ["GET", "api/attendance/payroll/compensation/all", null!],
+        ["GET", "api/attendance/payroll/compensation/days", null!],
         ["GET", "api/attendance/payroll/compensation/5", null!],
         ["POST", "api/attendance/payroll/compensation/decisions", """{"employeeId":5,"periodStart":"2026-10-01","lines":[]}"""],
         ["POST", "api/attendance/payroll/compensation/close", """{"employeeId":5,"periodStart":"2026-10-01"}"""],
@@ -187,6 +188,12 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
         {
             Calls.Add("all");
             return Task.FromResult<IReadOnlyList<CompensationOverviewItem>>([]);
+        }
+
+        public Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+        {
+            Calls.Add("days");
+            return Task.FromResult<IReadOnlyList<CompensationDayRow>>([]);
         }
 
         public Task<CompensationReport?> GetReportAsync(int employeeId, string? mode, DateTime? date, CancellationToken cancellationToken)

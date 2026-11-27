@@ -12,6 +12,9 @@ public interface ICompensationApiClient
     /// <summary>Every employee of the overview, for the export.</summary>
     Task<IReadOnlyList<CompensationOverviewItem>> ListAllAsync(string? search, string mode, DateTime? date, CancellationToken cancellationToken);
 
+    /// <summary>Every day of every employee of the overview, with the employee and period it belongs to, for the days export.</summary>
+    Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string mode, DateTime? date, CancellationToken cancellationToken);
+
     /// <summary>One employee's report; null when there is no such employee.</summary>
     Task<CompensationReport?> GetReportAsync(int employeeId, string mode, DateTime? date, CancellationToken cancellationToken);
 

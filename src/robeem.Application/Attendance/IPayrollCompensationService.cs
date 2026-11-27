@@ -33,6 +33,12 @@ public interface IPayrollCompensationService
     /// <summary>Gets every employee of the overview, all pages, for an export (one page at a time underneath).</summary>
     Task<IReadOnlyList<CompensationOverviewItem>> ListAllAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Gets every day of every employee of the overview (the same search, mode and date), with the employee and period it belongs to, for the days
+    /// export: what <see cref="GetReportAsync"/> shows as "days of the period", for all of them. Closed periods are included.
+    /// </summary>
+    Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken);
+
     /// <summary>Gets one employee's report; null when there is no such employee.</summary>
     Task<CompensationReport?> GetReportAsync(int employeeId, string? mode, DateTime? date, CancellationToken cancellationToken);
 

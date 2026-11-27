@@ -134,6 +134,27 @@ public sealed class CompensationController : Controller
         return File(bytes, "text/csv", "compensation.csv");
     }
 
+    /// <summary>
+    /// Every day of every employee of the overview as a CSV file: the days payroll may pay for, for each employee's own period, with what was decided
+    /// about them. It is what the old Payroll list was, with the decisions; closed periods are in it.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> ExportDays(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+    {
+        var rows = await _compensation.ListDaysAsync(Clean(search), Mode(mode), date, cancellationToken);
+        return Csv(CompensationDaysCsv.Build(rows), "compensation-days.csv");
+    }
+
+    /// <summary>The days of one employee's report as a CSV file.</summary>
+    [HttpGet]
+    public async Task<IActionResult> ExportEmployeeDays(int id, string? mode, DateTime? date, CancellationToken cancellationToken) =>
+        await _compensation.GetReportAsync(id, Mode(mode), date, cancellationToken) is { } report
+            ? Csv(CompensationDaysCsv.Build(report), $"compensation-days-{report.EmployeeNumber}-{report.PeriodStart:yyyy-MM-dd}.csv")
+            : NotFound();
+
+    private static FileContentResult Csv(string text, string name) =>
+        new(new UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble().Concat(Encoding.UTF8.GetBytes(text)).ToArray(), "text/csv") { FileDownloadName = name };
+
     private static string Mode(string? mode) =>
         string.Equals(mode, CompensationIndexViewModel.Containing, StringComparison.OrdinalIgnoreCase) ? CompensationIndexViewModel.Containing
         : string.Equals(mode, CompensationIndexViewModel.Last, StringComparison.OrdinalIgnoreCase) ? CompensationIndexViewModel.Last

@@ -27,6 +27,9 @@ public sealed class CompensationReport
 
     public IReadOnlyList<CompensationLine> Lines { get; init; } = Array.Empty<CompensationLine>();
 
+    /// <summary>Gets every day of the period payroll may pay for, with what the report made of it: the detail behind <see cref="Lines"/> and the totals.</summary>
+    public IReadOnlyList<CompensationDay> Days { get; init; } = Array.Empty<CompensationDay>();
+
     public CompensationSummary Summary { get; init; } = new();
 
     /// <summary>

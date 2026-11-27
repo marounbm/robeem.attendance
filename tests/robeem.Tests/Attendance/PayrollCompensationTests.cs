@@ -501,6 +501,50 @@ public sealed class PayrollCompensationTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task TheReportListsTheDaysOfThePeriod_WithTheHoursTheOvertimeAndWhatWasDecided()
+    {
+        await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@18:00");
+
+        var before = Assert.Single((await ReportAsync())!.Days);
+        Assert.Equal((Monday, "08:00–18:00", 540 + 60 - 60, 60, "Weekday", 60, 0), (before.Date, before.Worked, before.WorkedMinutes, before.BreakMinutes, before.OvertimeKind, before.OvertimeMinutes, before.UndertimeMinutes));
+
+        await DecideAsync(Line(Monday, CompensationLine.Overtime, "Ignore"));
+
+        var after = Assert.Single((await ReportAsync())!.Days);
+        Assert.Equal("Overtime: ignore", after.Decisions);
+        Assert.NotEqual(before.Decisions, after.Decisions);
+    }
+
+    [Fact]
+    public async Task TheDays_AreStillReadOnceThePeriodIsClosed_WhileThePayrollGateListsNone()
+    {
+        await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@17:00");
+        Assert.True((await CloseAsync()).Succeeded);
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var rows = await Service(db).ListDaysAsync(null, IPayrollCompensationService.LastPeriod, null, CancellationToken.None);
+
+        var row = Assert.Single(rows);
+        Assert.Equal((EmployeeId, October, new DateTime(2026, 10, 31), true, Monday), (row.EmployeeId, row.PeriodStart, row.PeriodEnd, row.PeriodIsClosed, row.Day.Date));
+        Assert.Empty(await new PayrollAttendanceExtract(db, new AttendancePolicyResolver(db)).GetApprovedRecordsAsync(October, new DateTime(2026, 10, 31), (string?)null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheDaysOfTheOverview_FollowTheSearch_AndAnEmployeeWithNoDayHasNoRow()
+    {
+        AddPerson("E-2", "Grace", "Hopper");
+        await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@18:00");
+
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        var service = Service(db);
+        var everyone = await service.ListDaysAsync(null, IPayrollCompensationService.LatestPeriod, null, CancellationToken.None);
+        var grace = await service.ListDaysAsync("hopper", IPayrollCompensationService.LatestPeriod, null, CancellationToken.None);
+
+        Assert.Equal([EmployeeId], everyone.Select(r => r.EmployeeId));
+        Assert.Empty(grace);
+    }
+
+    [Fact]
     public async Task APeriodNeedsTheEmployeesOwnFirstDay_AndAnUnknownEmployeeIsMissing()
     {
         await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@18:00");

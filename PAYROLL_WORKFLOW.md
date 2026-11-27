@@ -86,14 +86,17 @@ Each employee has their own period, so this is done per employee, not once for t
    - **Penalties** accumulated are shown beside the balance and are not taken from it.
    - **Unpaid leave** minutes are listed separately.
    - Under time that is ignored, covered by leave or penalised no longer offsets overtime. Each minute is dealt with one way.
-5. **Export** the overview as CSV (one line per employee) from the overview page, for the hand-over to pay calculation.
-6. **Close the period** for the employee, or for everyone ready at once.
+5. **Check the days.** The employee's page has a **Days of the period** card: every day payroll may pay for, with the hours as punched, the break, the overtime or under time, late and early minutes, penalty minutes and what you decided. It is the detail behind the totals.
+6. **Export** for the hand-over to pay calculation, from the overview page:
+   - **CSV**: one line per employee, the totals.
+   - **Days CSV**: one line per employee per day, with the decisions. The employee's page has the same for one employee. This still works after a period is closed, so the days of a paid period can always be exported again.
+7. **Close the period** for the employee, or for everyone ready at once.
    - On the employee's page, **Close the pay period** closes that one employee.
    - On the overview, **Close all ready periods** closes the period shown for every employee of the list (all pages, and only those matching the search): the one whose period has ended, has days to pay for, and has no not-ready day. The others are left open, and the message names them with the reason (not ended, not ready). Employees with nothing to pay for are skipped, so no empty periods are created, and those already closed are counted.
    - Payroll then stops reading a closed employee's days in the period, and their decisions are locked.
    - Other employees are not affected, and the report stays readable.
    - A single period can be closed only once it has ended and no not-ready day remains.
-7. **To change something after closing:** reopen the period (a reason is required and kept in the audit log), fix it, and close it again.
+8. **To change something after closing:** reopen the period (a reason is required and kept in the audit log), fix it, and close it again.
 
 ## 4. Worked example
 
@@ -125,7 +128,8 @@ Employee on a 08:00–17:00 shift with a 12:00–13:00 break, paid monthly from 
 | Start date, rules, policies, pay rules | *Settings* |
 | Pay cycles (default and per employee) | *Payroll → Pay cycles* |
 | Overtime, under time, penalties, decisions, closing | *Payroll → Compensation* |
-| The approved days payroll may read, and a CSV of them | *Payroll → Payroll* |
+| The days of a period with their decisions, and a CSV of them | *Payroll → Compensation*, an employee's page or **Days CSV** |
+| The approved days before any decision, over dates you give (rarely needed) | *Approved days*, a link on the *Compensation* overview |
 | Periods that apply to every employee (rarely needed) | *Company pay periods*, a link on the *Compensation* overview |
 | Settling a day | *Attendance → Exceptions* and *Approvals* |
 | Leaves (including those a decision added) | *Leaves* |

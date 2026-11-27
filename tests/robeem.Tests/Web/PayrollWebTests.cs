@@ -322,11 +322,14 @@ public sealed class PayrollWebTests
         var payroll = NavigationMenu.For(new FakeActor(["PayrollAdministrator"])).SelectMany(s => s.Items).Select(i => i.Controller);
         var others = NavigationMenu.For(new FakeActor(["Employee", "Manager", "HRAdministrator", "IntegrationAdministrator"])).SelectMany(s => s.Items).Select(i => i.Controller);
 
-        // Company pay periods is a tab of Compensation: not in the menu, but its access is checked like any screen's.
-        Assert.Equal(["Payroll", "Compensation", "PayCycles"], payroll);
+        // Approved days and Company pay periods are tabs of Compensation: not in the menu, but their access is checked like any screen's.
+        Assert.Equal(["Compensation", "PayCycles"], payroll);
         Assert.DoesNotContain(others, c => c is "Payroll" or "Compensation" or "PayCycles" or "PayPeriods");
-        Assert.Equal("Compensation", NavigationMenu.Find("PayPeriods")!.TabOf);
-        Assert.Equal(["PayrollAdministrator"], NavigationMenu.Find("PayPeriods")!.Roles);
+        foreach (var tab in new[] { "Payroll", "PayPeriods" })
+        {
+            Assert.Equal("Compensation", NavigationMenu.Find(tab)!.TabOf);
+            Assert.Equal(["PayrollAdministrator"], NavigationMenu.Find(tab)!.Roles);
+        }
     }
 
     private static PayrollAttendanceDay Day(int employeeId, string number, int dayOfOctober, double working, double overtime) =>

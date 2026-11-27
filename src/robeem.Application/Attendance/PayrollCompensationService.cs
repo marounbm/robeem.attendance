@@ -48,29 +48,44 @@ public sealed class PayrollCompensationService : IPayrollCompensationService
 
     public async Task<PagedResult<CompensationOverviewItem>> ListAsync(string? search, string? mode, DateTime? date, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
-        var employees = Employees(search);
-        var total = await employees.CountAsync(cancellationToken);
-        var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
-
-        // Shorter employee numbers first, so 9 comes before 10; the id breaks every tie, so pages never overlap.
-        var rows = await employees
-            .OrderBy(p => p.EmployeeNumber.Length)
-            .ThenBy(p => p.EmployeeNumber)
-            .ThenBy(p => p.Id)
-            .Skip((current - 1) * size)
-            .Take(size)
-            .Select(p => new Who(p.Id, p.EmployeeNumber, p.FirstName + " " + p.LastName, p.PayBasis == PayBasis.Hourly))
-            .ToListAsync(cancellationToken);
-
-        var reports = await ReportsAsync(rows, mode, date, cancellationToken);
+        var (reports, total, current, size) = await PageOfReportsAsync(search, mode, date, page, pageSize, cancellationToken);
         return new PagedResult<CompensationOverviewItem>
         {
-            Items = rows.Select(r => ToOverview(reports[r.Id])).ToList(),
+            Items = reports.Select(ToOverview).ToList(),
             Total = total,
             Page = current,
             PageSize = size,
         };
+    }
+
+    public async Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+    {
+        var all = new List<CompensationDayRow>();
+        var seen = 0;
+        for (var page = 1; ; page++)
+        {
+            var (reports, total, _, _) = await PageOfReportsAsync(search, mode, date, page, MaxPageSize, cancellationToken);
+            foreach (var report in reports)
+            {
+                all.AddRange(report.Days.Select(day => new CompensationDayRow
+                {
+                    EmployeeId = report.EmployeeId,
+                    EmployeeNumber = report.EmployeeNumber,
+                    EmployeeName = report.EmployeeName,
+                    ScheduleName = report.ScheduleName,
+                    PeriodStart = report.PeriodStart,
+                    PeriodEnd = report.PeriodEnd,
+                    PeriodIsClosed = report.IsClosed,
+                    Day = day,
+                }));
+            }
+
+            seen += reports.Count;
+            if (seen >= total || reports.Count == 0)
+            {
+                return all;
+            }
+        }
     }
 
     public async Task<IReadOnlyList<CompensationOverviewItem>> ListAllAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
@@ -405,6 +420,28 @@ public sealed class PayrollCompensationService : IPayrollCompensationService
         return $"{notReady.Count} day(s) of the period are not ready for payroll ({shown}{(notReady.Count > 5 ? ", ..." : string.Empty)}): settle their exceptions and approvals first.";
     }
 
+    /// <summary>One page of the employees (by number, shorter numbers first, the id breaking ties) with each one's report; a page past the end is the last.</summary>
+    private async Task<(List<CompensationReport> Reports, int Total, int Page, int PageSize)> PageOfReportsAsync(string? search, string? mode, DateTime? date, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var size = Math.Clamp(pageSize <= 0 ? DefaultPageSize : pageSize, 1, MaxPageSize);
+        var employees = Employees(search);
+        var total = await employees.CountAsync(cancellationToken);
+        var current = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)size)));
+
+        // Shorter employee numbers first, so 9 comes before 10; the id breaks every tie, so pages never overlap.
+        var rows = await employees
+            .OrderBy(p => p.EmployeeNumber.Length)
+            .ThenBy(p => p.EmployeeNumber)
+            .ThenBy(p => p.Id)
+            .Skip((current - 1) * size)
+            .Take(size)
+            .Select(p => new Who(p.Id, p.EmployeeNumber, p.FirstName + " " + p.LastName, p.PayBasis == PayBasis.Hourly))
+            .ToListAsync(cancellationToken);
+
+        var reports = await ReportsAsync(rows, mode, date, cancellationToken);
+        return (rows.Select(r => reports[r.Id]).ToList(), total, current, size);
+    }
+
     private IQueryable<Profile> Employees(string? search)
     {
         var employees = _db.Profiles.AsNoTracking().Where(p => p.IsActive);
@@ -551,6 +588,7 @@ public sealed class PayrollCompensationService : IPayrollCompensationService
                 PeriodHasEnded = hasEnded,
                 IsClosed = isClosed,
                 Lines = ordered,
+                Days = CompensationCalculator.DaysOf(days, ordered),
                 Summary = CompensationCalculator.Summarise(days, ordered),
                 NotReadyDays = notReady,
                 CanClose = !isClosed && cannotClose is null,

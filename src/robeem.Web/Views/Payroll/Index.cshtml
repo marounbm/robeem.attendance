@@ -5,6 +5,13 @@
 
 <h1 class="h3 mb-3">Payroll</h1>
 
+<div class="alert alert-info" role="status">
+    This is the payroll gate as it is: the approved days, <strong>before any decision</strong>, over the dates you give. It does not know each employee's
+    own pay period, the overtime and under time you decided, leave, or penalties, and it lists nothing for a period that is closed. To prepare the pay, use
+    <a asp-controller="Compensation" asp-action="Index">Compensation</a>: its report has the same days (with the decisions) and a days CSV that still works
+    after a period is closed.
+</div>
+
 <p class="text-muted">
     The days payroll may pay for: approved, with no open exception, in an open pay period. A day with anything still to settle
     isn't listed until it is settled and approved.

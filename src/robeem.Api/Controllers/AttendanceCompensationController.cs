@@ -38,6 +38,11 @@ public sealed class AttendanceCompensationController : ControllerBase
     public async Task<IReadOnlyList<CompensationOverviewItem>> ListAll(string? search, string? mode, DateTime? date, CancellationToken cancellationToken) =>
         await _compensation.ListAllAsync(search, mode, date, cancellationToken);
 
+    /// <summary>Every day of every employee of the overview, with the employee and period it belongs to, for the days export. One row per employee per day; closed periods included.</summary>
+    [HttpGet("days")]
+    public async Task<IReadOnlyList<CompensationDayRow>> ListDays(string? search, string? mode, DateTime? date, CancellationToken cancellationToken) =>
+        await _compensation.ListDaysAsync(search, mode, date, cancellationToken);
+
     /// <summary>One employee's report: the lines, the totals, the balance and the days that are not ready.</summary>
     [HttpGet("{employeeId:int}")]
     public async Task<ActionResult<CompensationReport>> Report(int employeeId, string? mode, DateTime? date, CancellationToken cancellationToken) =>

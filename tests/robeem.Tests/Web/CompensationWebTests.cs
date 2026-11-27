@@ -107,6 +107,51 @@ public sealed class CompensationWebTests
     }
 
     [Fact]
+    public void TheDaysCsv_HasOneLinePerDay_InNumberOrder_WithIsoDatesDecimalHoursAndNoFormulas()
+    {
+        CompensationDayRow Row(string number, int day, string decisions) => new()
+        {
+            EmployeeNumber = number,
+            EmployeeName = "=Ada",
+            PeriodStart = October,
+            PeriodEnd = new DateTime(2026, 10, 31),
+            PeriodIsClosed = true,
+            Day = new CompensationDay { Date = new DateTime(2026, 10, day), Scheduled = "08:00–17:00", Worked = "08:00–18:30", WorkedMinutes = 570, BreakMinutes = 60, OvertimeKind = "Weekday", OvertimeMinutes = 90, PenaltyMinutes = 5, Decisions = decisions, HasInferredPunches = true },
+        };
+
+        var csv = CompensationDaysCsv.Build([Row("E-10", 6, "a, b"), Row("E-2", 7, "none"), Row("E-2", 5, "none")]);
+
+        var lines = csv.TrimEnd().Split("\r\n");
+        Assert.Equal(CompensationDaysCsv.Header, lines[0]);
+        Assert.Equal(["E-2", "E-2", "E-10"], lines.Skip(1).Select(l => l.Split(',')[0]));
+        Assert.StartsWith("E-2,'=Ada,2026-10-01,2026-10-31,yes,2026-10-05,", lines[1]);
+        Assert.Contains(",9.50,1.00,Weekday,1.50,0.00,0.00,0,0,5,none,yes", lines[1]);
+        Assert.EndsWith(",\"a, b\",yes", lines[3]);
+    }
+
+    [Fact]
+    public async Task TheDaysExports_AreCsvFiles_OfTheOverviewAndOfOneEmployee_AndAnUnknownEmployeeIsNotFound()
+    {
+        var client = new FakeCompensation
+        {
+            DayRows = [new CompensationDayRow { EmployeeNumber = "E-1", EmployeeName = "Ada", Day = new CompensationDay { Date = new DateTime(2026, 10, 5) } }],
+            Report = new CompensationReport { EmployeeId = 5, EmployeeNumber = "E-1", PeriodStart = October, Days = [new CompensationDay { Date = new DateTime(2026, 10, 5) }] },
+        };
+        var controller = new CompensationController(client);
+
+        var all = Assert.IsType<FileContentResult>(await controller.ExportDays(" ada ", "latest", null, CancellationToken.None));
+        var one = Assert.IsType<FileContentResult>(await controller.ExportEmployeeDays(5, null, null, CancellationToken.None));
+        client.Report = null;
+        var missing = await controller.ExportEmployeeDays(9, null, null, CancellationToken.None);
+
+        Assert.Equal(("text/csv", "compensation-days.csv"), (all.ContentType, all.FileDownloadName));
+        Assert.Equal("ada", Assert.Single(client.DaySearches));
+        Assert.Equal("compensation-days-E-1-2026-10-01.csv", one.FileDownloadName);
+        Assert.Contains("2026-10-05", global::System.Text.Encoding.UTF8.GetString(one.FileContents));
+        Assert.IsType<NotFoundResult>(missing);
+    }
+
+    [Fact]
     public async Task AnEmployeeThatDoesNotExist_IsNotFound()
     {
         var controller = new CompensationController(new FakeCompensation { Report = null });
@@ -318,6 +363,10 @@ public sealed class CompensationWebTests
 
         public List<string?> AllSearches { get; } = [];
 
+        public IReadOnlyList<CompensationDayRow> DayRows { get; set; } = [];
+
+        public List<string?> DaySearches { get; } = [];
+
         public Task<PagedResult<CompensationOverviewItem>> ListAsync(string? search, string mode, DateTime? date, int page, int pageSize, CancellationToken cancellationToken)
         {
             Lists.Add((search, mode, date, page, pageSize));
@@ -328,6 +377,12 @@ public sealed class CompensationWebTests
         {
             AllSearches.Add(search);
             return Task.FromResult(All);
+        }
+
+        public Task<IReadOnlyList<CompensationDayRow>> ListDaysAsync(string? search, string mode, DateTime? date, CancellationToken cancellationToken)
+        {
+            DaySearches.Add(search);
+            return Task.FromResult(DayRows);
         }
 
         public Task<CompensationReport?> GetReportAsync(int employeeId, string mode, DateTime? date, CancellationToken cancellationToken) => Task.FromResult(Report);

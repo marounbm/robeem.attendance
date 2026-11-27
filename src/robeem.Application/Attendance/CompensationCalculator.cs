@@ -163,6 +163,39 @@ internal static class CompensationCalculator
         return lines;
     }
 
+    /// <summary>The day-by-day detail of a report: each payable day with the hours it gave and the lines, penalties and decisions that came from it.</summary>
+    public static List<CompensationDay> DaysOf(IReadOnlyList<PayrollAttendanceDay> days, IReadOnlyList<CompensationLine> lines) =>
+        days
+            .OrderBy(d => d.AttendanceDate)
+            .Select(day =>
+            {
+                var date = day.AttendanceDate.Date;
+                var mine = lines.Where(l => l.Date.Date == date).ToList();
+                var overtime = mine.FirstOrDefault(l => l.LineKind == CompensationLine.Overtime);
+                var under = mine.FirstOrDefault(l => l is { LineKind: CompensationLine.Undertime, IsCoveredByLeave: false });
+                var scheduled = day.Shifts.Where(s => s is { ScheduledStart: not null, ScheduledEnd: not null })
+                    .Select(s => string.Create(CultureInfo.InvariantCulture, $"{s.ScheduledStart:HH:mm}–{s.ScheduledEnd:HH:mm}"))
+                    .ToList();
+                return new CompensationDay
+                {
+                    Date = date,
+                    Scheduled = scheduled.Count > 0 ? string.Join("; ", scheduled) : (mine.FirstOrDefault(l => l.LineKind == CompensationLine.Overtime)?.Scheduled ?? string.Empty),
+                    Worked = string.Join("; ", day.Shifts.Where(s => s.ActualCheckIn is not null).Select(PunchedText)),
+                    WorkedMinutes = Minutes(day.Shifts.Aggregate(TimeSpan.Zero, (sum, s) => sum + s.WorkingHours)),
+                    BreakMinutes = Minutes(day.TotalBreakHours),
+                    OvertimeKind = overtime?.OvertimeKind ?? string.Empty,
+                    OvertimeMinutes = overtime?.Minutes ?? 0,
+                    UndertimeMinutes = under?.Minutes ?? 0,
+                    CoveredByLeaveMinutes = mine.Where(l => l.IsCoveredByLeave).Sum(l => l.Minutes),
+                    LateMinutes = day.Shifts.Sum(s => s.LateMinutes),
+                    EarlyMinutes = day.Shifts.Sum(s => s.EarlyDepartureMinutes),
+                    PenaltyMinutes = mine.Sum(l => l.PenaltyMinutes),
+                    Decisions = string.Join("; ", mine.Where(l => l.LineKind != CompensationLine.Penalty).Select(DecisionText)),
+                    HasInferredPunches = day.HasInferredPunches,
+                };
+            })
+            .ToList();
+
     /// <summary>
     /// A line for a leave decision whose leave still exists: the under time was covered, so there is nothing left to decide, but the report still says so.
     /// </summary>
@@ -263,6 +296,36 @@ internal static class CompensationCalculator
         periods.Any(p => p is { Kind: ExcusedKind.Holiday, IsWholeDay: true } && p.Overlaps(date, date.AddDays(1)));
 
     public static int Minutes(TimeSpan time) => (int)Math.Round(time.TotalMinutes, MidpointRounding.AwayFromZero);
+
+    private static string PunchedText(PayrollAttendanceShift shift)
+    {
+        var from = shift.ActualCheckIn!.Value;
+        var text = string.Create(CultureInfo.InvariantCulture, $"{from:HH:mm}–{shift.ActualCheckOut:HH:mm}");
+        if (shift.ActualCheckOut is not { } to)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{from:HH:mm}–");
+        }
+
+        var later = (to.Date - from.Date).Days;
+        return later > 0 ? $"{text} +{later} day{(later == 1 ? string.Empty : "s")}" : text;
+    }
+
+    private static string DecisionText(CompensationLine line)
+    {
+        var kind = line.LineKind == CompensationLine.Overtime ? "Overtime" : "Under time";
+        if (line.IsCoveredByLeave)
+        {
+            return $"{kind}: covered by {Spaced(line.Decision)}";
+        }
+
+        return line.Decision is { } decision && !line.NeedsDecision
+            ? $"{kind}: {Spaced(decision)}"
+            : line.LineKind == CompensationLine.Overtime ? $"{kind}: counts (not decided)" : $"{kind}: offsets overtime (not decided)";
+    }
+
+    /// <summary>Writes a decision's name in words: PaidLeave as "paid leave".</summary>
+    private static string Spaced(string? name) =>
+        string.IsNullOrEmpty(name) ? string.Empty : global::System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z])(?=[A-Z])", " ").ToLowerInvariant();
 
     private static int Weigh(int minutes, int percent) => (int)Math.Round(minutes * percent / 100.0, MidpointRounding.AwayFromZero);
 
