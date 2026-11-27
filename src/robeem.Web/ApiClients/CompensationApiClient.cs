@@ -46,6 +46,12 @@ public sealed class CompensationApiClient : ICompensationApiClient
         return await ApiResponses.SaveAsync<CompensationCloseRequest>(response, null, cancellationToken);
     }
 
+    public async Task<CompensationCloseAllResult> CloseAllAsync(CompensationCloseAllRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync($"{Path}/close-all", request, cancellationToken);
+        return await ApiResponses.ReadAsync<CompensationCloseAllResult>(response, cancellationToken);
+    }
+
     public async Task<ApiSaveResult> ReopenAsync(CompensationReopenRequest request, CancellationToken cancellationToken)
     {
         using var response = await _http.PostAsJsonAsync($"{Path}/reopen", request, cancellationToken);

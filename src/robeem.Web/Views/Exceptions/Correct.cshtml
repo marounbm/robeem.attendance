@@ -11,7 +11,7 @@
     <h1 class="h3 mb-0">Correct <span class="text-muted">@DisplayFormats.Date(day.Date)@(day.IsOnBehalf ? " · " + day.EmployeeName : string.Empty)</span></h1>
     @if (Model.Form.FromDay)
     {
-        <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-outline-secondary">Back to the day</a>
+        <a asp-controller="Records" asp-action="Day" asp-all-route-data="Model.BackToDayValues()" class="btn btn-outline-secondary">Back to the day</a>
     }
     else
     {
@@ -82,6 +82,11 @@
     <div id="completeness-alert" class="alert alert-danger" role="alert" hidden></div>
     <input type="hidden" name="Date" value="@day.Date.ToString("yyyy-MM-dd")" />
     <input type="hidden" name="FromDay" value="@(Model.Form.FromDay ? "true" : "false")" />
+    @if (Model.List is not null)
+    {
+        @* The list the day was opened from, so that the day's page still offers the next day of it once the correction is sent. *@
+        <partial name="_ListContextFields" model="Model.List" />
+    }
     @if (day.IsOnBehalf)
     {
         <input type="hidden" name="EmployeeId" value="@day.EmployeeId" />
@@ -255,7 +260,7 @@
         <button type="submit" class="btn btn-primary">@(day.IsOnBehalf && day.OnBehalfOutcome == DayCorrectionOutcome.AppliedAtOnce ? "Apply the correction" : "Send for approval")</button>
         @if (Model.Form.FromDay)
         {
-            <a asp-controller="Records" asp-action="Day" asp-route-employeeId="@day.EmployeeId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")" class="btn btn-link">Cancel</a>
+            <a asp-controller="Records" asp-action="Day" asp-all-route-data="Model.BackToDayValues()" class="btn btn-link">Cancel</a>
         }
         else
         {

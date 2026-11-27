@@ -361,6 +361,57 @@ public sealed class PayrollCompensationTests : AttendanceEngineTestBase
     }
 
     [Fact]
+    public async Task CloseAll_ClosesWhatIsReady_LeavesTheRestOpenWithTheReason_AndASecondRunClosesNothingMore()
+    {
+        var grace = AddPerson("E-2", "Grace", "Hopper");
+        AddPerson("E-3", "Alan", "Turing");
+        await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@18:00");
+        AddOpenException(Monday.AddDays(1), grace);
+
+        var first = await CloseAllAsync(IPayrollCompensationService.LastPeriod);
+
+        // Ada is ready; Grace has a day that is not; Alan has nothing to pay for.
+        Assert.Equal((1, 0, 1, 0, 1, 0), (first.Closed, first.AlreadyClosed, first.NothingToClose, first.NotEnded, first.NotReady, first.Refused));
+        var skipped = Assert.Single(first.Skipped);
+        Assert.Equal(("E-2", "1 day(s) are not ready for payroll"), (skipped.EmployeeNumber, skipped.Reason));
+        using (var db = Database.CreateContext(TestDatabase.TenantA))
+        {
+            var period = Assert.Single(db.PayPeriods);
+            Assert.Equal((EmployeeId, true, October, new DateTime(2026, 10, 31)), (period.EmployeeId, period.IsClosed, period.StartDate, period.EndDate));
+        }
+
+        // Closing is per employee: Ada's decisions are locked, and Grace is not affected.
+        Assert.Contains("closed", (await DecideAsync(Line(Monday, CompensationLine.Overtime, "Ignore"))).Errors.Values.Single());
+
+        var second = await CloseAllAsync(IPayrollCompensationService.LastPeriod);
+
+        Assert.Equal((0, 1, 1, 1), (second.Closed, second.AlreadyClosed, second.NothingToClose, second.NotReady));
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Single(check.PayPeriods);
+    }
+
+    [Fact]
+    public async Task CloseAll_LeavesAPeriodThatHasNotEndedOpen_AndFollowsTheSearch()
+    {
+        AddPerson("E-2", "Grace", "Hopper");
+        await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@18:00");
+        Clock.Local = new DateTime(2026, 10, 20, 10, 0, 0);
+
+        var running = await CloseAllAsync(IPayrollCompensationService.ContainingPeriod, Monday);
+
+        Assert.Equal((0, 2), (running.Closed, running.NotEnded));
+        Assert.Equal(["its period ends on 2026-10-31", "its period ends on 2026-10-31"], running.Skipped.Select(s => s.Reason));
+
+        // Only the employees of the search are looked at, and a finished period closes.
+        Clock.Local = new DateTime(2026, 11, 5, 10, 0, 0);
+        var onlyGrace = await CloseAllAsync(IPayrollCompensationService.LastPeriod, search: "grace");
+
+        Assert.Equal((0, 1), (onlyGrace.Closed, onlyGrace.NothingToClose));
+        using var check = Database.CreateContext(TestDatabase.TenantA);
+        Assert.Empty(check.PayPeriods);
+    }
+
+    [Fact]
     public async Task APeriodThatHasNotEnded_CannotBeClosed()
     {
         await WorkAsync("I@08:00,BO@12:00,BI@13:00,O@17:00");
@@ -564,12 +615,18 @@ public sealed class PayrollCompensationTests : AttendanceEngineTestBase
         return await Service(db).ReopenPeriodAsync(new CompensationReopenRequest { EmployeeId = EmployeeId, PeriodStart = October, Reason = reason }, CancellationToken.None);
     }
 
-    private int AddOpenException(DateTime date)
+    private async Task<CompensationCloseAllResult> CloseAllAsync(string mode, DateTime? date = null, string? search = null)
+    {
+        using var db = Database.CreateContext(TestDatabase.TenantA);
+        return await Service(db).CloseAllAsync(search, mode, date, CancellationToken.None);
+    }
+
+    private int AddOpenException(DateTime date, int? employeeId = null)
     {
         using var db = Database.CreateContext(TestDatabase.TenantA);
         var exception = new AttendanceException
         {
-            EmployeeId = EmployeeId,
+            EmployeeId = employeeId ?? EmployeeId,
             AttendanceDate = date,
             ExceptionType = AttendanceExceptionType.MissingPunch,
             MissingEventType = NormalizedEventType.CheckOut,

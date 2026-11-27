@@ -162,7 +162,12 @@ else
     <h2 class="h5 mb-0">Exceptions</h2>
     @if (canCorrect)
     {
-        <a class="btn btn-sm btn-primary" asp-controller="Exceptions" asp-action="Correct" asp-route-date="@dayDate" asp-route-employeeId="@day.EmployeeId" asp-route-fromDay="true">Correct this day</a>
+        @* The correction page gets the list this day was opened from, to bring the person back to the day with its "next day" still there. *@
+        var correctValues = Model.List is { } openedFrom ? openedFrom.ToDayValues(openedFrom.Position) : new Dictionary<string, string?>();
+        correctValues["date"] = dayDate;
+        correctValues["employeeId"] = day.EmployeeId.ToString();
+        correctValues["fromDay"] = "true";
+        <a class="btn btn-sm btn-primary" asp-controller="Exceptions" asp-action="Correct" asp-all-route-data="correctValues">Correct this day</a>
     }
     else if (waiting)
     {

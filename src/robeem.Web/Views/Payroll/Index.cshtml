@@ -15,18 +15,10 @@
 <div class="card mb-4">
     <div class="card-body">
         <form method="get" asp-action="Index" class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label" for="periodId">Pay period</label>
-                <select id="periodId" name="periodId" class="form-select">
-                    <option value="">Choose dates instead…</option>
-                    @foreach (var period in Model.Periods)
-                    {
-                        <option value="@period.Id" selected="@(period.Id == Model.PeriodId)">
-                            @period.StartDate.ToString("yyyy-MM-dd") to @period.EndDate.ToString("yyyy-MM-dd")@(period.IsClosed ? " (closed)" : string.Empty)
-                        </option>
-                    }
-                </select>
-            </div>
+            @if (Model.PeriodId is { } chosenPeriod)
+            {
+                <input type="hidden" name="periodId" value="@chosenPeriod" />
+            }
             <div class="col-md-2">
                 <label class="form-label" for="from">From</label>
                 <input id="from" name="from" type="date" class="form-control" value="@Model.From?.ToString("yyyy-MM-dd")" />
@@ -55,7 +47,10 @@
                     <a class="btn btn-outline-secondary" asp-action="Export" asp-route-periodId="@Model.PeriodId" asp-route-employee="@Model.Employee" asp-route-from="@(Model.PeriodId is null ? Model.From?.ToString("yyyy-MM-dd") : null)" asp-route-to="@(Model.PeriodId is null ? Model.To?.ToString("yyyy-MM-dd") : null)">Download CSV</a>
                 }
             </div>
-            <div class="col-12 form-text">Give an employee, a time range, or both. A pay period, when chosen, sets the dates; otherwise give both dates. With only an employee, every date of that employee is shown.</div>
+            <div class="col-12 form-text">
+                Give an employee, a time range, or both. With only an employee, every date of that employee is shown. Each employee is paid over their own pay period:
+                see it, decide overtime and under time, and close it on <a asp-controller="Compensation" asp-action="Index">Compensation</a>.
+            </div>
         </form>
     </div>
 </div>

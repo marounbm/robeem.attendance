@@ -76,6 +76,38 @@ public sealed class CompensationController : Controller
         return BackToReport(employeeId, mode, date);
     }
 
+    /// <summary>Closes the pay period shown for every employee of the overview that is ready; the others stay as they are, and the message says why.</summary>
+    [HttpPost]
+    public async Task<IActionResult> CloseAll(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+    {
+        var chosen = Mode(mode);
+        var result = await _compensation.CloseAllAsync(
+            new CompensationCloseAllRequest { Search = Clean(search), Mode = chosen, Date = chosen == CompensationIndexViewModel.Containing ? date : null },
+            cancellationToken);
+
+        var left = result.NotEnded + result.NotReady + result.Refused;
+        var message = new StringBuilder($"{result.Closed} pay period(s) were closed: payroll no longer reads their days and their decisions are locked.");
+        if (result.AlreadyClosed > 0)
+        {
+            message.Append($" {result.AlreadyClosed} were closed already.");
+        }
+
+        if (result.NothingToClose > 0)
+        {
+            message.Append($" {result.NothingToClose} had nothing to pay for.");
+        }
+
+        if (left > 0)
+        {
+            message.Append($" {left} were left open: ")
+                .Append(string.Join("; ", result.Skipped.Take(5).Select(s => $"{s.EmployeeName} ({s.EmployeeNumber}), {s.Reason}")))
+                .Append(left > 5 ? "; …" : ".");
+        }
+
+        TempData[left > 0 && result.Closed == 0 ? "ErrorMessage" : "StatusMessage"] = message.ToString();
+        return RedirectToAction(nameof(Index), new { search = Clean(search), mode = chosen, date = chosen == CompensationIndexViewModel.Containing ? date?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : null });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Reopen(int employeeId, DateTime periodStart, string? reason, string? mode, DateTime? date, CancellationToken cancellationToken)
     {

@@ -21,6 +21,9 @@ public interface ICompensationApiClient
     /// <summary>Closes the employee's pay period; the Api refuses while it has not ended or has days that are not ready.</summary>
     Task<ApiSaveResult> CloseAsync(CompensationCloseRequest request, CancellationToken cancellationToken);
 
+    /// <summary>Closes the pay period shown for every ready employee of the overview, and says why each of the others was not closed.</summary>
+    Task<CompensationCloseAllResult> CloseAllAsync(CompensationCloseAllRequest request, CancellationToken cancellationToken);
+
     /// <summary>Opens the employee's closed pay period again; the Api refuses without a reason.</summary>
     Task<ApiSaveResult> ReopenAsync(CompensationReopenRequest request, CancellationToken cancellationToken);
 }

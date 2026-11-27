@@ -53,7 +53,7 @@ public sealed class ExceptionsController : Controller
     /// </summary>
     [HttpGet]
     [RequiresEmployee]
-    public async Task<IActionResult> Correct(DateTime date, int? employeeId, bool fromDay, CancellationToken cancellationToken)
+    public async Task<IActionResult> Correct(DateTime date, int? employeeId, bool fromDay, CancellationToken cancellationToken, RecordListContext? list = null)
     {
         if (await _corrections.GetDayAsync(date, OtherThanSelf(employeeId), cancellationToken) is not { } day)
         {
@@ -62,13 +62,13 @@ public sealed class ExceptionsController : Controller
 
         var form = DayCorrectionForm.For(day);
         form.FromDay = fromDay;
-        return View(new DayCorrectionViewModel { Day = day, Form = form });
+        return View(new DayCorrectionViewModel { Day = day, Form = form, List = FromList(list) });
     }
 
     /// <summary>Sends the edits of the day for approval, all together, with one reason.</summary>
     [HttpPost]
     [RequiresEmployee]
-    public async Task<IActionResult> Correct(DayCorrectionForm form, CancellationToken cancellationToken)
+    public async Task<IActionResult> Correct(DayCorrectionForm form, CancellationToken cancellationToken, RecordListContext? list = null)
     {
         var employeeId = OtherThanSelf(form.EmployeeId);
         var result = await _corrections.ProposeDayAsync(
@@ -84,7 +84,7 @@ public sealed class ExceptionsController : Controller
                 _ => "Your corrections were sent. They now wait for the approver's decision, all together.",
             };
             return form.FromDay && (employeeId ?? _actor.Effective?.EmployeeId) is { } dayEmployeeId
-                ? RedirectToDay(dayEmployeeId, form.Date)
+                ? RedirectToDay(dayEmployeeId, form.Date, FromList(list))
                 : RedirectToAction(nameof(Index));
         }
 
@@ -99,7 +99,7 @@ public sealed class ExceptionsController : Controller
             ModelState.AddModelError(string.Empty, message);
         }
 
-        return View(new DayCorrectionViewModel { Day = day, Form = form.WithPunchesOf(day) });
+        return View(new DayCorrectionViewModel { Day = day, Form = form.WithPunchesOf(day), List = FromList(list) });
     }
 
     /// <summary>
@@ -142,6 +142,9 @@ public sealed class ExceptionsController : Controller
             ? RedirectToDay(employeeId, date, list)
             : RedirectToAction(nameof(Index));
     }
+
+    /// <summary>The list a day was opened from, only when it says where the day sat in it: otherwise there is no list to carry.</summary>
+    private static RecordListContext? FromList(RecordListContext? list) => list is { Position: > 0 } ? list : null;
 
     /// <summary>The employee to name to the Api: null for the acting user's own day, so that a day is only ever "on behalf" when it is someone else's.</summary>
     private int? OtherThanSelf(int? employeeId) => employeeId is { } id && id != _actor.Effective?.EmployeeId ? id : null;

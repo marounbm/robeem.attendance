@@ -55,6 +55,19 @@
 }
 else
 {
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+        <form method="post" asp-action="CloseAll" onsubmit="return confirm('Close the pay period shown for every employee that is ready? It must have ended, have days to pay for, and have no day that is not ready. Closing locks the employee\'s decisions and stops payroll reading their days. The others are left open.');">
+            <input type="hidden" name="search" value="@Model.Search" />
+            <input type="hidden" name="mode" value="@Model.Mode" />
+            <input type="hidden" name="date" value="@(Model.Mode == CompensationIndexViewModel.Containing ? Model.Date?.ToString("yyyy-MM-dd") : null)" />
+            <button type="submit" class="btn btn-outline-primary">Close all ready periods</button>
+        </form>
+        <span class="small text-muted">
+            Closes, for every employee of this list (all pages), the period shown, when it has ended and nothing in it is not ready. Employees that are not ready are left open and named.
+            Periods for the whole company at once are on <a asp-controller="PayPeriods" asp-action="Index">Company pay periods</a>.
+        </span>
+    </div>
+
     <div class="card mb-3">
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">

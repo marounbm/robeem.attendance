@@ -64,6 +64,14 @@ public sealed class AttendanceCompensationController : ControllerBase
         return result.Succeeded ? NoContent() : Failure(result);
     }
 
+    /// <summary>
+    /// Closes the pay period shown for every employee of the overview (the same search, mode and date) that is ready, and says why each of the others
+    /// was not closed. Each employee is closed on its own.
+    /// </summary>
+    [HttpPost("close-all")]
+    public async Task<CompensationCloseAllResult> CloseAll(CompensationCloseAllRequest request, CancellationToken cancellationToken) =>
+        await _compensation.CloseAllAsync(request.Search, request.Mode, request.Date, cancellationToken);
+
     /// <summary>Opens the employee's closed pay period again, with a reason.</summary>
     [HttpPost("reopen")]
     public async Task<IActionResult> Reopen(CompensationReopenRequest request, CancellationToken cancellationToken)

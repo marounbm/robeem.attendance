@@ -50,6 +50,13 @@ public interface IPayrollCompensationService
     /// </summary>
     Task<SaveResult> ClosePeriodAsync(CompensationCloseRequest request, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Closes the pay period shown for every employee of the overview (the same search, mode and date) that is ready: its period has ended,
+    /// it has days payroll may pay for and none that is not ready. The others are left as they are and counted with the reason. Each
+    /// employee is closed on its own, as <see cref="ClosePeriodAsync"/> does, so one that cannot be closed never holds the rest back.
+    /// </summary>
+    Task<CompensationCloseAllResult> CloseAllAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken);
+
     /// <summary>Opens the employee's closed pay period again; a reason is required. Refused when the period is not closed.</summary>
     Task<SaveResult> ReopenPeriodAsync(CompensationReopenRequest request, CancellationToken cancellationToken);
 }

@@ -137,6 +137,48 @@ public sealed class CompensationWebTests
     }
 
     [Fact]
+    public async Task CloseAll_AsksForTheSameListAsTheOverview_AndSaysWhatWasClosedAndWhatWasLeftOpen()
+    {
+        var client = new FakeCompensation
+        {
+            CloseAll = new CompensationCloseAllResult
+            {
+                Closed = 3,
+                AlreadyClosed = 1,
+                NothingToClose = 2,
+                NotReady = 1,
+                Skipped = [new CompensationSkippedEmployee { EmployeeId = 9, EmployeeNumber = "E-9", EmployeeName = "Grace Hopper", Reason = "2 day(s) are not ready for payroll" }],
+            },
+        };
+        var controller = WithTempData(new CompensationController(client));
+
+        var result = await controller.CloseAll("  ada ", "containing", new DateTime(2026, 10, 8), CancellationToken.None);
+
+        var request = Assert.Single(client.CloseAlls);
+        Assert.Equal(("ada", "Containing", (DateTime?)new DateTime(2026, 10, 8)), (request.Search, request.Mode, request.Date));
+        var message = (string)controller.TempData["StatusMessage"]!;
+        Assert.Contains("3 pay period(s) were closed", message);
+        Assert.Contains("1 were closed already", message);
+        Assert.Contains("2 had nothing to pay for", message);
+        Assert.Contains("Grace Hopper (E-9), 2 day(s) are not ready for payroll", message);
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(("Index", "Containing", "2026-10-08", "ada"), (redirect.ActionName, redirect.RouteValues!["mode"], redirect.RouteValues["date"], redirect.RouteValues["search"]));
+    }
+
+    [Fact]
+    public async Task CloseAll_WhenNothingCouldBeClosed_ShowsItAsAProblem_AndKeepsNoDateOutsideAChosenPeriod()
+    {
+        var client = new FakeCompensation { CloseAll = new CompensationCloseAllResult { NotEnded = 2, Skipped = [new CompensationSkippedEmployee { EmployeeName = "Ada", EmployeeNumber = "E-1", Reason = "its period ends on 2026-10-31" }] } };
+        var controller = WithTempData(new CompensationController(client));
+
+        var result = await controller.CloseAll(null, null, new DateTime(2026, 10, 8), CancellationToken.None);
+
+        Assert.Contains("0 pay period(s) were closed", (string)controller.TempData["ErrorMessage"]!);
+        Assert.Null(Assert.Single(client.CloseAlls).Date);
+        Assert.Equal("Latest", Assert.IsType<RedirectToActionResult>(result).RouteValues!["mode"]);
+    }
+
+    [Fact]
     public async Task TheExport_IsOneCsvOfEveryEmployee_NotOnePage()
     {
         var client = new FakeCompensation
@@ -268,6 +310,10 @@ public sealed class CompensationWebTests
 
         public List<CompensationReopenRequest> Reopens { get; } = [];
 
+        public CompensationCloseAllResult CloseAll { get; set; } = new() { Closed = 3 };
+
+        public List<CompensationCloseAllRequest> CloseAlls { get; } = [];
+
         public List<(string? Search, string Mode, DateTime? Date, int Page, int PageSize)> Lists { get; } = [];
 
         public List<string?> AllSearches { get; } = [];
@@ -293,6 +339,12 @@ public sealed class CompensationWebTests
         }
 
         public Task<ApiSaveResult> CloseAsync(CompensationCloseRequest request, CancellationToken cancellationToken) => Task.FromResult(Result);
+
+        public Task<CompensationCloseAllResult> CloseAllAsync(CompensationCloseAllRequest request, CancellationToken cancellationToken)
+        {
+            CloseAlls.Add(request);
+            return Task.FromResult(CloseAll);
+        }
 
         public Task<ApiSaveResult> ReopenAsync(CompensationReopenRequest request, CancellationToken cancellationToken)
         {

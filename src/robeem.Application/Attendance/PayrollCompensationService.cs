@@ -291,6 +291,71 @@ public sealed class PayrollCompensationService : IPayrollCompensationService
             : await _periods.CloseForEmployeeAsync(request.EmployeeId, report.PeriodStart, report.PeriodEnd, cancellationToken);
     }
 
+    public async Task<CompensationCloseAllResult> CloseAllAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+    {
+        int closed = 0, already = 0, nothing = 0, notEnded = 0, notReady = 0, refused = 0;
+        var skipped = new List<CompensationSkippedEmployee>();
+        void Skip(CompensationOverviewItem item, string reason)
+        {
+            if (skipped.Count < CompensationCloseAllResult.MaxSkippedListed)
+            {
+                skipped.Add(new CompensationSkippedEmployee { EmployeeId = item.EmployeeId, EmployeeNumber = item.EmployeeNumber, EmployeeName = item.EmployeeName, Reason = reason });
+            }
+        }
+
+        for (var page = 1; ; page++)
+        {
+            // The same pages as the overview, so what is closed is what was on the screen. Closing does not change who is on which page.
+            var result = await ListAsync(search, mode, date, page, MaxPageSize, cancellationToken);
+            foreach (var item in result.Items)
+            {
+                if (item.IsClosed)
+                {
+                    already++;
+                }
+                else if (!item.PeriodHasEnded)
+                {
+                    notEnded++;
+                    Skip(item, $"its period ends on {item.PeriodEnd:yyyy-MM-dd}");
+                }
+                else if (item.NotReadyDays > 0)
+                {
+                    notReady++;
+                    Skip(item, $"{item.NotReadyDays} day(s) are not ready for payroll");
+                }
+                else if (item.Summary.PaidDays == 0)
+                {
+                    nothing++;
+                }
+                else if ((await _periods.CloseForEmployeeAsync(item.EmployeeId, item.PeriodStart, item.PeriodEnd, cancellationToken)) is { Succeeded: true })
+                {
+                    closed++;
+                }
+                else
+                {
+                    refused++;
+                    Skip(item, "the pay period could not be closed (it may overlap another period of the employee)");
+                }
+            }
+
+            if (page * MaxPageSize >= result.Total || result.Items.Count == 0)
+            {
+                break;
+            }
+        }
+
+        return new CompensationCloseAllResult
+        {
+            Closed = closed,
+            AlreadyClosed = already,
+            NothingToClose = nothing,
+            NotEnded = notEnded,
+            NotReady = notReady,
+            Refused = refused,
+            Skipped = skipped,
+        };
+    }
+
     public async Task<SaveResult> ReopenPeriodAsync(CompensationReopenRequest request, CancellationToken cancellationToken)
     {
         if (!await _db.Profiles.AnyAsync(p => p.Id == request.EmployeeId, cancellationToken))

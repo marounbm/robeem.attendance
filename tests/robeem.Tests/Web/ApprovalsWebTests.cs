@@ -251,6 +251,51 @@ public sealed class ApprovalsWebTests
     }
 
     [Fact]
+    public async Task ACorrectionOpenedFromTheAttendanceList_KeepsThatListThroughTheFormAndBackToTheDay()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay() };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+        var list = new RecordListContext { Status = "OpenExceptions", FilterEmployeeId = 54, PageSize = 20, Position = 4, Sort = "Date", Dir = "asc" };
+
+        // Opened from the day's page, the correction page has the list, and so do its links back to the day.
+        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), null, true, CancellationToken.None, list)).Model);
+        Assert.Same(list, opened.List);
+        var back = opened.BackToDayValues();
+        Assert.Equal(("4", "54", "OpenExceptions", "7", "2026-10-05"), (back["position"], back["filterEmployeeId"], back["status"], back["employeeId"], back["date"]));
+
+        // Sent, it returns to the day with the list still on it, so the day's page can offer the next day again.
+        var sent = await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), FromDay = true }, CancellationToken.None, list);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(sent);
+        Assert.Equal(("Day", "Records", "4", "54", "OpenExceptions"), (redirect.ActionName, redirect.ControllerName, redirect.RouteValues!["position"], redirect.RouteValues["filterEmployeeId"], redirect.RouteValues["status"]));
+        Assert.Equal((1, "2026-10-05"), (redirect.RouteValues["employeeId"], redirect.RouteValues["date"]));
+    }
+
+    [Fact]
+    public async Task ARefusedCorrection_ShowsThePageAgainWithTheListStillOnIt()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay(), Refusal = ["Edit 1: that punch is not one of this day's that count."] };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+        var list = new RecordListContext { Status = "OpenExceptions", PageSize = 20, Position = 4 };
+
+        var result = await controller.Correct(new DayCorrectionForm { Date = new DateTime(2026, 10, 5), FromDay = true }, CancellationToken.None, list);
+
+        Assert.Same(list, Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(result).Model).List);
+    }
+
+    [Fact]
+    public async Task ACorrectionOpenedWithoutAListPosition_HasNoListToCarry()
+    {
+        var corrections = new FakeCorrections { Day = SampleDay() };
+        var controller = WithTempData(new ExceptionsController(new FakeExceptions(), corrections, new FakeActor(["Employee"])));
+
+        var opened = Assert.IsType<DayCorrectionViewModel>(Assert.IsType<ViewResult>(await controller.Correct(new DateTime(2026, 10, 5), null, true, CancellationToken.None, new RecordListContext { Status = "Any" })).Model);
+
+        Assert.Null(opened.List);
+        Assert.Equal(["employeeId", "date"], opened.BackToDayValues().Keys.OrderByDescending(k => k));
+    }
+
+    [Fact]
     public async Task AcceptingFromTheDay_ReturnsToTheDay()
     {
         var controller = WithTempData(new ExceptionsController(new FakeExceptions(), new FakeCorrections(), new FakeActor(["Manager"])));

@@ -6,6 +6,7 @@
     <File Path="DEPLOYMENT_IIS.md" />
     <File Path="DATABASE.md" />
     <File Path="DATABASE_ERD.md" />
+    <File Path="PAYROLL_WORKFLOW.md" />
     <File Path="TEST_COVERAGE.md" />
     <File Path="ZKTECO_XLS_IMPORT_SETUP.md" />
   </Folder>

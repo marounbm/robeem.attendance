@@ -36,6 +36,7 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
         ["GET", "api/attendance/payroll/compensation/5", null!],
         ["POST", "api/attendance/payroll/compensation/decisions", """{"employeeId":5,"periodStart":"2026-10-01","lines":[]}"""],
         ["POST", "api/attendance/payroll/compensation/close", """{"employeeId":5,"periodStart":"2026-10-01"}"""],
+        ["POST", "api/attendance/payroll/compensation/close-all", """{"mode":"Latest"}"""],
         ["POST", "api/attendance/payroll/compensation/reopen", """{"employeeId":5,"periodStart":"2026-10-01","reason":"late fix"}"""],
         ["GET", "api/attendance/pay-cycles/default", null!],
         ["PUT", "api/attendance/pay-cycles/default", """{"frequency":"Monthly","startDay":26}"""],
@@ -112,6 +113,17 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task CloseAll_PassesTheOverviewsSearchModeAndDateOn_AndAnswersTheCounts()
+    {
+        var response = await Send("POST", "api/attendance/payroll/compensation/close-all", Payroll, """{"search":"ada","mode":"Containing","date":"2026-10-08"}""");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = (await response.Content.ReadFromJsonAsync<CompensationCloseAllResult>())!;
+        Assert.Equal((4, 1), (result.Closed, result.NotReady));
+        Assert.Equal([("ada", "Containing", (DateTime?)new DateTime(2026, 10, 8))], _compensation.CloseAlls);
+    }
+
+    [Fact]
     public async Task TheOverview_PassesTheSearchTheModeTheDateAndThePageOn()
     {
         await Send("GET", "api/attendance/payroll/compensation?search=ada&mode=Containing&date=2026-10-08&page=3&pageSize=50", Payroll, null);
@@ -160,6 +172,8 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
 
         public List<(string? Search, string? Mode, DateTime? Date, int Page, int PageSize)> Lists { get; } = [];
 
+        public List<(string? Search, string? Mode, DateTime? Date)> CloseAlls { get; } = [];
+
         public SaveResult Result { get; set; } = SaveResult.Success(3);
 
         public Task<PagedResult<CompensationOverviewItem>> ListAsync(string? search, string? mode, DateTime? date, int page, int pageSize, CancellationToken cancellationToken)
@@ -192,6 +206,13 @@ public sealed class CompensationEndpointTests : IAsyncDisposable
         {
             Calls.Add("close");
             return Task.FromResult(Result);
+        }
+
+        public Task<CompensationCloseAllResult> CloseAllAsync(string? search, string? mode, DateTime? date, CancellationToken cancellationToken)
+        {
+            Calls.Add("close-all");
+            CloseAlls.Add((search, mode, date));
+            return Task.FromResult(new CompensationCloseAllResult { Closed = 4, NotReady = 1 });
         }
 
         public Task<SaveResult> ReopenPeriodAsync(CompensationReopenRequest request, CancellationToken cancellationToken)
